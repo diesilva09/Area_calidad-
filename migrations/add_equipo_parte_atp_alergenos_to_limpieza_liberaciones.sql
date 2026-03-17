@@ -1,0 +1,6 @@
+ALTER TABLE limpieza_liberaciones
+  ADD COLUMN IF NOT EXISTS equipo_atp VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS parte_atp VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS equipo_alergenos VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS parte_alergenos VARCHAR(255);
+  

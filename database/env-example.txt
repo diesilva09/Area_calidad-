@@ -1,0 +1,5 @@
+# Configuración de la base de datos PostgreSQL
+POSTGRES_PASSWORD=tu_contraseña_aqui
+
+# Reemplaza "tu_contraseña_aqui" con la contraseña real de PostgreSQL
+# Si no usas contraseña, déjalo vacío: POSTGRES_PASSWORD=
