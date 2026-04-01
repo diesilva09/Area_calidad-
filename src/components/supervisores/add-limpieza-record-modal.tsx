@@ -886,6 +886,86 @@ export function AddLimpiezaRecordModal({
     cargarPartesEquipo
   ]);
 
+  // Efecto para aplicar datos precargados cuando los equipos estén cargados
+  React.useEffect(() => {
+    // Resetear formulario SOLO cuando se está creando un registro nuevo.
+    if (!isOpen) return;
+    if (initialVerification) return;
+    if (viewOnlyMode) return;
+    if (registroIdToEdit) return;
+    if (registroId) return;
+    if (datosPrecargados) return;
+    if (prefilledData) return;
+
+    // este reset puede borrar los datos que se acaban de precargar desde BD.
+    if (
+      isOpen &&
+      !initialVerification &&
+      !datosPrecargados &&
+      !prefilledData &&
+      !registroIdToEdit &&
+      !registroId &&
+      !viewOnlyMode
+    ) {
+      console.log(' Limpiando formulario para nuevo registro');
+      
+      // Resetear formulario principal a valores por defecto
+      form.reset({
+        fecha: getFechaActual(),
+        mesCorte: getMesActual(),
+        detalles: '',
+        lote: '',
+        producto: '',
+        tipoVerificacion: '',
+        verificadoPor: '',
+        // Resetear todos los demás campos a vacío
+        tipoVerificacionOtro: '',
+        responsableProduccion: '',
+        responsableMantenimiento: '',
+        tomas: [],
+      });
+      
+      // Resetear formulario pendiente también
+      pendingForm.reset({
+        fecha: getFechaActual(),
+        mesCorte: getMesActual(),
+        detalles: '',
+        lote: '',
+        producto: '',
+        tipoVerificacion: '',
+        verificadoPor: '',
+        tipoVerificacionOtro: '',
+        responsableProduccion: '',
+        responsableMantenimiento: '',
+        tomas: [],
+      });
+      
+      // Resetear estados adicionales
+      setMostrarCampoOtro(false);
+      setRegistroId(null);
+      setLiberacionIdsByIndex({});
+      setForceShowLoteProducto(false);
+      setTomaActivaIndex(0);
+      setPartesPorToma({});
+      setIsLoadingPartesPorToma({});
+      setMostrarCampoOtroLineaPorToma({});
+      setMostrarCampoOtroSuperficiePorToma({});
+      
+      console.log(' Formulario limpiado para nuevo registro');
+    }
+  }, [
+    isOpen,
+    initialVerification,
+    datosPrecargados,
+    prefilledData,
+    registroIdToEdit,
+    registroId,
+    viewOnlyMode,
+    form,
+    pendingForm,
+    user,
+  ]);
+
   React.useEffect(() => {
     const loadRegistroToEdit = async () => {
       if (!isOpen) return;
@@ -1497,15 +1577,10 @@ export function AddLimpiezaRecordModal({
         variant: 'destructive',
       });
       return;
-    }
-
-    // Establecer modo edición cuando se está editando un registro existente
-    if ((registroIdToEdit || registroId) && isOpen && !viewOnlyMode) {
-      setIsEditMode(true);
-    } else if (!initialVerification && !registroIdToEdit && !registroId) {
+    } else if (!initialVerification) {
       setIsEditMode(false);
     }
-  }, [initialVerification, registroIdToEdit, registroId, isOpen, viewOnlyMode, toast]);
+  }, [initialVerification, isOpen, viewOnlyMode, toast]);
 
   // Efecto para actualizar las fechas cuando el modal se abre
   React.useEffect(() => {
@@ -2465,7 +2540,7 @@ export function AddLimpiezaRecordModal({
 
                     <FormField control={form.control} name="detalles" render={({ field }) => (
                       <FormItem className="md:col-span-2 lg:col-span-3">
-                        <FormLabel>Detalles de limpieza</FormLabel>
+                        <FormLabel>Detalles de labor de limpieza</FormLabel>
                         <FormControl>
                           <Textarea disabled={effectiveViewOnlyMode} placeholder="Escriba detalles..." {...field} />
                         </FormControl>
