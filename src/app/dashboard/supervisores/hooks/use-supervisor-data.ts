@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { startTransition, useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { 
   getProductCategories, 
@@ -9,14 +9,12 @@ import {
 } from '@/lib/supervisores-data';
 import { embalajeRecordsService, type EmbalajeRecord } from '@/lib/embalaje-records-service';
 import { limpiezaTasksService, type LimpiezaTask } from '@/lib/limpieza-tasks-service';
-import { limpiezaVerificationsService, type LimpiezaVerification } from '@/lib/limpieza-verifications-service';
 import { limpiezaRegistrosService, type LimpiezaRegistro } from '@/lib/limpieza-registros-service';
 
 export interface SupervisorData {
   categories: ProductCategory[];
   embalajeRecords: EmbalajeRecord[];
   limpiezaTasks: LimpiezaTask[];
-  limpiezaVerifications: LimpiezaVerification[];
   limpiezaRegistros: LimpiezaRegistro[];
   equiposNombres: Record<string, string>;
 }
@@ -42,11 +40,6 @@ export interface SupervisorHandlers {
   handleEditLimpiezaTask: (task: LimpiezaTask) => Promise<void>;
   handleDeleteLimpiezaTask: (taskId: string) => Promise<void>;
   handleCompleteTask: (taskId: string) => Promise<void>;
-  
-  // Limpieza Verifications
-  handleCreateLimpiezaVerification: (verification: Omit<LimpiezaVerification, 'id'>) => Promise<void>;
-  handleEditLimpiezaVerification: (verification: LimpiezaVerification) => Promise<void>;
-  handleDeleteLimpiezaVerification: (verificationId: string) => Promise<void>;
 }
 
 export function useSupervisorData() {
@@ -57,7 +50,6 @@ export function useSupervisorData() {
     categories: [],
     embalajeRecords: [],
     limpiezaTasks: [],
-    limpiezaVerifications: [],
     limpiezaRegistros: [],
     equiposNombres: {}
   });
@@ -66,22 +58,25 @@ export function useSupervisorData() {
   const [error, setError] = useState<string | null>(null);
 
   // Load all data
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (options?: { showLoading?: boolean }) => {
+    const showLoading = options?.showLoading ?? false;
     try {
-      setLoading(true);
-      setError(null);
+      if (showLoading) setLoading(true);
+      if (showLoading) {
+        setError(null);
+      } else {
+        startTransition(() => setError(null));
+      }
       
       const [
         categoriesResult,
         embalajeRecordsResult,
         limpiezaTasksResult,
-        limpiezaVerificationsResult,
         limpiezaRegistrosResult
       ] = await Promise.allSettled([
         getProductCategories(),
         embalajeRecordsService.getAll(),
         limpiezaTasksService.getAll(),
-        limpiezaVerificationsService.getAll(),
         limpiezaRegistrosService.getAll()
       ]);
 
@@ -89,7 +84,6 @@ export function useSupervisorData() {
       const categories = categoriesResult.status === 'fulfilled' ? categoriesResult.value : [];
       const embalajeRecords = embalajeRecordsResult.status === 'fulfilled' ? embalajeRecordsResult.value : [];
       const limpiezaTasks = limpiezaTasksResult.status === 'fulfilled' ? limpiezaTasksResult.value : [];
-      const limpiezaVerifications = limpiezaVerificationsResult.status === 'fulfilled' ? limpiezaVerificationsResult.value : [];
       const limpiezaRegistros = limpiezaRegistrosResult.status === 'fulfilled' ? limpiezaRegistrosResult.value : [];
 
       // Log errors if any
@@ -102,38 +96,44 @@ export function useSupervisorData() {
       if (limpiezaTasksResult.status === 'rejected') {
         console.error('Error loading limpieza tasks:', limpiezaTasksResult.reason);
       }
-      if (limpiezaVerificationsResult.status === 'rejected') {
-        console.error('Error loading limpieza verifications:', limpiezaVerificationsResult.reason);
-      }
       if (limpiezaRegistrosResult.status === 'rejected') {
         console.error('Error loading limpieza registros:', limpiezaRegistrosResult.reason);
       }
 
-      setData({
+      const nextData: SupervisorData = {
         categories,
         embalajeRecords,
         limpiezaTasks,
-        limpiezaVerifications,
         limpiezaRegistros,
-        equiposNombres: {} // TODO: Load equipment names
-      });
+        equiposNombres: {}, // TODO: Load equipment names
+      };
+
+      if (showLoading) {
+        setData(nextData);
+      } else {
+        startTransition(() => setData(nextData));
+      }
       
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
-      setError(errorMessage);
+      if (showLoading) {
+        setError(errorMessage);
+      } else {
+        startTransition(() => setError(errorMessage));
+      }
       toast({
         title: "Error al cargar datos",
         description: errorMessage,
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [toast]);
 
   // Initial load
   useEffect(() => {
-    loadData();
+    loadData({ showLoading: true });
   }, [loadData]);
 
   // Category handlers
@@ -374,60 +374,6 @@ export function useSupervisorData() {
     }
   }, [loadData, toast]);
 
-  // Limpieza verification handlers
-  const handleCreateLimpiezaVerification = useCallback(async (verification: Omit<LimpiezaVerification, 'id'>) => {
-    try {
-      await limpiezaVerificationsService.create(verification);
-      await loadData();
-      toast({
-        title: "Verificación de limpieza creada",
-        description: "La verificación ha sido creada exitosamente.",
-      });
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
-      toast({
-        title: "Error al crear verificación",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    }
-  }, [loadData, toast]);
-
-  const handleEditLimpiezaVerification = useCallback(async (verification: LimpiezaVerification) => {
-    try {
-      await limpiezaVerificationsService.update(verification.id, verification);
-      await loadData();
-      toast({
-        title: "Verificación actualizada",
-        description: "La verificación ha sido actualizada exitosamente.",
-      });
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
-      toast({
-        title: "Error al actualizar verificación",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    }
-  }, [loadData, toast]);
-
-  const handleDeleteLimpiezaVerification = useCallback(async (verificationId: string) => {
-    try {
-      await limpiezaVerificationsService.delete(Number(verificationId));
-      await loadData();
-      toast({
-        title: "Verificación eliminada",
-        description: "La verificación ha sido eliminada exitosamente.",
-      });
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
-      toast({
-        title: "Error al eliminar verificación",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    }
-  }, [loadData, toast]);
 
   const handlers: SupervisorHandlers = {
     handleCreateCategory,
@@ -443,9 +389,6 @@ export function useSupervisorData() {
     handleEditLimpiezaTask,
     handleDeleteLimpiezaTask,
     handleCompleteTask,
-    handleCreateLimpiezaVerification,
-    handleEditLimpiezaVerification,
-    handleDeleteLimpiezaVerification
   };
 
   return {

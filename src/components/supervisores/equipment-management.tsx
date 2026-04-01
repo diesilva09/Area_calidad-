@@ -10,6 +10,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { Plus, Edit, Trash2, Wrench } from 'lucide-react';
 import { equiposApi, type Equipo, type Parte, type CreateEquipoData, type UpdateEquipoData, type CreateParteData, type UpdateParteData } from '@/lib/equipos-api';
 import { useToast } from '@/hooks/use-toast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export function EquipmentManagement() {
   const [equipos, setEquipos] = useState<Equipo[]>([]);
@@ -20,6 +30,11 @@ export function EquipmentManagement() {
   const [equipoSeleccionadoId, setEquipoSeleccionadoId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [isCodeDuplicate, setIsCodeDuplicate] = useState(false);
+
+  const [deleteEquipoId, setDeleteEquipoId] = useState<number | null>(null);
+  const [isDeletingEquipo, setIsDeletingEquipo] = useState(false);
+  const [deleteParteTarget, setDeleteParteTarget] = useState<{ equipoId: number; parteId: number } | null>(null);
+  const [isDeletingParte, setIsDeletingParte] = useState(false);
   const [isCheckingCode, setIsCheckingCode] = useState(false);
   const { toast } = useToast();
 
@@ -193,24 +208,30 @@ export function EquipmentManagement() {
     }
   };
 
-  const handleDeleteEquipo = async (id: number) => {
-    if (!confirm('¿Estás seguro de que quieres eliminar este equipo?')) return;
+  const handleConfirmDeleteEquipo = async () => {
+    if (deleteEquipoId == null) return;
+    if (isDeletingEquipo) return;
 
+    const id = deleteEquipoId;
+    setIsDeletingEquipo(true);
     try {
       await equiposApi.delete(id);
-      setEquipos(prev => prev.filter(eq => eq.id !== id));
+      setEquipos((prev) => prev.filter((eq) => eq.id !== id));
       setEquipoSeleccionadoId((prev) => (prev === id ? null : prev));
       toast({
-        title: "Equipo eliminado",
-        description: "El equipo ha sido eliminado exitosamente",
+        title: 'Equipo eliminado',
+        description: 'El equipo ha sido eliminado exitosamente',
       });
+      setDeleteEquipoId(null);
     } catch (error) {
       console.error('Error al eliminar equipo:', error);
       toast({
-        title: "Error",
-        description: "No se pudo eliminar el equipo",
-        variant: "destructive",
+        title: 'Error',
+        description: 'No se pudo eliminar. Intenta de nuevo.',
+        variant: 'destructive',
       });
+    } finally {
+      setIsDeletingEquipo(false);
     }
   };
 
@@ -281,31 +302,39 @@ export function EquipmentManagement() {
     }
   };
 
-  const handleDeleteParte = async (equipoId: number, parteId: number) => {
-    if (!confirm('¿Estás seguro de que quieres eliminar esta parte?')) return;
+  const handleConfirmDeleteParte = async () => {
+    if (!deleteParteTarget) return;
+    if (isDeletingParte) return;
 
+    const { equipoId, parteId } = deleteParteTarget;
+    setIsDeletingParte(true);
     try {
       await equiposApi.deleteParte(parteId);
-      setEquipos(prev => prev.map(eq => {
-        if (eq.id === equipoId) {
-          return {
-            ...eq,
-            partes: (eq.partes || []).filter(parte => parte.id !== parteId)
-          };
-        }
-        return eq;
-      }));
+      setEquipos((prev) =>
+        prev.map((eq) => {
+          if (eq.id === equipoId) {
+            return {
+              ...eq,
+              partes: (eq.partes || []).filter((parte) => parte.id !== parteId),
+            };
+          }
+          return eq;
+        })
+      );
       toast({
-        title: "Parte eliminada",
-        description: "La parte ha sido eliminada exitosamente",
+        title: 'Parte eliminada',
+        description: 'La parte ha sido eliminada exitosamente',
       });
+      setDeleteParteTarget(null);
     } catch (error) {
       console.error('Error al eliminar parte:', error);
       toast({
-        title: "Error",
-        description: "No se pudo eliminar la parte",
-        variant: "destructive",
+        title: 'Error',
+        description: 'No se pudo eliminar. Intenta de nuevo.',
+        variant: 'destructive',
       });
+    } finally {
+      setIsDeletingParte(false);
     }
   };
 
@@ -408,8 +437,9 @@ export function EquipmentManagement() {
                     size="sm"
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDeleteEquipo(equipo.id);
+                      setDeleteEquipoId(equipo.id);
                     }}
+                    disabled={isDeletingEquipo && deleteEquipoId === equipo.id}
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>
@@ -446,8 +476,16 @@ export function EquipmentManagement() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleDeleteParte(equipo.id, parte.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteParteTarget({ equipoId: equipo.id, parteId: parte.id });
+                              }}
                               className="h-6 w-6 p-0"
+                              disabled={
+                                isDeletingParte &&
+                                deleteParteTarget?.equipoId === equipo.id &&
+                                deleteParteTarget?.parteId === parte.id
+                              }
                             >
                               <Trash2 className="h-3 w-3" />
                             </Button>
@@ -462,6 +500,52 @@ export function EquipmentManagement() {
           ))}
         </div>
       )}
+
+      <AlertDialog
+        open={deleteEquipoId != null}
+        onOpenChange={(open) => {
+          if (!open && isDeletingEquipo) return;
+          if (!open) setDeleteEquipoId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar equipo</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingEquipo}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDeleteEquipo} disabled={isDeletingEquipo}>
+              {isDeletingEquipo ? 'Eliminando...' : 'Eliminar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={deleteParteTarget != null}
+        onOpenChange={(open) => {
+          if (!open && isDeletingParte) return;
+          if (!open) setDeleteParteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar parte</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingParte}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDeleteParte} disabled={isDeletingParte}>
+              {isDeletingParte ? 'Eliminando...' : 'Eliminar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Modal para agregar/editar equipo */}
       <Dialog 
@@ -573,16 +657,6 @@ export function EquipmentManagement() {
                 value={parteFormData.nombre}
                 onChange={(e) => setParteFormData(prev => ({ ...prev, nombre: e.target.value }))}
                 placeholder="Ej: Motor principal"
-              />
-            </div>
-            <div>
-              <Label htmlFor="observaciones-parte">Observaciones</Label>
-              <Textarea
-                id="observaciones-parte"
-                value={parteFormData.observaciones}
-                onChange={(e) => setParteFormData(prev => ({ ...prev, observaciones: e.target.value }))}
-                placeholder="Observaciones adicionales..."
-                rows={3}
               />
             </div>
           </div>

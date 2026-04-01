@@ -1,12 +1,23 @@
 'use client';
 
 import React from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Eye, Pencil, Plus, Trash2 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import {
   limpiezaLiberacionesService,
   limpiezaRegistrosService,
@@ -35,8 +46,11 @@ export function ViewLimpiezaRegistroModal({
   onEditLiberacion,
   onViewLiberacion,
 }: ViewLimpiezaRegistroModalProps) {
+  const { toast } = useToast();
   const [data, setData] = React.useState<LimpiezaRegistroWithLiberaciones | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
+  const [deleteLiberacionId, setDeleteLiberacionId] = React.useState<string | null>(null);
+  const [isDeletingLiberacion, setIsDeletingLiberacion] = React.useState(false);
 
   const load = React.useCallback(async () => {
     if (!registroId) return;
@@ -62,23 +76,73 @@ export function ViewLimpiezaRegistroModal({
     return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">PENDIENTE</Badge>;
   };
 
-  const handleDeleteLiberacion = async (libId: string) => {
+  const handleConfirmDeleteLiberacion = async () => {
     if (!isJefe) return;
-    if (!window.confirm('¿Eliminar esta liberación?')) return;
+    if (!deleteLiberacionId) return;
+    if (isDeletingLiberacion) return;
 
-    await limpiezaLiberacionesService.delete(libId);
-    await load();
-    onDeleted?.();
+    const liberacionId = deleteLiberacionId;
+    // Cerrar el diálogo inmediatamente para evitar sensación de congelamiento
+    setDeleteLiberacionId(null);
+    setIsDeletingLiberacion(true);
+
+    // Optimistic UI: eliminar de inmediato la liberación del estado local
+    setData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        liberaciones: (prev.liberaciones || []).filter((l) => l.id !== liberacionId),
+      };
+    });
+    try {
+      await limpiezaLiberacionesService.delete(liberacionId);
+      await load();
+      try {
+        onDeleted?.();
+      } catch {
+        // no-op
+      }
+      toast({
+        title: 'Liberación eliminada',
+        description: 'Se eliminó correctamente.',
+      });
+    } catch {
+      toast({
+        title: 'Error',
+        description: 'No se pudo eliminar la liberación. Intenta de nuevo.',
+        variant: 'destructive',
+      });
+
+      // Re-sync en caso de error (por el optimistic update)
+      try {
+        await load();
+      } catch {
+        // noop
+      }
+    } finally {
+      setIsDeletingLiberacion(false);
+    }
   };
 
+  const handleDialogOpenChange = React.useCallback(
+    (open: boolean) => {
+      if (!open && (isDeletingLiberacion || deleteLiberacionId != null)) {
+        return;
+      }
+      onOpenChange(open);
+    },
+    [onOpenChange, isDeletingLiberacion, deleteLiberacionId]
+  );
+
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog open={isOpen} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto p-4">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Eye className="h-5 w-5" />
             Detalles del Registro de Limpieza
           </DialogTitle>
+          <DialogDescription className="sr-only">Detalles del registro y liberaciones asociadas.</DialogDescription>
         </DialogHeader>
 
         {isLoading && (
@@ -190,7 +254,7 @@ export function ViewLimpiezaRegistroModal({
                                 type="button"
                                 variant="destructive"
                                 size="sm"
-                                onClick={() => handleDeleteLiberacion(lib.id)}
+                                onClick={() => setDeleteLiberacionId(lib.id)}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -222,6 +286,26 @@ export function ViewLimpiezaRegistroModal({
         {!isLoading && !data && (
           <div className="text-sm text-muted-foreground">No hay datos para mostrar.</div>
         )}
+
+        <AlertDialog
+          open={deleteLiberacionId != null}
+          onOpenChange={(open) => {
+            if (!open) setDeleteLiberacionId(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmar eliminación</AlertDialogTitle>
+              <AlertDialogDescription>¿Eliminar esta liberación?</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeletingLiberacion}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction disabled={isDeletingLiberacion} onClick={handleConfirmDeleteLiberacion}>
+                {isDeletingLiberacion ? 'Eliminando…' : 'Eliminar'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );

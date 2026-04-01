@@ -88,6 +88,17 @@ class LimpiezaRegistrosService {
     return await res.json();
   }
 
+  async getByCronogramaTaskIds(cronogramaTaskIds: number[]): Promise<LimpiezaRegistro[]> {
+    const ids = (cronogramaTaskIds || [])
+      .map((v) => Number(v))
+      .filter((n) => Number.isFinite(n) && !Number.isNaN(n));
+    if (ids.length === 0) return [];
+
+    const res = await fetch(`${this.baseUrl}?cronogramaTaskIds=${encodeURIComponent(ids.join(','))}`);
+    if (!res.ok) throw new Error('Error al obtener registros de limpieza por tareas de cronograma');
+    return await res.json();
+  }
+
   async create(payload: {
     fecha: string;
     mes_corte?: string | null;
@@ -105,7 +116,12 @@ class LimpiezaRegistrosService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) throw new Error('Error al crear registro de limpieza');
+    if (!res.ok) {
+      const bodyText = await res.text().catch(() => '');
+      throw new Error(
+        `Error al crear registro de limpieza (${res.status}): ${bodyText || res.statusText}`
+      );
+    }
     return await res.json();
   }
 
@@ -122,7 +138,12 @@ class LimpiezaRegistrosService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, ...payload }),
     });
-    if (!res.ok) throw new Error('Error al actualizar registro de limpieza');
+    if (!res.ok) {
+      const bodyText = await res.text().catch(() => '');
+      throw new Error(
+        `Error al actualizar registro de limpieza (${res.status}): ${bodyText || res.statusText}`
+      );
+    }
     return await res.json();
   }
 
@@ -130,7 +151,12 @@ class LimpiezaRegistrosService {
     const res = await fetch(`${this.baseUrl}?id=${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
-    if (!res.ok) throw new Error('Error al eliminar registro de limpieza');
+    if (!res.ok) {
+      const bodyText = await res.text().catch(() => '');
+      throw new Error(
+        `Error al eliminar registro de limpieza (${res.status}): ${bodyText || res.statusText}`
+      );
+    }
     return await res.json();
   }
 }

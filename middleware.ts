@@ -11,7 +11,7 @@ const protectedRoutes = [
   '/verify-email',
   '/reset-password',
   '/embalaje-pending',
-  '/embalaje-records'
+  
 ];
 
 // Rutas públicas
@@ -133,5 +133,6 @@ export const config = {
      */
     '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ],
+  // Usar runtime de Node.js en lugar de Edge para compatibilidad con crypto/bcrypt
   runtime: 'nodejs',
 };

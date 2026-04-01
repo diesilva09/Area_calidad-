@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useRouter, usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import NotificationBell from '@/components/notifications/notification-bell';
 import { 
   LayoutDashboard, 
   Users, 
@@ -135,24 +136,24 @@ function DashboardLayoutContent({
         />
       )}
 
-      {/* Sidebar Toggle Button */}
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setSidebarOpen(!sidebarOpen)}
-        className={`
-          fixed transition-all duration-300 ease-in-out
-          ${sidebarOpen 
-            ? 'top-3 sm:top-4 right-3 sm:right-4 bg-white border-gray-200 hover:bg-gray-50 z-30' 
-            : 'top-3 sm:top-4 right-3 sm:right-4 bg-white border-gray-200 hover:bg-gray-50 z-30'
-          }
-          shadow-md hover:shadow-lg
-          ${sidebarOpen ? 'ring-2 ring-blue-500' : ''}
-          p-2 sm:p-3
-        `}
-      >
-        {sidebarOpen ? <X className="h-3 w-3 sm:h-4 sm:w-4" /> : <Menu className="h-3 w-3 sm:h-4 sm:w-4" />}
-      </Button>
+      <div className="fixed top-3 sm:top-4 right-3 sm:right-4 z-30 flex items-center gap-2">
+        <NotificationBell />
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className={`
+            transition-all duration-300 ease-in-out
+            bg-white border-gray-200 hover:bg-gray-50
+            shadow-md hover:shadow-lg
+            ${sidebarOpen ? 'ring-2 ring-blue-500' : ''}
+            p-2 sm:p-3
+          `}
+        >
+          {sidebarOpen ? <X className="h-3 w-3 sm:h-4 sm:w-4" /> : <Menu className="h-3 w-3 sm:h-4 sm:w-4" />}
+        </Button>
+      </div>
 
       {/* Sidebar */}
       <div className={`

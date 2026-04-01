@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { LimpiezaTask } from '@/lib/limpieza-tasks-service';
+import { parseYmdToLocalDate } from '@/lib/date-utils';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Calendar, Clock, MapPin, CheckCircle, AlertCircle, User } from 'lucide-react';
@@ -117,7 +118,7 @@ export function ViewLimpiezaTaskModal({
                   <div>
                     <h4 className="font-medium">Fecha Programada</h4>
                     <p className="text-gray-600">
-                      {format(new Date(task.fecha), "EEEE, d 'de' MMMM 'de' yyyy", { locale: es })}
+                      {format(parseYmdToLocalDate(task.fecha), "EEEE, d 'de' MMMM 'de' yyyy", { locale: es })}
                     </p>
                   </div>
                 </div>

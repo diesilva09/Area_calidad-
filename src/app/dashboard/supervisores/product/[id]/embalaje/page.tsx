@@ -5,7 +5,15 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Plus, Calendar, Package, Search, Filter } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem, 
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { ArrowLeft, Plus, Calendar, Package, Search, Filter, FileDown } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { getProductCategories, type Product, type ProductCategory } from '@/lib/supervisores-data';
@@ -27,6 +35,7 @@ export default function ProductEmbalajePage() {
   const [records, setRecords] = useState<EmbalajeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'completed'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAnalysisOpen, setIsAnalysisOpen] = useState(false);
   const [highlightedRecordId, setHighlightedRecordId] = useState<string | null>(null);
@@ -121,19 +130,39 @@ export default function ProductEmbalajePage() {
       },
     });
 
-    return () => cancel();
+    const exportRecord = (e: React.MouseEvent, record: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const data: Record<string, any> = {};
+    for (const [key, value] of Object.entries(record)) {
+      data[key] = value;
+    }
+    const ws = XLSX.utils.json_to_sheet([data]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Registro');
+    XLSX.writeFile(wb, `RE-CAL-093_lote-`+String(record?.lote ?? 'sin-lote').replace(/[^a-zA-Z0-9_-]/g, '_')+`.xlsx`);
+  };
+
+  return () => cancel();
   }, [searchParams]);
 
-  const filteredRecords = records.filter(record =>
-    record.lote.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (record.observaciones_generales || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    record.presentacion.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    record.nivel_inspeccion.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    record.responsable_embalaje.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   const isPending = (record: EmbalajeRecord): boolean => {
-    return record.presentacion === 'Pendiente' ||
+    if (record.status === 'pending') return true;
+    const exportRecord = (e: React.MouseEvent, record: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const data: Record<string, any> = {};
+    for (const [key, value] of Object.entries(record)) {
+      data[key] = value;
+    }
+    const ws = XLSX.utils.json_to_sheet([data]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Registro');
+    XLSX.writeFile(wb, `RE-CAL-093_lote-`+String(record?.lote ?? 'sin-lote').replace(/[^a-zA-Z0-9_-]/g, '_')+`.xlsx`);
+  };
+
+  return (
+      record.presentacion === 'Pendiente' ||
       record.nivel_inspeccion === 'Pendiente' ||
       record.etiqueta === 'Pendiente' ||
       record.marcacion === 'Pendiente' ||
@@ -141,8 +170,27 @@ export default function ProductEmbalajePage() {
       record.cajas === 'Pendiente' ||
       record.responsable_identificador_cajas === 'Pendiente' ||
       record.responsable_embalaje === 'Pendiente' ||
-      record.responsable_calidad === 'Pendiente';
+      record.responsable_calidad === 'Pendiente'
+    );
   };
+
+  const filteredRecords = records.filter(record => {
+    const matchesStatus =
+      statusFilter === 'all' ||
+      (statusFilter === 'pending' && (record.status === 'pending' || isPending(record))) ||
+      (statusFilter === 'completed' && record.status === 'completed' && !isPending(record));
+
+    const matchesSearch =
+     (record.lote || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (record.observaciones_generales || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      record.presentacion.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      record.nivel_inspeccion.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      record.responsable_embalaje.toLowerCase().includes(searchTerm.toLowerCase());
+
+    return matchesStatus && matchesSearch;
+  });
+
+  
 
   // Manejar selección de registro desde el buscador - Mejorado para evitar errores de DOM
   const handleRecordSelect = (record: EmbalajeRecord, index: number) => {
@@ -174,7 +222,20 @@ export default function ProductEmbalajePage() {
 
   // Cleanup de timeouts cuando el componente se desmonte
   useEffect(() => {
-    return () => {
+    const exportRecord = (e: React.MouseEvent, record: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const data: Record<string, any> = {};
+    for (const [key, value] of Object.entries(record)) {
+      data[key] = value;
+    }
+    const ws = XLSX.utils.json_to_sheet([data]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Registro');
+    XLSX.writeFile(wb, `RE-CAL-093_lote-`+String(record?.lote ?? 'sin-lote').replace(/[^a-zA-Z0-9_-]/g, '_')+`.xlsx`);
+  };
+
+  return () => {
       timeoutsRef.current.forEach(timeout => clearTimeout(timeout));
       timeoutsRef.current = [];
     };
@@ -205,7 +266,20 @@ export default function ProductEmbalajePage() {
   };
 
   if (loading) {
-    return (
+    const exportRecord = (e: React.MouseEvent, record: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const data: Record<string, any> = {};
+    for (const [key, value] of Object.entries(record)) {
+      data[key] = value;
+    }
+    const ws = XLSX.utils.json_to_sheet([data]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Registro');
+    XLSX.writeFile(wb, `RE-CAL-093_lote-`+String(record?.lote ?? 'sin-lote').replace(/[^a-zA-Z0-9_-]/g, '_')+`.xlsx`);
+  };
+
+  return (
       <div className="flex h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="h-12 w-12 rounded-full border-4 border-green-200 border-t-green-600 animate-spin" />
@@ -216,7 +290,20 @@ export default function ProductEmbalajePage() {
   }
 
   if (!product || !category) {
-    return (
+    const exportRecord = (e: React.MouseEvent, record: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const data: Record<string, any> = {};
+    for (const [key, value] of Object.entries(record)) {
+      data[key] = value;
+    }
+    const ws = XLSX.utils.json_to_sheet([data]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Registro');
+    XLSX.writeFile(wb, `RE-CAL-093_lote-`+String(record?.lote ?? 'sin-lote').replace(/[^a-zA-Z0-9_-]/g, '_')+`.xlsx`);
+  };
+
+  return (
       <div className="flex h-screen items-center justify-center">
         <Card className="w-full max-w-lg text-center">
           <CardHeader>
@@ -241,16 +328,24 @@ export default function ProductEmbalajePage() {
     );
   }
 
-  return (
-    <div className="container mx-auto px-4 py-8">
-      {/* INDICADOR OBVIO DE PÁGINA DE EMBALAJE */}
-      <div className="">
-        <h1 className=""></h1>
-       
-      </div>
+  const exportRecord = (e: React.MouseEvent, record: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const data: Record<string, any> = {};
+    for (const [key, value] of Object.entries(record)) {
+      data[key] = value;
+    }
+    const ws = XLSX.utils.json_to_sheet([data]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Registro');
+    XLSX.writeFile(wb, `RE-CAL-093_lote-`+String(record?.lote ?? 'sin-lote').replace(/[^a-zA-Z0-9_-]/g, '_')+`.xlsx`);
+  };
 
-      <div className="mb-6">
-        <Button variant="outline" asChild>
+  return (
+    <div className="min-h-screen bg-white p-3 sm:p-4 md:p-6 lg:p-8">
+      <div className="max-w-6xl mx-auto">
+      <div className="mb-4 sm:mb-6">
+        <Button variant="ghost" asChild className="mb-3 sm:mb-4">
           <Link href={`/dashboard/supervisores?tab=embalaje&highlight=${encodeURIComponent(`${category?.id || ''}_${product?.id || ''}`)}`}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Volver a Supervisores
@@ -258,37 +353,46 @@ export default function ProductEmbalajePage() {
         </Button>
       </div>
 
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
+      <div className="mb-6 sm:mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-bold text-green-600"> REGISTROS DE EMBALAJE</h1>
-            <p className="text-gray-600 mt-2 text-lg">
-              Registros de embalaje para: {product.name}
+            <h1 className="text-2xl sm:text-3xl font-bold text-green-600">Registros de Embalaje</h1>
+            <p className="text-gray-600 mt-1 text-sm sm:text-base">
+              {product.name}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <Select value={statusFilter} onValueChange={(value: 'all' | 'pending' | 'completed') => setStatusFilter(value)}>
+              <SelectTrigger className="w-full sm:w-[160px]">
+                <SelectValue placeholder="Filtrar por estado" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los registros</SelectItem>
+                <SelectItem value="pending">Pendientes</SelectItem>
+                <SelectItem value="completed">Completados</SelectItem>
+              </SelectContent>
+            </Select>
             <Button 
               onClick={() => setIsAnalysisOpen(true)}
               variant="outline"
-              className="border-blue-600 text-blue-600 hover:bg-blue-50"
+              className="border-blue-600 text-blue-600 hover:bg-blue-50 w-full sm:w-auto"
             >
               <BarChart3 className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Análisis</span>
-              <span className="sm:hidden">Análisis</span>
+              Análisis
             </Button>
-            <button 
-              onClick={() => setIsModalOpen(true)} 
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md flex items-center"
-              style={{ backgroundColor: '#2f6e29ff', color: 'white', padding: '8px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer' }}
+            <Button
+              onClick={() => setIsModalOpen(true)}
+              className="w-full sm:w-auto text-white"
+              style={{ backgroundColor: '#2f6e29ff' }}
             >
               <Plus className="mr-2 h-4 w-4" />
               Agregar Registro
-            </button>
+            </Button>
           </div>
         </div>
       </div>
 
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6">
         <UniversalSearch
           data={records}
           searchFields={['lote', 'observaciones_generales', 'presentacion', 'nivel_inspeccion', 'responsable_embalaje']}
@@ -300,7 +404,7 @@ export default function ProductEmbalajePage() {
       </div>
 
       {filteredRecords.length > 0 ? (
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
           {filteredRecords.map((record) => (
             <Link
               key={record.id}
@@ -367,7 +471,17 @@ export default function ProductEmbalajePage() {
                       </div>
                     </div>
                   )}
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 mt-2 pt-2 border-t border-gray-200 text-xs text-gray-500">
+                  <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-200">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-7 px-2 text-gray-600 hover:text-gray-900"
+                      onClick={(e) => exportRecord(e, record)}
+                    >
+                      <FileDown className="h-3 w-3 mr-1" />Exportar
+                    </Button>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 mt-1 text-xs text-gray-500">
                     <div className="flex items-center gap-1 min-w-0">
                       <span className="font-medium flex-shrink-0">Resp:</span>
                       <span className="truncate">{record.responsable_calidad}</span>
@@ -385,7 +499,7 @@ export default function ProductEmbalajePage() {
         <Card className="text-center py-12">
           <CardContent>
             <Package className="mx-auto h-12 w-12 text-green-400 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">📦 No hay registros de EMBALAJE</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-2"> No hay registros de EMBALAJE</h3>
             <p className="text-gray-600 mb-4">
               No se encontraron registros de embalaje para este producto.
             </p>
@@ -445,6 +559,7 @@ export default function ProductEmbalajePage() {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

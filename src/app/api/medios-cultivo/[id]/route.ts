@@ -1,19 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
-
-// Configuración de la base de datos
-const getPoolConfig = () => {
-  const config: any = {
-    host: '127.0.0.1', // Forzar IPv4 para evitar problemas de autenticación
-    port: 5432,
-    database: 'area_calidad',
-    user: 'postgres',
-    password: process.env.DB_PASSWORD || 'Coruna.24', // ← aquí va la clave real
-    ssl: { rejectUnauthorized: false },
-  };
-  
-  return config;
-};
+import { getMicroTable, getPoolConfig } from '../../micro-config';
 
 const pool = new Pool(getPoolConfig());
 
@@ -25,7 +12,7 @@ export async function GET(
     const { id } = await params;
 
     const query = `
-      SELECT 
+      SELECT
         id,
         fecha,
         medio,
@@ -40,7 +27,7 @@ export async function GET(
         observaciones,
         created_at,
         updated_at
-      FROM medios_cultivo
+      FROM ${getMicroTable('medios_cultivo')}
       WHERE id = $1
     `;
 
@@ -86,8 +73,8 @@ export async function PUT(
     } = body;
 
     const query = `
-      UPDATE medios_cultivo
-      SET 
+      UPDATE ${getMicroTable('medios_cultivo')}
+      SET
         fecha = COALESCE($1, fecha),
         medio = COALESCE($2, medio),
         lote = COALESCE($3, lote),
@@ -145,7 +132,7 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    const query = 'DELETE FROM medios_cultivo WHERE id = $1 RETURNING *';
+    const query = `DELETE FROM ${getMicroTable('medios_cultivo')} WHERE id = $1 RETURNING *`;
 
     const result = await pool.query(query, [id]);
 

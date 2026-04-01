@@ -27,7 +27,6 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
 
   const loadRecord = async () => {
     try {
-      console.log('🔍 Cargando registro de embalaje ID:', resolvedParams.id);
       const records = await embalajeRecordsService.getAll();
       const foundRecord = records.find(r => r.id === resolvedParams.id);
       
@@ -35,7 +34,6 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
         console.error('❌ Registro de embalaje no encontrado');
         setError('Registro no encontrado');
       } else {
-        console.log('✅ Registro de embalaje encontrado:', foundRecord);
         setRecord(foundRecord);
       }
     } catch (error) {

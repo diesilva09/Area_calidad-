@@ -64,6 +64,21 @@ export async function POST(request: NextRequest) {
     let liberacion: LimpiezaLiberacionRow | null = null;
 
     if (id) {
+      const hasEstadoFiltro = Object.prototype.hasOwnProperty.call(rest ?? {}, 'estado_filtro') ||
+        Object.prototype.hasOwnProperty.call(rest ?? {}, 'estadoFiltro');
+      const hasNovedadesFiltro = Object.prototype.hasOwnProperty.call(rest ?? {}, 'novedades_filtro') ||
+        Object.prototype.hasOwnProperty.call(rest ?? {}, 'novedadesFiltro');
+      const hasCorreccionesFiltro = Object.prototype.hasOwnProperty.call(rest ?? {}, 'correcciones_filtro') ||
+        Object.prototype.hasOwnProperty.call(rest ?? {}, 'correccionesFiltro');
+
+      const estadoFiltroValue = hasEstadoFiltro ? (rest?.estado_filtro ?? rest?.estadoFiltro ?? null) : undefined;
+      const novedadesFiltroValue = hasNovedadesFiltro
+        ? (rest?.novedades_filtro ?? rest?.novedadesFiltro ?? null)
+        : undefined;
+      const correccionesFiltroValue = hasCorreccionesFiltro
+        ? (rest?.correcciones_filtro ?? rest?.correccionesFiltro ?? null)
+        : undefined;
+
       const currentStatusRes = await client.query<{ status: LimpiezaStatus }>(
         'SELECT status FROM limpieza_liberaciones WHERE id = $1',
         [id]
@@ -90,33 +105,33 @@ export async function POST(request: NextRequest) {
             tipo_verificacion = COALESCE($3, tipo_verificacion),
             linea = COALESCE($4, linea),
             superficie = COALESCE($5, superficie),
-            estado_filtro = COALESCE($6, estado_filtro),
-            novedades_filtro = COALESCE($7, novedades_filtro),
-            correcciones_filtro = COALESCE($8, correcciones_filtro),
-            presencia_elementos_extranos = COALESCE($9, presencia_elementos_extranos),
-            detalle_elementos_extranos = COALESCE($10, detalle_elementos_extranos),
-            resultados_atp_ri = COALESCE($11, resultados_atp_ri),
-            resultados_atp_ac = COALESCE($12, resultados_atp_ac),
-            resultados_atp_rf = COALESCE($13, resultados_atp_rf),
-            lote_hisopo_atp = COALESCE($14, lote_hisopo_atp),
-            observacion_atp = COALESCE($15, observacion_atp),
-            equipo_atp = COALESCE($16, equipo_atp),
-            parte_atp = COALESCE($17, parte_atp),
-            deteccion_alergenos_ri = COALESCE($18, deteccion_alergenos_ri),
-            deteccion_alergenos_ac = COALESCE($19, deteccion_alergenos_ac),
-            deteccion_alergenos_rf = COALESCE($20, deteccion_alergenos_rf),
-            lote_hisopo_alergenos = COALESCE($21, lote_hisopo_alergenos),
-            observacion_alergenos = COALESCE($22, observacion_alergenos),
-            equipo_alergenos = COALESCE($23, equipo_alergenos),
-            parte_alergenos = COALESCE($24, parte_alergenos),
-            detergente = COALESCE($25, detergente),
-            desinfectante = COALESCE($26, desinfectante),
-            verificacion_visual = COALESCE($27, verificacion_visual),
-            observacion_visual = COALESCE($28, observacion_visual),
-            verificado_por = COALESCE($29, verificado_por),
-            responsable_produccion = COALESCE($30, responsable_produccion),
-            responsable_mantenimiento = COALESCE($31, responsable_mantenimiento),
-            status = COALESCE($32, status),
+            estado_filtro = CASE WHEN $6 THEN $7 ELSE estado_filtro END,
+            novedades_filtro = CASE WHEN $8 THEN $9 ELSE novedades_filtro END,
+            correcciones_filtro = CASE WHEN $10 THEN $11 ELSE correcciones_filtro END,
+            presencia_elementos_extranos = COALESCE($12, presencia_elementos_extranos),
+            detalle_elementos_extranos = COALESCE($13, detalle_elementos_extranos),
+            resultados_atp_ri = COALESCE($14, resultados_atp_ri),
+            resultados_atp_ac = COALESCE($15, resultados_atp_ac),
+            resultados_atp_rf = COALESCE($16, resultados_atp_rf),
+            lote_hisopo_atp = COALESCE($17, lote_hisopo_atp),
+            observacion_atp = COALESCE($18, observacion_atp),
+            equipo_atp = COALESCE($19, equipo_atp),
+            parte_atp = COALESCE($20, parte_atp),
+            deteccion_alergenos_ri = COALESCE($21, deteccion_alergenos_ri),
+            deteccion_alergenos_ac = COALESCE($22, deteccion_alergenos_ac),
+            deteccion_alergenos_rf = COALESCE($23, deteccion_alergenos_rf),
+            lote_hisopo_alergenos = COALESCE($24, lote_hisopo_alergenos),
+            observacion_alergenos = COALESCE($25, observacion_alergenos),
+            equipo_alergenos = COALESCE($26, equipo_alergenos),
+            parte_alergenos = COALESCE($27, parte_alergenos),
+            detergente = COALESCE($28, detergente),
+            desinfectante = COALESCE($29, desinfectante),
+            verificacion_visual = COALESCE($30, verificacion_visual),
+            observacion_visual = COALESCE($31, observacion_visual),
+            verificado_por = COALESCE($32, verificado_por),
+            responsable_produccion = COALESCE($33, responsable_produccion),
+            responsable_mantenimiento = COALESCE($34, responsable_mantenimiento),
+            status = COALESCE($35, status),
             updated_at = CURRENT_TIMESTAMP
           WHERE id = $1
           RETURNING id, registro_id, status;
@@ -127,9 +142,12 @@ export async function POST(request: NextRequest) {
           s255(rest?.tipo_verificacion ?? rest?.tipoVerificacion ?? null),
           s255(rest?.linea ?? null),
           s255(rest?.superficie ?? null),
-          rest?.estado_filtro ?? rest?.estadoFiltro ?? null,
-          s255(rest?.novedades_filtro ?? rest?.novedadesFiltro ?? null),
-          s255(rest?.correcciones_filtro ?? rest?.correccionesFiltro ?? null),
+          hasEstadoFiltro,
+          estadoFiltroValue ?? null,
+          hasNovedadesFiltro,
+          novedadesFiltroValue ?? null,
+          hasCorreccionesFiltro,
+          correccionesFiltroValue ?? null,
           s255(rest?.presencia_elementos_extranos ?? rest?.presenciaElementosExtranos ?? null),
           s255(rest?.detalle_elementos_extranos ?? rest?.detalleElementosExtranos ?? null),
           s255(rest?.resultados_atp_ri ?? rest?.resultadosAtpRi ?? null),
@@ -216,8 +234,8 @@ export async function POST(request: NextRequest) {
           s255(rest?.linea ?? null),
           s255(rest?.superficie ?? null),
           rest?.estado_filtro ?? rest?.estadoFiltro ?? null,
-          s255(rest?.novedades_filtro ?? rest?.novedadesFiltro ?? null),
-          s255(rest?.correcciones_filtro ?? rest?.correccionesFiltro ?? null),
+          (rest?.novedades_filtro ?? rest?.novedadesFiltro ?? null),
+          (rest?.correcciones_filtro ?? rest?.correccionesFiltro ?? null),
           s255(rest?.presencia_elementos_extranos ?? rest?.presenciaElementosExtranos ?? null),
           s255(rest?.detalle_elementos_extranos ?? rest?.detalleElementosExtranos ?? null),
           s255(rest?.resultados_atp_ri ?? rest?.resultadosAtpRi ?? null),

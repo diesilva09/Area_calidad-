@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 
+type FrequencyType = 'daily' | 'weekly' | 'monthly' | 'custom';
+type FrequencyUnit = 'day' | 'week' | 'month';
+
 async function resolveTasksTable(): Promise<string> {
   const res = await pool.query<{ table_name: string }>(
     `
@@ -49,12 +52,140 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const client = await pool.connect();
   try {
     const { id } = await params;
     const body = await request.json();
-    const { status, area, detalles, fecha, mes_corte } = body;
+    const { status, area, detalles, fecha, mes_corte, recurrence } = body;
 
     const tableName = await resolveTasksTable();
+
+    const templateIdColExistsRes = await client.query(
+      `SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema='public'
+          AND table_name=$1
+          AND column_name='template_id'
+      ) AS ok`,
+      [tableName]
+    );
+    const canUseTemplateIdCol = Boolean(templateIdColExistsRes.rows?.[0]?.ok);
+
+    await client.query('BEGIN');
+
+    const currentRes = await client.query<{ id: number; template_id?: number | null }>(
+      canUseTemplateIdCol
+        ? `SELECT id, template_id FROM ${tableName} WHERE id = $1`
+        : `SELECT id FROM ${tableName} WHERE id = $1`,
+      [id]
+    );
+    if (currentRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return NextResponse.json(
+        { error: 'Tarea de limpieza no encontrada' },
+        { status: 404 }
+      );
+    }
+
+    const templatesTableExists = await client.query(
+      `SELECT to_regclass('public.limpieza_task_templates') IS NOT NULL AS ok`
+    );
+    const canUseTemplates = Boolean(templatesTableExists.rows?.[0]?.ok);
+
+    let templateIdToSet: number | null | undefined = undefined;
+
+    if (recurrence && canUseTemplates && canUseTemplateIdCol) {
+      const existingTemplateId = (currentRes.rows[0] as any)?.template_id ?? null;
+      const wantsRecurrence = Boolean(recurrence?.enabled);
+
+      if (!wantsRecurrence) {
+        if (existingTemplateId != null) {
+          await client.query('UPDATE limpieza_task_templates SET active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = $1', [
+            existingTemplateId,
+          ]);
+        }
+      } else {
+        const frequencyType = (recurrence?.frequency_type ?? 'monthly') as FrequencyType;
+        const frequencyUnit = (recurrence?.frequency_unit ?? null) as FrequencyUnit | null;
+        const frequencyInterval = Number(recurrence?.frequency_interval ?? 1);
+        const startDate = String(recurrence?.start_date ?? fecha);
+        const endDate = recurrence?.end_date ? String(recurrence.end_date) : null;
+        const timezone = String(recurrence?.timezone ?? 'America/Bogota');
+
+        if (existingTemplateId == null) {
+          const tplRes = await client.query(
+            `
+              INSERT INTO limpieza_task_templates (
+                area,
+                tipo_muestra,
+                detalles,
+                mes_corte,
+                frequency_type,
+                frequency_unit,
+                frequency_interval,
+                start_date,
+                end_date,
+                timezone,
+                active,
+                created_by
+              ) VALUES (
+                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,TRUE,$11
+              )
+              RETURNING id
+            `,
+            [
+              area,
+              body?.tipo_muestra,
+              detalles ?? null,
+              mes_corte ?? null,
+              frequencyType,
+              frequencyType === 'custom' ? (frequencyUnit ?? 'day') : null,
+              Number.isFinite(frequencyInterval) && frequencyInterval >= 1 ? frequencyInterval : 1,
+              startDate,
+              endDate,
+              timezone,
+              body?.created_by ?? null,
+            ]
+          );
+          const newId = Number(tplRes.rows?.[0]?.id ?? null);
+          templateIdToSet = Number.isNaN(newId) ? null : newId;
+        } else {
+          await client.query(
+            `
+              UPDATE limpieza_task_templates
+              SET
+                area = COALESCE($1, area),
+                tipo_muestra = COALESCE($2, tipo_muestra),
+                detalles = $3,
+                mes_corte = $4,
+                frequency_type = $5,
+                frequency_unit = $6,
+                frequency_interval = $7,
+                start_date = $8,
+                end_date = $9,
+                timezone = $10,
+                active = TRUE,
+                updated_at = CURRENT_TIMESTAMP
+              WHERE id = $11
+            `,
+            [
+              area ?? null,
+              body?.tipo_muestra ?? null,
+              detalles ?? null,
+              mes_corte ?? null,
+              frequencyType,
+              frequencyType === 'custom' ? (frequencyUnit ?? 'day') : null,
+              Number.isFinite(frequencyInterval) && frequencyInterval >= 1 ? frequencyInterval : 1,
+              startDate,
+              endDate,
+              timezone,
+              existingTemplateId,
+            ]
+          );
+        }
+      }
+    }
 
     // Construir la consulta dinámicamente según los campos proporcionados
     let query = `UPDATE ${tableName} SET `;
@@ -85,7 +216,15 @@ export async function PUT(
       values.push(mes_corte);
     }
 
+    if (templateIdToSet !== undefined) {
+      if (canUseTemplateIdCol) {
+        updates.push(`template_id = $${paramIndex++}`);
+        values.push(templateIdToSet);
+      }
+    }
+
     if (updates.length === 0) {
+      await client.query('ROLLBACK');
       return NextResponse.json(
         { error: 'No se proporcionaron campos para actualizar' },
         { status: 400 }
@@ -96,11 +235,16 @@ export async function PUT(
     values.push(id);
 
     let result;
+    await client.query('SAVEPOINT limpieza_tasks_update');
     try {
-      result = await pool.query(query, values);
+      result = await client.query(query, values);
+      await client.query('RELEASE SAVEPOINT limpieza_tasks_update');
     } catch (err: any) {
       const msg = String(err?.message || '');
       if (!msg.toLowerCase().includes('mes_corte')) throw err;
+
+      // La transacción queda en estado abortado luego de un error; volvemos al SAVEPOINT antes de reintentar.
+      await client.query('ROLLBACK TO SAVEPOINT limpieza_tasks_update');
 
       // Reintentar sin mes_corte
       const filteredUpdates: string[] = [];
@@ -117,23 +261,34 @@ export async function PUT(
 
       const retryQuery = `UPDATE ${tableName} SET ${filteredUpdates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${newParamIndex} RETURNING *`;
       filteredValues.push(id);
-      result = await pool.query(retryQuery, filteredValues);
+      result = await client.query(retryQuery, filteredValues);
+
+      await client.query('RELEASE SAVEPOINT limpieza_tasks_update');
     }
-    
-    if (result.rows.length === 0) {
-      return NextResponse.json(
-        { error: 'Tarea de limpieza no encontrada' },
-        { status: 404 }
-      );
-    }
-    
+
+    await client.query('COMMIT');
     return NextResponse.json(result.rows[0]);
   } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('Error haciendo ROLLBACK en limpieza-tasks PUT:', rollbackError);
+    }
+
     console.error('Error al actualizar labor de limpieza:', error);
+
+    const errAny = error as any;
+    const detail = error instanceof Error ? error.message : String(error);
+    const code = typeof errAny?.code === 'string' ? errAny.code : undefined;
     return NextResponse.json(
-      { error: 'Error al actualizar la labor de limpieza' },
+      {
+        error: 'Error al actualizar la labor de limpieza',
+        ...(process.env.NODE_ENV !== 'production' ? { detail, code } : {}),
+      },
       { status: 500 }
     );
+  } finally {
+    client.release();
   }
 }
 

@@ -1,19 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
-
-// Configuración de la base de datos
-const getPoolConfig = () => {
-  const config: any = {
-    host: '127.0.0.1', // Forzar IPv4 para evitar problemas de autenticación
-    port: 5432,
-    database: 'area_calidad',
-    user: 'postgres',
-    password: process.env.DB_PASSWORD || 'Coruna.24', // ← aquí va la clave real
-    ssl: { rejectUnauthorized: false },
-  };
-  
-  return config;
-};
+import { getMicroTable, getPoolConfig } from '../micro-config';
 
 const pool = new Pool(getPoolConfig());
 
@@ -27,7 +14,7 @@ export async function GET(request: NextRequest) {
     const tipoAnalisis = searchParams.get('tipo_analisis');
 
     let query = `
-      SELECT 
+      SELECT
         id,
         codigo,
         tipo,
@@ -53,7 +40,7 @@ export async function GET(request: NextRequest) {
         observaciones,
         created_at,
         updated_at
-      FROM custodia_muestras
+      FROM ${getMicroTable('custodia_muestras')}
     `;
 
     const params: any[] = [];
@@ -146,7 +133,7 @@ export async function POST(request: NextRequest) {
     }
 
     const query = `
-      INSERT INTO custodia_muestras (
+      INSERT INTO ${getMicroTable('custodia_muestras')} (
         codigo,
         tipo,
         muestra_id,
@@ -169,7 +156,7 @@ export async function POST(request: NextRequest) {
         medio_transporte,
         responsable,
         observaciones
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
       RETURNING *
     `;
 

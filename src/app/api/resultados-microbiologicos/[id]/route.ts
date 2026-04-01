@@ -1,19 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
-
-// Configuración de la base de datos
-const getPoolConfig = () => {
-  const config: any = {
-    host: '127.0.0.1', // Forzar IPv4 para evitar problemas de autenticación
-    port: 5432,
-    database: 'area_calidad',
-    user: 'postgres',
-    password: process.env.DB_PASSWORD || 'Coruna.24', // ← aquí va la clave real
-    ssl: { rejectUnauthorized: false },
-  };
-  
-  return config;
-};
+import { getMicroTable, getPoolConfig } from '../../micro-config';
 
 const pool = new Pool(getPoolConfig());
 
@@ -25,7 +12,7 @@ export async function GET(
     const { id } = await params;
 
     const query = `
-      SELECT 
+      SELECT
         id,
         fecha,
         mes_muestreo,
@@ -61,7 +48,7 @@ export async function GET(
         responsable,
         created_at,
         updated_at
-      FROM resultados_microbiologicos
+      FROM ${getMicroTable('resultados_microbiologicos')}
       WHERE id = $1
     `;
 
@@ -128,8 +115,8 @@ export async function PUT(
     } = body;
 
     const query = `
-      UPDATE resultados_microbiologicos
-      SET 
+      UPDATE ${getMicroTable('resultados_microbiologicos')}
+      SET
         fecha = COALESCE($1, fecha),
         mes_muestreo = COALESCE($2, mes_muestreo),
         hora_muestreo = COALESCE($3, hora_muestreo),
@@ -229,7 +216,7 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    const query = 'DELETE FROM resultados_microbiologicos WHERE id = $1 RETURNING *';
+    const query = `DELETE FROM ${getMicroTable('resultados_microbiologicos')} WHERE id = $1 RETURNING *`;
 
     const result = await pool.query(query, [id]);
 

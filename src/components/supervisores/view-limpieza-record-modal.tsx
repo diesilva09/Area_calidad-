@@ -5,14 +5,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { LimpiezaVerification } from '@/lib/limpieza-verifications-service';
 import { AreasEquiposService } from '@/lib/areas-equipos-config';
 import { Calendar, Clock, User, CheckCircle, XCircle, AlertTriangle, Droplets, Search, Eye } from 'lucide-react';
 
 interface ViewLimpiezaRecordModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  record: LimpiezaVerification | null;
+  record: any | null;
 }
 
 export function ViewLimpiezaRecordModal({ isOpen, onOpenChange, record }: ViewLimpiezaRecordModalProps) {

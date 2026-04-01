@@ -5,6 +5,8 @@ import {
   createEmbalajeRecord,
   type EmbalajeRecord 
 } from '@/lib/server-db';
+import pool from '@/lib/db';
+import { sendPushToAll } from '@/lib/push-service';
 
 // GET - Obtener todos los registros de embalaje
 export async function GET(request: NextRequest) {
@@ -50,21 +52,27 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     console.log('📝 Datos recibidos en API:', body);
     console.log('🔍 DEBUG: Tipo de body.fecha:', typeof body.fecha, body.fecha);
+
+    const status = (body?.status ?? 'completed') as 'pending' | 'completed';
     
     // Validar campos requeridos
-    const requiredFields = [
-      'fecha', 'mescorte', 'producto', 'presentacion', 'lote', 'tamano_lote',
-      'nivel_inspeccion', 'cajas_revisadas', 'total_unidades_revisadas',
-      'total_unidades_revisadas_real', 'unidades_faltantes', 'porcentaje_faltantes',
-      'etiqueta', 'porcentaje_etiqueta_no_conforme', 'marcacion',
-      'porcentaje_marcacion_no_conforme', 'presentacion_no_conforme',
-      'porcentaje_presentacion_no_conforme', 'cajas', 'porcentaje_cajas_no_conformes',
-      'responsable_identificador_cajas', 'responsable_embalaje', 'responsable_calidad',
-      'unidades_no_conformes', 'porcentaje_incumplimiento'
-    ];
+    const requiredFields = status === 'pending'
+      ? ['fecha', 'mescorte', 'producto', 'lote']
+      : [
+          'fecha', 'mescorte', 'producto', 'presentacion', 'lote', 'tamano_lote',
+          'nivel_inspeccion', 'cajas_revisadas', 'total_unidades_revisadas',
+          'total_unidades_revisadas_real', 'unidades_faltantes', 'porcentaje_faltantes',
+          'etiqueta', 'porcentaje_etiqueta_no_conforme', 'marcacion',
+          'porcentaje_marcacion_no_conforme', 'presentacion_no_conforme',
+          'porcentaje_presentacion_no_conforme', 'cajas', 'porcentaje_cajas_no_conformes',
+          'responsable_identificador_cajas', 'responsable_embalaje', 'responsable_calidad',
+          'unidades_no_conformes', 'porcentaje_incumplimiento'
+        ];
+
+    const isMissing = (value: any) => value === undefined || value === null || value === '';
 
     for (const field of requiredFields) {
-      if (!body[field]) {
+      if (isMissing(body?.[field])) {
         console.error(`❌ Campo requerido faltante: ${field}`);
         return NextResponse.json(
           { error: `Campo requerido faltante: ${field}` },
@@ -81,6 +89,7 @@ export async function POST(request: NextRequest) {
       fecha: new Date(body.fecha), // Convertir string a Date
       created_by: 'system',
       updated_by: 'system',
+      status,
     };
     
     console.log('🔍 DEBUG: Datos preparados para DB:', recordData);

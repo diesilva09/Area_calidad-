@@ -9,6 +9,15 @@ export interface LimpiezaTask {
   created_at: string;
   updated_at: string;
   created_by: string | null;
+
+  recurrence_template_id?: number | null;
+  recurrence_active?: boolean | null;
+  recurrence_frequency_type?: 'daily' | 'weekly' | 'monthly' | 'custom' | null;
+  recurrence_frequency_unit?: 'day' | 'week' | 'month' | null;
+  recurrence_frequency_interval?: number | null;
+  recurrence_start_date?: string | null;
+  recurrence_end_date?: string | null;
+  recurrence_timezone?: string | null;
 }
 
 class LimpiezaTasksService {
@@ -27,7 +36,10 @@ class LimpiezaTasksService {
 
   async getByDate(date: Date): Promise<LimpiezaTask[]> {
     try {
-      const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      const dateStr = `${y}-${m}-${d}`; // YYYY-MM-DD (local)
       const response = await fetch(`${this.baseUrl}?date=${dateStr}`);
       if (!response.ok) throw new Error('Error al obtener las labores para la fecha');
       return await response.json();

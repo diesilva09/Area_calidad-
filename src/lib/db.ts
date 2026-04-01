@@ -1,20 +1,32 @@
 import { Pool } from 'pg';
 
 // Configuración de la base de datos PostgreSQL
-const pool = new Pool({
+const poolConfig = {
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5432'),
   database: process.env.DB_NAME || 'calidad_coruna',
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || '',
   // SSL: Solo en producción, con detección automática de soporte
-  ssl: process.env.NODE_ENV === 'production' 
-    ? { rejectUnauthorized: false } 
+  ssl: process.env.NODE_ENV === 'production'
+    ? { rejectUnauthorized: false }
     : false, // Deshabilitado en desarrollo ya que PostgreSQL local no soporta SSL
   max: 20, // máximo número de clientes en el pool
   idleTimeoutMillis: 30000, // tiempo de espera para clientes inactivos
   connectionTimeoutMillis: 2000, // tiempo de espera para conexión
+};
+
+// Log de depuración para verificar configuración
+console.log('🔗 [db.ts] Configuración de base de datos:', {
+  host: poolConfig.host,
+  port: poolConfig.port,
+  database: poolConfig.database,
+  user: poolConfig.user,
+  password: poolConfig.password ? '***CONFIGURADA***' : 'NO CONFIGURADA',
+  NODE_ENV: process.env.NODE_ENV,
 });
+
+const pool = new Pool(poolConfig);
 
 // Tipos para la base de datos
 export interface Category {
@@ -38,10 +50,20 @@ export interface Product {
 
 // Funciones para categorías
 export async function getCategories(): Promise<Category[]> {
-  const result = await pool.query(
-    'SELECT * FROM categories WHERE is_active = true ORDER BY name'
-  );
-  return result.rows;
+  try {
+    console.log('📋 [getCategories] Ejecutando query...');
+    const result = await pool.query(
+      'SELECT * FROM categories WHERE is_active = true ORDER BY name'
+    );
+    console.log('✅ [getCategories] Categorías encontradas:', result.rows.length);
+    if (result.rows.length > 0) {
+      console.log('📦 [getCategories] Primera categoría:', result.rows[0]);
+    }
+    return result.rows;
+  } catch (error) {
+    console.error('❌ [getCategories] Error:', error);
+    throw error;
+  }
 }
 
 export async function getCategoryById(id: string): Promise<Category | null> {

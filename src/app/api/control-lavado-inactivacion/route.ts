@@ -1,19 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
-
-// Configuración de la base de datos
-const getPoolConfig = () => {
-  const config: any = {
-    host: '127.0.0.1', // Forzar IPv4 para evitar problemas de autenticación
-    port: 5432,
-    database: 'area_calidad',
-    user: 'postgres',
-    password: process.env.DB_PASSWORD || 'Coruna.24', // ← aquí va la clave real
-    ssl: { rejectUnauthorized: false },
-  };
-  
-  return config;
-};
+import { getMicroTable, getPoolConfig } from '../micro-config';
 
 const pool = new Pool(getPoolConfig());
 
@@ -29,7 +16,7 @@ export async function GET(request: NextRequest) {
     const sustanciaDesinfeccion = searchParams.get('sustancia_desinfeccion');
 
     let query = `
-      SELECT 
+      SELECT
         id,
         fecha,
         actividad_realizada,
@@ -46,7 +33,7 @@ export async function GET(request: NextRequest) {
         observaciones,
         created_at,
         updated_at
-      FROM control_lavado_inactivacion
+      FROM ${getMicroTable('control_lavado_inactivacion')}
     `;
 
     const params: any[] = [];
@@ -134,7 +121,7 @@ export async function POST(request: NextRequest) {
     }
 
     const query = `
-      INSERT INTO control_lavado_inactivacion (
+      INSERT INTO ${getMicroTable('control_lavado_inactivacion')} (
         fecha,
         actividad_realizada,
         sustancia_limpieza_nombre,

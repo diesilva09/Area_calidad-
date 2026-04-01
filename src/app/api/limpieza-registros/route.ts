@@ -91,6 +91,7 @@ export async function GET(request: NextRequest) {
     const id = searchParams.get('id');
     const date = searchParams.get('date');
     const cronogramaTaskIdParam = searchParams.get('cronogramaTaskId');
+    const cronogramaTaskIdsParam = searchParams.get('cronogramaTaskIds');
 
     if (id) {
       const registroRes = await pool.query<LimpiezaRegistroRow>('SELECT * FROM limpieza_registros WHERE id = $1', [id]);
@@ -133,6 +134,30 @@ export async function GET(request: NextRequest) {
       }
 
       return NextResponse.json(registroRes.rows[0]);
+    }
+
+    if (cronogramaTaskIdsParam) {
+      const ids = cronogramaTaskIdsParam
+        .split(',')
+        .map((v) => Number(String(v).trim()))
+        .filter((n) => Number.isFinite(n) && !Number.isNaN(n));
+
+      if (ids.length === 0) {
+        return NextResponse.json({ error: 'cronogramaTaskIds inválido' }, { status: 400 });
+      }
+
+      const registrosRes = await pool.query<LimpiezaRegistroRow>(
+        `
+          SELECT DISTINCT ON (cronograma_task_id)
+            *
+          FROM limpieza_registros
+          WHERE cronograma_task_id = ANY($1::int[])
+          ORDER BY cronograma_task_id, created_at DESC
+        `,
+        [ids]
+      );
+
+      return NextResponse.json(registrosRes.rows);
     }
 
     const registrosRes = await pool.query<LimpiezaRegistroRow>('SELECT * FROM limpieza_registros ORDER BY created_at DESC');
@@ -190,6 +215,14 @@ export async function POST(request: NextRequest) {
 
     await client.query('BEGIN');
 
+    const generatedFromProductionIdFinal =
+      generated_from_production_record_id ?? generatedFromProductionRecordId ?? null;
+
+    if (generatedFromProductionIdFinal) {
+      const dedupeKey = `limpieza_registros|produccion|${String(generatedFromProductionIdFinal)}`;
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [dedupeKey]);
+    }
+
     let registro: LimpiezaRegistroRow;
     const shouldReuseByCronograma = cronogramaTaskIdFinal != null;
     if (shouldReuseByCronograma) {
@@ -232,35 +265,82 @@ export async function POST(request: NextRequest) {
         registro = registroInsert.rows[0];
       }
     } else {
-      const registroInsert = await client.query<LimpiezaRegistroRow>(
-        `
-          INSERT INTO limpieza_registros (
-            fecha, mes_corte, detalles, lote, producto,
-            origin, generated_from_production_record_id,
-            cronograma_task_id,
-            status, created_by
-          ) VALUES (
-            $1, $2, $3, $4, $5,
-            $6, $7,
-            $8,
-            'pending', $9
-          )
-          RETURNING *;
-        `,
-        [
-          fecha,
-          mes_corte ?? mesCorte ?? null,
-          detalles ?? null,
-          lote ?? null,
-          producto ?? null,
-          originFinal,
-          generated_from_production_record_id ?? generatedFromProductionRecordId ?? null,
-          cronogramaTaskIdFinal,
-          created_by ?? createdBy ?? null,
-        ]
-      );
+      // Dedupe: si es generado desde producción, reusar el registro existente si ya existe
+      if (originFinal === 'produccion' && generatedFromProductionIdFinal) {
+        const existingRes = await client.query<LimpiezaRegistroRow>(
+          `SELECT *
+           FROM limpieza_registros
+           WHERE origin = 'produccion'
+             AND generated_from_production_record_id = $1
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [generatedFromProductionIdFinal]
+        );
 
-      registro = registroInsert.rows[0];
+        if (existingRes.rows.length > 0) {
+          registro = existingRes.rows[0];
+        } else {
+          const registroInsert = await client.query<LimpiezaRegistroRow>(
+            `
+              INSERT INTO limpieza_registros (
+                fecha, mes_corte, detalles, lote, producto,
+                origin, generated_from_production_record_id,
+                cronograma_task_id,
+                status, created_by
+              ) VALUES (
+                $1, $2, $3, $4, $5,
+                $6, $7,
+                $8,
+                'pending', $9
+              )
+              RETURNING *;
+            `,
+            [
+              fecha,
+              mes_corte ?? mesCorte ?? null,
+              detalles ?? null,
+              lote ?? null,
+              producto ?? null,
+              originFinal,
+              generatedFromProductionIdFinal,
+              cronogramaTaskIdFinal,
+              created_by ?? createdBy ?? null,
+            ]
+          );
+
+          registro = registroInsert.rows[0];
+        }
+      } else {
+        const registroInsert = await client.query<LimpiezaRegistroRow>(
+          `
+            INSERT INTO limpieza_registros (
+              fecha, mes_corte, detalles, lote, producto,
+              origin, generated_from_production_record_id,
+              cronograma_task_id,
+              status, created_by
+            ) VALUES (
+              $1, $2, $3, $4, $5,
+              $6, $7,
+              $8,
+              'pending', $9
+            )
+            RETURNING *;
+          `,
+          [
+            fecha,
+            mes_corte ?? mesCorte ?? null,
+            detalles ?? null,
+            lote ?? null,
+            producto ?? null,
+            originFinal,
+            generatedFromProductionIdFinal,
+            cronogramaTaskIdFinal,
+            created_by ?? createdBy ?? null,
+          ]
+        );
+
+        registro = registroInsert.rows[0];
+      }
     }
 
     let insertedLiberaciones: LimpiezaLiberacionRow[] = [];
@@ -367,7 +447,13 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error al crear registro de limpieza:', error);
-    return NextResponse.json({ error: 'Error al crear el registro de limpieza' }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: 'Error al crear el registro de limpieza',
+        details: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 }
+    );
   } finally {
     client.release();
   }

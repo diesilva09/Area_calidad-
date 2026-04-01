@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { limpiezaRegistrosService, type LimpiezaRegistro } from '@/lib/limpieza-registros-service';
+import { useToast } from '@/hooks/use-toast';
 
 interface EditLimpiezaRegistroModalProps {
   isOpen: boolean;
@@ -21,6 +22,7 @@ export function EditLimpiezaRegistroModal({
   registro,
   onSaved,
 }: EditLimpiezaRegistroModalProps) {
+  const { toast } = useToast();
   const [fecha, setFecha] = React.useState('');
   const [mesCorte, setMesCorte] = React.useState('');
   const [detalles, setDetalles] = React.useState('');
@@ -28,7 +30,7 @@ export function EditLimpiezaRegistroModal({
 
   React.useEffect(() => {
     if (isOpen && registro) {
-      setFecha(registro.fecha);
+      setFecha(String(registro.fecha || '').slice(0, 10));
       setMesCorte(registro.mes_corte || '');
       setDetalles(registro.detalles || '');
     }
@@ -45,6 +47,12 @@ export function EditLimpiezaRegistroModal({
       });
       onSaved?.();
       onOpenChange(false);
+    } catch (err) {
+      toast({
+        title: 'Error al guardar',
+        description: err instanceof Error ? err.message : 'No se pudo actualizar el registro.',
+        variant: 'destructive',
+      });
     } finally {
       setIsSaving(false);
     }
@@ -62,8 +70,8 @@ export function EditLimpiezaRegistroModal({
         ) : (
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Fecha (YYYY-MM-DD)</Label>
-              <Input value={fecha} onChange={(e) => setFecha(e.target.value)} />
+              <Label>Fecha</Label>
+              <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
             </div>
 
             <div className="space-y-2">

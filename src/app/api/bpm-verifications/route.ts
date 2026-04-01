@@ -1,5 +1,72 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { sendPushToAll } from '@/lib/push-service';
+
+const BPM_REQ_KEYS = [
+  'req_uniforme',
+  'req_unas',
+  'req_sin_joyas',
+  'req_sin_cabellos',
+  'req_barba',
+  'req_manos',
+  'req_guantes',
+  'req_petos_botas',
+  'req_epp',
+  'req_no_accesorios',
+] as const;
+
+function isBpmNonCompliance(payload: any) {
+  try {
+    return BPM_REQ_KEYS.some((k) => String(payload?.[k] ?? '').toLowerCase() === 'no_cumple');
+  } catch {
+    return false;
+  }
+}
+
+async function countNonComplianceByCedula(cedula: string) {
+  const result = await pool.query(
+    `SELECT COUNT(*)::int AS count
+     FROM verificacion_bpm.bpm_verifications
+     WHERE cedula = $1
+       AND (
+         LOWER(req_uniforme) = 'no_cumple'
+         OR LOWER(req_unas) = 'no_cumple'
+         OR LOWER(req_sin_joyas) = 'no_cumple'
+         OR LOWER(req_sin_cabellos) = 'no_cumple'
+         OR LOWER(req_barba) = 'no_cumple'
+         OR LOWER(req_manos) = 'no_cumple'
+         OR LOWER(req_guantes) = 'no_cumple'
+         OR LOWER(req_petos_botas) = 'no_cumple'
+         OR LOWER(req_epp) = 'no_cumple'
+         OR LOWER(req_no_accesorios) = 'no_cumple'
+       )`,
+    [cedula]
+  );
+
+  return Number(result.rows?.[0]?.count ?? 0);
+}
+
+async function createThirdNonComplianceNotification(params: {
+  cedula: string;
+  nombre?: string;
+  recordId?: number | string;
+}) {
+  const dedupeKey = `bpm_noncompliance_3:${String(params.cedula).trim()}`;
+  const title = 'Alerta BPM: 3 incumplimientos';
+  const message = `La persona con cédula ${String(params.cedula).trim()}${params.nombre ? ` (${params.nombre})` : ''} acumuló 3 registros de incumplimiento en Verificación de BPM.`;
+
+  const insertRes = await pool.query(
+    `INSERT INTO notificaciones.notifications (type, title, message, entity_type, entity_id, dedupe_key)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (dedupe_key) DO NOTHING
+     RETURNING id`,
+    ['bpm_3_noncompliance', title, message, 'bpm_verification', params.recordId ? String(params.recordId) : null, dedupeKey]
+  );
+
+  if (insertRes.rows?.length) {
+    await sendPushToAll({ title, message, url: '/dashboard/verificacion-bpm' });
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -112,7 +179,24 @@ export async function POST(request: NextRequest) {
     ];
 
     const result = await pool.query(query, params);
-    return NextResponse.json(result.rows[0], { status: 201 });
+
+    const created = result.rows[0];
+    const nonCompliance = isBpmNonCompliance(body);
+    if (nonCompliance) {
+      const cedulaTrim = String(cedula ?? '').trim();
+      if (cedulaTrim) {
+        const count = await countNonComplianceByCedula(cedulaTrim);
+        if (count === 3) {
+          await createThirdNonComplianceNotification({
+            cedula: cedulaTrim,
+            nombre: String(nombre ?? '').trim() || undefined,
+            recordId: created?.id,
+          });
+        }
+      }
+    }
+
+    return NextResponse.json(created, { status: 201 });
   } catch (error) {
     console.error('Error al crear verificación BPM:', error);
     return NextResponse.json(
@@ -218,7 +302,24 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(result.rows[0], { status: 200 });
+    const updated = result.rows[0];
+
+    const nonCompliance = isBpmNonCompliance(body);
+    if (nonCompliance) {
+      const cedulaTrim = String(body?.cedula ?? '').trim();
+      if (cedulaTrim) {
+        const count = await countNonComplianceByCedula(cedulaTrim);
+        if (count === 3) {
+          await createThirdNonComplianceNotification({
+            cedula: cedulaTrim,
+            nombre: String(body?.nombre ?? '').trim() || undefined,
+            recordId: updated?.id,
+          });
+        }
+      }
+    }
+
+    return NextResponse.json(updated, { status: 200 });
   } catch (error) {
     console.error('Error al actualizar verificación BPM:', error);
     return NextResponse.json(

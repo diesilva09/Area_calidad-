@@ -23,13 +23,13 @@ export function AuthRouteProtection({
 
     // Si no está autenticado, redirigir al login
     if (!isAuthenticated) {
-      router.push('/login');
+      router.push('/login-simple');
       return;
     }
 
     // Si requiere rol de jefe y no es jefe, redirigir con mensaje
     if (requireJefe && !isJefe) {
-      router.push('/login?message=Esta sección requiere privilegios de Jefe de Calidad');
+      router.push('/login-simple?message=Esta sección requiere privilegios de Jefe de Calidad');
       return;
     }
   }, [loading, isAuthenticated, isJefe, requireJefe, router]);

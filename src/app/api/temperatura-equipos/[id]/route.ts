@@ -1,19 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
-
-// Configuración de la base de datos
-const getPoolConfig = () => {
-  const config: any = {
-    host: '127.0.0.1', // Forzar IPv4 para evitar problemas de autenticación
-    port: 5432,
-    database: 'area_calidad',
-    user: 'postgres',
-    password: process.env.DB_PASSWORD || 'Coruna.24', // ← aquí va la clave real
-    ssl: { rejectUnauthorized: false },
-  };
-  
-  return config;
-};
+import { getMicroTable, getPoolConfig } from '../../micro-config';
 
 const pool = new Pool(getPoolConfig());
 
@@ -25,7 +12,7 @@ export async function GET(
     const { id } = await params;
 
     const query = `
-      SELECT 
+      SELECT
         id,
         fecha,
         horario,
@@ -36,7 +23,7 @@ export async function GET(
         observaciones,
         created_at,
         updated_at
-      FROM temperatura_equipos
+      FROM ${getMicroTable('temperatura_equipos')}
       WHERE id = $1
     `;
 
@@ -78,8 +65,8 @@ export async function PUT(
     } = body;
 
     const query = `
-      UPDATE temperatura_equipos
-      SET 
+      UPDATE ${getMicroTable('temperatura_equipos')}
+      SET
         fecha = COALESCE($1, fecha),
         horario = COALESCE($2, horario),
         incubadora_037 = COALESCE($3, incubadora_037),
@@ -129,7 +116,7 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    const query = 'DELETE FROM temperatura_equipos WHERE id = $1 RETURNING *';
+    const query = `DELETE FROM ${getMicroTable('temperatura_equipos')} WHERE id = $1 RETURNING *`;
 
     const result = await pool.query(query, [id]);
 

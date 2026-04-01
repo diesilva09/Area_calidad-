@@ -1,17 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ChevronDown, ChevronUp, Plus, Package } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { ChevronDown, ChevronUp, Plus, Package, AlertTriangle, Clock, ExternalLink } from 'lucide-react';
+import Link from 'next/link';
 import { ProductList } from '@/components/supervisores/product-list';
 import { AddEditProductModal } from '@/components/supervisores/add-product-modal';
 import { SupervisorHandlers } from '../../hooks/use-supervisor-data';
 import { ProductCategory, productionRecordsService, type ProductionRecord } from '@/lib/supervisores-data';
 import type { AddItemFormValues } from '@/components/supervisores/add-product-modal';
 import { ProductSearch } from '@/components/supervisores/product-search';
-import { Badge } from '@/components/ui/badge';
 import * as XLSX from 'xlsx';
 import { AreasEquiposService } from '@/lib/areas-equipos-config';
+import { LoteGlobalSearch } from '@/components/supervisores/lote-global-search';
 
 interface ProduccionTabProps {
   categories: ProductCategory[];
@@ -33,10 +35,24 @@ export function ProduccionTab({
   const [globalSearchTerm, setGlobalSearchTerm] = useState('');
   const [highlightTarget, setHighlightTarget] = useState<{ categoryId: string; productId: string } | null>(null);
 
-  const [dailyRecords, setDailyRecords] = useState<ProductionRecord[]>([]);
-  const [isLoadingDailyRecords, setIsLoadingDailyRecords] = useState(false);
+
   const [isDailyHistoryOpen, setIsDailyHistoryOpen] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState<'day' | 'month'>('day');
   const [equiposNombres, setEquiposNombres] = useState<Record<string, string>>({});
+
+  const dailyHistoryAnchorRef = useRef<HTMLDivElement | null>(null);
+
+  const [allRecords, setAllRecords] = useState<ProductionRecord[]>([]);
+  const [isLoadingAllRecords, setIsLoadingAllRecords] = useState(false);
+  const [pendingAlerts, setPendingAlerts] = useState<Array<{
+    id: string;
+    lote: string;
+    producto: string;
+    created_at: string;
+    last_opened_at: string | null;
+    diffDays: number;
+    stage: '8d' | '23d';
+  }>>([]);
 
   const todayISO = useMemo(() => {
     const now = new Date();
@@ -46,30 +62,94 @@ export function ProduccionTab({
     return `${yyyy}-${mm}-${dd}`;
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
+  const currentMonthISO = useMemo(() => todayISO.slice(0, 7), [todayISO]);
 
-    const loadDaily = async () => {
-      setIsLoadingDailyRecords(true);
+  const toColombiaDate = (value: any): string => {
+    try {
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return '';
+      return d.toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    } catch {
+      return '';
+    }
+  };
+
+  const dailyRecords = useMemo(() => {
+    return allRecords
+      .filter((r: any) => {
+        const fechaProduccion = (r as any)?.fechaproduccion ?? (r as any)?.fechaProduccion;
+        return toColombiaDate(fechaProduccion) === todayISO;
+      })
+      .sort((a: any, b: any) => String(b?.created_at ?? '').localeCompare(String(a?.created_at ?? '')));
+  }, [allRecords, todayISO]);
+
+  const displayedHistoryRecords = useMemo(() => {
+    if (historyFilter === 'day') return dailyRecords;
+    return (allRecords as any[])
+      .filter((r) => {
+        const fechaProduccion = (r as any)?.fechaproduccion ?? (r as any)?.fechaProduccion;
+        const iso = toColombiaDate(fechaProduccion);
+        if (!iso) return false;
+        return iso.slice(0, 7) === currentMonthISO;
+      })
+      .sort((a, b) => String(b?.created_at ?? '').localeCompare(String(a?.created_at ?? '')));
+  }, [historyFilter, dailyRecords, allRecords, currentMonthISO]);
+
+
+  useEffect(() => {
+    fetch('/api/production-records/check-pending').catch(() => {});
+
+    const loadPendingAlerts = async () => {
       try {
-        const records = await productionRecordsService.getByCreatedDate(todayISO);
-        if (cancelled) return;
-        setDailyRecords(Array.isArray(records) ? records : []);
-      } catch (error) {
-        if (cancelled) return;
-        console.error('Error cargando registros del día:', error);
-        setDailyRecords([]);
-      } finally {
-        if (!cancelled) setIsLoadingDailyRecords(false);
+        const res = await fetch('/api/production-records');
+        if (!res.ok) return;
+        const records: any[] = await res.json();
+        const now = Date.now();
+        const alerts: typeof pendingAlerts = [];
+        for (const r of records) {
+          if (String(r?.status ?? '').toLowerCase() !== 'pending') continue;
+          const ref = r.last_opened_at ? new Date(r.last_opened_at) : new Date(r.created_at);
+          const diffDays = Math.floor((now - ref.getTime()) / (1000 * 60 * 60 * 24));
+          if (diffDays >= 23) {
+            alerts.push({ id: r.id, lote: r.lote, producto: r.producto, created_at: r.created_at, last_opened_at: r.last_opened_at ?? null, diffDays, stage: '23d' });
+          } else if (diffDays >= 8) {
+            alerts.push({ id: r.id, lote: r.lote, producto: r.producto, created_at: r.created_at, last_opened_at: r.last_opened_at ?? null, diffDays, stage: '8d' });
+          }
+        }
+        alerts.sort((a, b) => b.diffDays - a.diffDays);
+        setPendingAlerts(alerts);
+      } catch {
+        // no-op
       }
     };
 
-    loadDaily();
+    loadPendingAlerts();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAll = async () => {
+      setIsLoadingAllRecords(true);
+      try {
+        const records = await productionRecordsService.getAll();
+        if (cancelled) return;
+        setAllRecords(Array.isArray(records) ? records : []);
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Error cargando registros (búsqueda de lotes):', error);
+        setAllRecords([]);
+      } finally {
+        if (!cancelled) setIsLoadingAllRecords(false);
+      }
+    };
+
+    loadAll();
 
     return () => {
       cancelled = true;
     };
-  }, [todayISO]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,17 +166,14 @@ export function ProduccionTab({
 
         if (ids.length === 0) return;
 
-        const faltantes = ids.filter((id) => !equiposNombres[id]);
-        if (faltantes.length === 0) return;
-
-        const nextMap: Record<string, string> = { ...equiposNombres };
+        const resolved: Record<string, string> = {};
 
         await Promise.allSettled(
-          faltantes.map(async (id) => {
+          ids.map(async (id) => {
             try {
               const equipo = await AreasEquiposService.getEquipoPorId(id);
               if (equipo?.nombre) {
-                nextMap[id] = equipo.nombre;
+                resolved[id] = equipo.nombre;
               }
             } catch {
               // no-op: dejamos fallback al ID
@@ -104,7 +181,9 @@ export function ProduccionTab({
           })
         );
 
-        if (!cancelled) setEquiposNombres(nextMap);
+        if (!cancelled && Object.keys(resolved).length > 0) {
+          setEquiposNombres((prev) => ({ ...prev, ...resolved }));
+        }
       } catch (e) {
         console.error('Error cargando nombres de equipos (export):', e);
       }
@@ -115,8 +194,7 @@ export function ProduccionTab({
     return () => {
       cancelled = true;
     };
-    // Intencional: dependemos de dailyRecords y equiposNombres para completar el map incremental.
-  }, [dailyRecords, equiposNombres]);
+  }, [dailyRecords]);
 
   const productoNombrePorId = useMemo(() => {
     const map: Record<string, string> = {};
@@ -134,7 +212,7 @@ export function ProduccionTab({
 
     const raw = String(r?.producto ?? r?.producto_id ?? r?.product_id ?? '').trim();
     if (!raw) return '';
-    return productoNombrePorId[raw] ?? raw;
+    return productoNombrePorId[raw] ?? raw; 
   };
 
   const getEquipoNombre = (r: any) => {
@@ -311,6 +389,60 @@ export function ProduccionTab({
 
   return (
     <div className="space-y-6">
+      {/* Panel de alertas de registros pendientes */}
+      {pendingAlerts.length > 0 && (
+        <Card className="border-2 border-orange-400 bg-orange-50">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2 bg-orange-400 rounded-full shrink-0">
+                <AlertTriangle className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-orange-900">
+                  ⚠️ {pendingAlerts.length} registro{pendingAlerts.length !== 1 ? 's' : ''} RE-CAL-084 pendiente{pendingAlerts.length !== 1 ? 's' : ''} sin completar
+                </h2>
+                <p className="text-xs text-orange-700">Registros que llevan 8 o más días sin ser completados</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {pendingAlerts.map((alert) => (
+                <div
+                  key={alert.id}
+                  className={`flex items-center justify-between gap-3 rounded-lg border p-3 bg-white ${
+                    alert.stage === '23d' ? 'border-red-300' : 'border-orange-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Clock className={`h-4 w-4 shrink-0 ${alert.stage === '23d' ? 'text-red-500' : 'text-orange-500'}`} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">Lote: {alert.lote}</p>
+                      <p className="text-xs text-gray-500 truncate">{productoNombrePorId[alert.producto] ?? alert.producto}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge
+                      className={`text-xs ${
+                        alert.stage === '23d'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-orange-100 text-orange-800'
+                      }`}
+                    >
+                      {alert.diffDays} días
+                    </Badge>
+                    <Link
+                      href={`/dashboard/supervisores/production-record/${alert.id}`}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800"
+                    >
+                      Ver <ExternalLink className="h-3 w-3" />
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Header Actions */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center space-x-2 min-w-0">
@@ -345,63 +477,143 @@ export function ProduccionTab({
 
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-base sm:text-lg">Historial de registros del día</CardTitle>
-          <div className="flex items-center gap-2">
-            <div className="text-sm text-muted-foreground">{todayISO}</div>
+          <CardTitle className="text-base sm:text-lg">
+            {historyFilter === 'day' ? `Historial del día (${todayISO})` : `Historial del mes (${currentMonthISO})`}
+          </CardTitle>
+          <div className="flex flex-col gap-2 w-full sm:w-auto sm:flex-row sm:items-center sm:justify-end">
+            <div className="flex rounded-md border overflow-hidden shrink-0">
+              <button
+                onClick={() => setHistoryFilter('day')}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                  historyFilter === 'day' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Hoy
+              </button>
+              <button
+                onClick={() => setHistoryFilter('month')}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                  historyFilter === 'month' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Este mes
+              </button>
+            </div>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setIsDailyHistoryOpen((v) => !v)}
+              onClick={() => {
+                const el = dailyHistoryAnchorRef.current;
+                const beforeTop = el ? el.getBoundingClientRect().top : null;
+
+                setIsDailyHistoryOpen((v) => !v);
+
+                if (typeof window !== 'undefined') {
+                  requestAnimationFrame(() => {
+                    const afterTop = el ? el.getBoundingClientRect().top : null;
+                    if (beforeTop == null || afterTop == null) return;
+                    const delta = afterTop - beforeTop;
+                    if (delta !== 0) window.scrollBy({ top: delta });
+                  });
+                }
+              }}
+              className="w-full sm:w-auto"
             >
               {isDailyHistoryOpen ? (
-                <>
+                <div className="flex items-center">
                   <ChevronUp className="h-4 w-4 mr-2" />
                   Ocultar
-                </>
+                </div>
               ) : (
-                <>
+                <div className="flex items-center">
                   <ChevronDown className="h-4 w-4 mr-2" />
                   Mostrar
-                </>
+                </div>
               )}
             </Button>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              disabled={isLoadingDailyRecords || dailyRecords.length === 0}
+              disabled={isLoadingAllRecords || displayedHistoryRecords.length === 0}
               onClick={exportDailyToExcel}
+              className="w-full sm:w-auto"
             >
-              Exportar registros del día
+              Exportar
             </Button>
           </div>
         </CardHeader>
         {isDailyHistoryOpen && (
           <CardContent>
-            {isLoadingDailyRecords ? (
-              <div className="text-sm text-muted-foreground">Cargando registros del día...</div>
-            ) : dailyRecords.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No hay registros creados hoy.</div>
+            {isLoadingAllRecords ? (
+              <div className="text-sm text-muted-foreground">Cargando registros...</div>
+            ) : displayedHistoryRecords.length === 0 ? (
+              <div className="text-sm text-muted-foreground">
+                {historyFilter === 'day' ? 'No hay registros creados hoy.' : 'No hay registros este mes.'}
+              </div>
             ) : (
               <div className="space-y-2">
-                <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 text-xs font-medium text-muted-foreground">
+                <div className="hidden md:grid md:grid-cols-7 gap-2 text-xs font-medium text-muted-foreground px-1">
                   <div>Producto</div>
                   <div>Hora</div>
+                  <div>Lote</div>
                   <div>Área / Proceso</div>
                   <div>Estado</div>
                   <div>Responsable</div>
+                  <div></div>
                 </div>
-                {dailyRecords.map((r: any) => (
+                {displayedHistoryRecords.map((r: any) => (
                   <div
-                    key={String(r.id)}
-                    className="grid grid-cols-1 sm:grid-cols-5 gap-2 rounded-md border p-2 text-sm"
+                    key={`${String(r?.id ?? '')}-${String(r?.created_at ?? '')}`}
+                    className="rounded-md border p-3 text-sm hover:bg-gray-50 transition-colors"
                   >
-                    <div className="font-medium break-words">{getProductoNombre(r) || '—'}</div>
-                    <div>{formatHora(r.created_at)}</div>
-                    <div className="break-words">{r.area || '—'}</div>
-                    <div>{statusBadge(r.status)}</div>
-                    <div className="break-words">{r.responsable_produccion || r.created_by || '—'}</div>
+                    <div className="space-y-1.5 md:space-y-0 md:grid md:grid-cols-7 md:gap-2 md:items-center">
+                      <div className="flex justify-between gap-3 md:block">
+                        <div className="text-xs text-muted-foreground md:hidden">Producto</div>
+                        <div className="font-medium break-words text-right md:text-left">
+                          {getProductoNombre(r) || '—'}
+                        </div>
+                      </div>
+
+                      <div className="flex justify-between gap-3 md:block">
+                        <div className="text-xs text-muted-foreground md:hidden">Hora</div>
+                        <div className="text-right md:text-left">{formatHora(r.created_at) || '—'}</div>
+                      </div>
+
+                      <div className="flex justify-between gap-3 md:block">
+                        <div className="text-xs text-muted-foreground md:hidden">Lote</div>
+                        <div className="break-words text-right md:text-left">
+                          {String(r?.lote ?? '').trim() || '—'}
+                        </div>
+                      </div>
+
+                      <div className="flex justify-between gap-3 md:block">
+                        <div className="text-xs text-muted-foreground md:hidden">Área / Proceso</div>
+                        <div className="break-words text-right md:text-left">{r?.area || '—'}</div>
+                      </div>
+
+                      <div className="flex justify-between gap-3 md:block">
+                        <div className="text-xs text-muted-foreground md:hidden">Estado</div>
+                        <div className="flex justify-end md:justify-start">{statusBadge(r?.status)}</div>
+                      </div>
+
+                      <div className="flex justify-between gap-3 md:block">
+                        <div className="text-xs text-muted-foreground md:hidden">Responsable</div>
+                        <div className="break-words text-right md:text-left">
+                          {r?.responsable_produccion || r?.created_by || '—'}
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end md:justify-start">
+                        <Link
+                          href={`/dashboard/supervisores/production-record/${r?.id}`}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800"
+                        >
+                          Ver <ExternalLink className="h-3 w-3" />
+                        </Link>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -410,7 +622,25 @@ export function ProduccionTab({
         )}
       </Card>
 
-      {/* Categories and Products */}
+      <div ref={dailyHistoryAnchorRef} />
+
+      {/* Categories and roducts */}
+      <LoteGlobalSearch
+        kind="produccion"
+        items={(allRecords || []).map((r: any) => ({
+          id: String(r?.id ?? ''),
+          kind: 'produccion' as const,
+          lote: String(r?.lote ?? '').trim(),
+          status: (r as any)?.status,
+          responsable: String((r as any)?.responsable_produccion ?? (r as any)?.created_by ?? '').trim() || undefined,
+          productKey: String(r?.category_id ?? r?.categoria_id ?? '').trim() && String(r?.producto ?? r?.producto_id ?? r?.product_id ?? '').trim()
+            ? `${String(r?.category_id ?? r?.categoria_id ?? '').trim()}_${String(r?.producto ?? r?.producto_id ?? r?.product_id ?? '').trim()}`
+            : undefined,
+        })).filter((x) => Boolean(x.id) && Boolean(x.lote))}
+        placeholder="Buscar lote (RE CAL 084)..."
+        className="w-full"
+      />
+
       <ProductSearch
         categories={categories}
         onProductSelect={(product, categoryId) => {

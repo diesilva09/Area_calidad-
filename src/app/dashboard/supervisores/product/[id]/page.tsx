@@ -10,6 +10,16 @@ import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { productService, getProductCategories, type Product, type ProductCategory } from '@/lib/supervisores-data';
 import { AddEditProductModal } from '@/components/supervisores/add-product-modal';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -20,6 +30,8 @@ export default function ProductDetailPage() {
   const [category, setCategory] = useState<ProductCategory | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   // Crear un ID único combinando categoría y producto
   const getUniqueProductId = (product: Product, category: ProductCategory) => {
@@ -145,23 +157,26 @@ export default function ProductDetailPage() {
 
   const handleDelete = async () => {
     if (!product || !category) return;
-    
-    if (window.confirm(`¿Estás seguro de que quieres eliminar el producto "${product.name}"?`)) {
-      try {
-        await productService.delete(category.id, product.id);
-        toast({
-          title: "Producto eliminado",
-          description: `El producto "${product.name}" ha sido eliminado exitosamente.`,
-        });
-        router.push('/dashboard/supervisores');
-      } catch (error) {
-        console.error('Error al eliminar producto:', error);
-        toast({
-          title: "Error",
-          description: "No se pudo eliminar el producto. Por favor, intente nuevamente.",
-          variant: "destructive",
-        });
-      }
+    if (isDeleting) return;
+
+    setIsDeleting(true);
+    try {
+      await productService.delete(category.id, product.id);
+      toast({
+        title: 'Producto eliminado',
+        description: `El producto "${product.name}" ha sido eliminado exitosamente.`,
+      });
+      setConfirmDeleteOpen(false);
+      router.push('/dashboard/supervisores');
+    } catch (error) {
+      console.error('Error al eliminar producto:', error);
+      toast({
+        title: 'Error',
+        description: 'No se pudo eliminar. Intenta de nuevo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -233,7 +248,13 @@ export default function ProductDetailPage() {
                   <Edit className="h-4 w-4 mr-2" />
                   Editar
                 </Button>
-                <Button variant="destructive" size="sm" onClick={handleDelete} className="w-full sm:w-auto">
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setConfirmDeleteOpen(true)}
+                  className="w-full sm:w-auto"
+                  disabled={isDeleting}
+                >
                   <Trash2 className="h-4 w-4 mr-2" />
                   Eliminar
                 </Button>
@@ -394,6 +415,29 @@ export default function ProductDetailPage() {
             }}
           />
         )}
+
+        <AlertDialog
+          open={confirmDeleteOpen}
+          onOpenChange={(open) => {
+            if (!open && isDeleting) return;
+            setConfirmDeleteOpen(open);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Eliminar producto</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta acción no se puede deshacer.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDelete} disabled={isDeleting}>
+                {isDeleting ? 'Eliminando...' : 'Eliminar'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );

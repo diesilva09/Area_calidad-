@@ -5,9 +5,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Calendar, Package, User, CheckCircle, AlertCircle, Search, Edit, FileText, ClipboardList, BarChart3, Users, Tag, Boxes, Scale, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Calendar, Package, User, CheckCircle, AlertCircle, Search, Edit, FileText, ClipboardList, BarChart3, Users, Tag, Boxes, Scale, ShieldCheck, FileDown } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import Link from 'next/link';
-import { useEffect, useState, use } from 'react';
+import { useEffect, useRef, useState, use } from 'react';
 import { embalajeRecordsService, type EmbalajeRecord } from '@/lib/embalaje-records-service';
 import { AddEmbalajeRecordModal } from '@/components/supervisores/add-embalaje-record-modal';
 import { useScrollRestoration } from '@/hooks/useScrollRestoration';
@@ -25,6 +26,33 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
   const [error, setError] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const { saveScrollPosition } = useScrollRestoration();
+  const autoOpenedRef = useRef(false);
+
+  const exportToExcel = () => {
+    if (!record) return;
+    const data: Record<string, any> = {};
+    for (const [key, value] of Object.entries(record as any)) {
+      data[key] = value;
+    }
+    const ws = XLSX.utils.json_to_sheet([data]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Registro');
+    XLSX.writeFile(wb, `RE-CAL-093_lote-`+String((record as any)?.lote ?? 'sin-lote').replace(/[^a-zA-Z0-9_-]/g, '_')+`.xlsx`);
+  };
+
+  const hasText = (value: unknown): boolean => {
+    const v = String(value ?? '').trim();
+    return v.length > 0 && v !== '—' && v.toLowerCase() !== 'pendiente';
+  };
+
+  const toNumber = (value: unknown): number => {
+    const n = Number.parseFloat(String(value ?? '').replace(',', '.'));
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const isNonConform = (percentage: unknown): boolean => {
+    return toNumber(percentage) > 0;
+  };
 
   const formatFechaSinDesfase = (raw: unknown): string => {
     if (!raw) return '';
@@ -42,36 +70,23 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
   };
 
   const returnTo = searchParams?.get('returnTo') || '/dashboard/supervisores?tab=embalaje';
-  
+
   const resolvedParams = use(params);
 
   const loadRecord = async () => {
     try {
-      console.log('🔍 Cargando registro de embalaje ID:', resolvedParams.id);
       const records = await embalajeRecordsService.getAll();
       const foundRecord = records.find(r => r.id === resolvedParams.id);
-      
+
       if (!foundRecord) {
-        console.error('❌ Registro de embalaje no encontrado');
         setError('Registro no encontrado');
       } else {
-        console.log('✅ Registro de embalaje encontrado:', foundRecord);
-        console.log('🔍 Estado de campos pendientes:', {
-          presentacion: foundRecord.presentacion,
-          nivel_inspeccion: foundRecord.nivel_inspeccion,
-          etiqueta: foundRecord.etiqueta,
-          marcacion: foundRecord.marcacion,
-          presentacion_no_conforme: foundRecord.presentacion_no_conforme,
-          cajas: foundRecord.cajas,
-          responsable_identificador_cajas: foundRecord.responsable_identificador_cajas,
-          responsable_embalaje: foundRecord.responsable_embalaje,
-          responsable_calidad: foundRecord.responsable_calidad
-        });
         setRecord(foundRecord);
 
         try {
           const categories = await getProductCategories();
           const productoRaw = String(foundRecord.producto);
+
           const match = categories
             .flatMap((cat) => cat.products.map((p) => ({ cat, p })))
             .find(({ p }) => String(p.id) === productoRaw || p.name === productoRaw);
@@ -86,13 +101,11 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
             setProductMeta({ productId: productoRaw, productName: productoRaw });
           }
         } catch (metaError) {
-          console.warn('⚠️ No se pudo resolver nombre/categoría del producto:', metaError);
           const productoRaw = String(foundRecord.producto);
           setProductMeta({ productId: productoRaw, productName: productoRaw });
         }
       }
     } catch (error) {
-      console.error('❌ Error al cargar registro de embalaje:', error);
       setError('Error al cargar el registro');
     } finally {
       setLoading(false);
@@ -138,26 +151,32 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
   }, [record, productMeta]);
 
   const isRecordPending = (record: EmbalajeRecord): boolean => {
-    const pendingFields = {
-      presentacion: record.presentacion === 'Pendiente',
-      nivel_inspeccion: record.nivel_inspeccion === 'Pendiente',
-      etiqueta: record.etiqueta === 'Pendiente',
-      marcacion: record.marcacion === 'Pendiente',
-      presentacion_no_conforme: record.presentacion_no_conforme === 'Pendiente',
-      cajas: record.cajas === 'Pendiente',
-      responsable_identificador_cajas: record.responsable_identificador_cajas === 'Pendiente',
-      responsable_embalaje: record.responsable_embalaje === 'Pendiente',
-      responsable_calidad: record.responsable_calidad === 'Pendiente',
-    };
-    const isPending = Object.values(pendingFields).some(Boolean);
-    console.log('🔍 Verificando si el registro está pendiente:', {
-      recordId: record.id,
-      pendingFields,
-      isPending,
-      totalPending: Object.values(pendingFields).filter(Boolean).length
-    });
-    return isPending;
+    if (record.status === 'pending') return true;
+    return (
+      record.presentacion === 'Pendiente' ||
+      record.nivel_inspeccion === 'Pendiente' ||
+      record.etiqueta === 'Pendiente' ||
+      record.marcacion === 'Pendiente' ||
+      record.presentacion_no_conforme === 'Pendiente' ||
+      record.cajas === 'Pendiente' ||
+      record.responsable_identificador_cajas === 'Pendiente' ||
+      record.responsable_embalaje === 'Pendiente' ||
+      record.responsable_calidad === 'Pendiente'
+    );
   };
+
+  useEffect(() => {
+    if (!record) return;
+    const shouldComplete = searchParams?.get('complete') === '1';
+    if (!shouldComplete) return;
+    if (!isRecordPending(record)) return;
+
+    // Evitar reabrir si hay re-renders
+    if (autoOpenedRef.current) return;
+    autoOpenedRef.current = true;
+
+    setIsEditModalOpen(true);
+  }, [record, searchParams]);
 
   const handleSuccessfulEdit = async () => {
     try {
@@ -187,7 +206,7 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-slate-50">
+      <div className="flex h-screen items-center justify-center bg-white">
         <div className="flex flex-col items-center gap-5">
           <div className="relative w-16 h-16">
             <div className="absolute inset-0 rounded-full border-2 border-zinc-200" />
@@ -203,7 +222,7 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
 
   if (error || !record) {
     return (
-      <div className="flex h-screen items-center justify-center bg-slate-50">
+      <div className="flex h-screen items-center justify-center bg-white">
         <div className="bg-white border border-zinc-200 rounded-2xl p-10 max-w-sm w-full text-center">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-red-500/10 border border-red-500/20 mb-4">
             <AlertCircle className="h-7 w-7 text-red-600" />
@@ -212,7 +231,6 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
           <p className="text-sm text-zinc-500 mb-6">{error || 'Registro no encontrado'}</p>
           <Button asChild className="bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-semibold rounded-xl">
             <Link href={returnTo}>Volver</Link>
-            
           </Button>
         </div>
       </div>
@@ -220,7 +238,7 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-zinc-900">
+    <div className="min-h-screen bg-white text-zinc-900">
 
       {/* ── Top nav ── */}
       <div className="bg-white border-b border-zinc-100">
@@ -238,6 +256,10 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
           </Button>
 
           <div className="flex items-center justify-end gap-2 flex-wrap">
+            <Button onClick={exportToExcel} variant="outline" size="sm" className="text-xs rounded-xl h-8 px-4 gap-1.5 border-gray-300">
+              <FileDown className="h-3.5 w-3.5" />
+              Exportar Excel
+            </Button>
             {isRecordPending(record) && (
               <Badge className="bg-amber-400/10 text-amber-400 border border-amber-400/20 text-[10px] tracking-widest uppercase px-3 py-1 rounded-full hidden sm:flex">
                 Pendiente
@@ -328,7 +350,7 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
               </div>
             ))}
           </div>
-          <div className="bg-white border border-zinc-200 rounded-xl p-5">
+          <div className={`bg-white border rounded-xl p-5 ${hasText(record.observaciones_generales) ? 'border-amber-400/40 bg-amber-50/40' : 'border-zinc-200'}`}>
             <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2 flex items-center gap-1.5">
               <ClipboardList className="h-3.5 w-3.5" /> Observaciones Generales
             </p>
@@ -345,88 +367,152 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Etiqueta */}
-            <div className="bg-white border border-cyan-500/20 rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-zinc-100 flex items-center gap-2">
-                <Tag className="h-4 w-4 text-cyan-400" />
-                <span className="text-sm font-bold text-cyan-400">Etiqueta</span>
-              </div>
-              <div className="p-5 space-y-3">
-                <div className="flex justify-between">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest text-zinc-500">Estado</p>
-                    <p className="text-sm font-semibold text-zinc-900">{record.etiqueta}</p>
+            {(() => {
+              const nonConform = isNonConform(record.porcentaje_etiqueta_no_conforme);
+              const withObs = hasText(record.observaciones_etiqueta);
+              return (
+                <div className={`bg-white border rounded-xl overflow-hidden ${nonConform ? 'border-red-500/30 bg-red-50/30' : withObs ? 'border-amber-400/40 bg-amber-50/40' : 'border-cyan-500/20'}`}>
+                  <div className="px-5 py-3 border-b border-zinc-100 flex items-center gap-2">
+                    <Tag className="h-4 w-4 text-cyan-400" />
+                    <span className="text-sm font-bold text-cyan-400">Etiqueta</span>
+                    {nonConform && (
+                      <Badge className="ml-auto bg-red-500/10 text-red-600 border border-red-500/20 text-[10px] tracking-widest uppercase px-3 py-1 rounded-full">
+                        No conforme
+                      </Badge>
+                    )}
+                    {!nonConform && withObs && (
+                      <Badge className="ml-auto bg-amber-400/10 text-amber-700 border border-amber-400/20 text-[10px] tracking-widest uppercase px-3 py-1 rounded-full">
+                        Observación
+                      </Badge>
+                    )}
                   </div>
-                  <div className="text-right">
-                    <p className="text-[10px] uppercase tracking-widest text-zinc-500">% No Conf.</p>
-                    <p className="text-2xl font-black tabular-nums text-zinc-900">{record.porcentaje_etiqueta_no_conforme}<span className="text-sm text-zinc-500">%</span></p>
+                  <div className="p-5 space-y-3">
+                    <div className="flex justify-between">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest text-zinc-500">Estado</p>
+                        <p className="text-sm font-semibold text-zinc-900">{record.etiqueta}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] uppercase tracking-widest text-zinc-500">% No Conf.</p>
+                        <p className={`text-2xl font-black tabular-nums ${nonConform ? 'text-red-600' : 'text-zinc-900'}`}>{record.porcentaje_etiqueta_no_conforme}<span className="text-sm text-zinc-500">%</span></p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-zinc-500">{record.observaciones_etiqueta || '—'}</p>
                   </div>
                 </div>
-                <p className="text-xs text-zinc-500">{record.observaciones_etiqueta || '—'}</p>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Marcación */}
-            <div className="bg-white border border-emerald-500/20 rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-zinc-100 flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                <span className="text-sm font-bold text-emerald-400">Marcación</span>
-              </div>
-              <div className="p-5 space-y-3">
-                <div className="flex justify-between">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest text-zinc-500">Estado</p>
-                    <p className="text-sm font-semibold text-zinc-900">{record.marcacion}</p>
+            {(() => {
+              const nonConform = isNonConform(record.porcentaje_marcacion_no_conforme);
+              const withObs = hasText(record.observaciones_marcacion);
+              return (
+                <div className={`bg-white border rounded-xl overflow-hidden ${nonConform ? 'border-red-500/30 bg-red-50/30' : withObs ? 'border-amber-400/40 bg-amber-50/40' : 'border-emerald-500/20'}`}>
+                  <div className="px-5 py-3 border-b border-zinc-100 flex items-center gap-2">
+                    <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                    <span className="text-sm font-bold text-emerald-400">Marcación</span>
+                    {nonConform && (
+                      <Badge className="ml-auto bg-red-500/10 text-red-600 border border-red-500/20 text-[10px] tracking-widest uppercase px-3 py-1 rounded-full">
+                        No conforme
+                      </Badge>
+                    )}
+                    {!nonConform && withObs && (
+                      <Badge className="ml-auto bg-amber-400/10 text-amber-700 border border-amber-400/20 text-[10px] tracking-widest uppercase px-3 py-1 rounded-full">
+                        Observación
+                      </Badge>
+                    )}
                   </div>
-                  <div className="text-right">
-                    <p className="text-[10px] uppercase tracking-widest text-zinc-500">% No Conf.</p>
-                    <p className="text-2xl font-black tabular-nums text-zinc-900">{record.porcentaje_marcacion_no_conforme}<span className="text-sm text-zinc-500">%</span></p>
+                  <div className="p-5 space-y-3">
+                    <div className="flex justify-between">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest text-zinc-500">Estado</p>
+                        <p className="text-sm font-semibold text-zinc-900">{record.marcacion}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] uppercase tracking-widest text-zinc-500">% No Conf.</p>
+                        <p className={`text-2xl font-black tabular-nums ${nonConform ? 'text-red-600' : 'text-zinc-900'}`}>{record.porcentaje_marcacion_no_conforme}<span className="text-sm text-zinc-500">%</span></p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-zinc-500">{record.observaciones_marcacion || '—'}</p>
                   </div>
                 </div>
-                <p className="text-xs text-zinc-500">{record.observaciones_marcacion || '—'}</p>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Presentación */}
-            <div className="bg-white border border-violet-500/20 rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-zinc-100 flex items-center gap-2">
-                <Package className="h-4 w-4 text-violet-400" />
-                <span className="text-sm font-bold text-violet-400">Presentación</span>
-              </div>
-              <div className="p-5 space-y-3">
-                <div className="flex justify-between">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest text-zinc-500">Estado</p>
-                    <p className="text-sm font-semibold text-zinc-900">{record.presentacion_no_conforme}</p>
+            {(() => {
+              const nonConform = isNonConform(record.porcentaje_presentacion_no_conforme);
+              const withObs = hasText(record.observaciones_presentacion);
+              return (
+                <div className={`bg-white border rounded-xl overflow-hidden ${nonConform ? 'border-red-500/30 bg-red-50/30' : withObs ? 'border-amber-400/40 bg-amber-50/40' : 'border-violet-500/20'}`}>
+                  <div className="px-5 py-3 border-b border-zinc-100 flex items-center gap-2">
+                    <Package className="h-4 w-4 text-violet-400" />
+                    <span className="text-sm font-bold text-violet-400">Presentación</span>
+                    {nonConform && (
+                      <Badge className="ml-auto bg-red-500/10 text-red-600 border border-red-500/20 text-[10px] tracking-widest uppercase px-3 py-1 rounded-full">
+                        No conforme
+                      </Badge>
+                    )}
+                    {!nonConform && withObs && (
+                      <Badge className="ml-auto bg-amber-400/10 text-amber-700 border border-amber-400/20 text-[10px] tracking-widest uppercase px-3 py-1 rounded-full">
+                        Observación
+                      </Badge>
+                    )}
                   </div>
-                  <div className="text-right">
-                    <p className="text-[10px] uppercase tracking-widest text-zinc-500">% No Conf.</p>
-                    <p className="text-2xl font-black tabular-nums text-zinc-900">{record.porcentaje_presentacion_no_conforme}<span className="text-sm text-zinc-500">%</span></p>
+                  <div className="p-5 space-y-3">
+                    <div className="flex justify-between">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest text-zinc-500">Estado</p>
+                        <p className="text-sm font-semibold text-zinc-900">{record.presentacion_no_conforme}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] uppercase tracking-widest text-zinc-500">% No Conf.</p>
+                        <p className={`text-2xl font-black tabular-nums ${nonConform ? 'text-red-600' : 'text-zinc-900'}`}>{record.porcentaje_presentacion_no_conforme}<span className="text-sm text-zinc-500">%</span></p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-zinc-500">{record.observaciones_presentacion || '—'}</p>
                   </div>
                 </div>
-                <p className="text-xs text-zinc-500">{record.observaciones_presentacion || '—'}</p>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Cajas */}
-            <div className="bg-white border border-amber-500/20 rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-zinc-100 flex items-center gap-2">
-                <Boxes className="h-4 w-4 text-amber-400" />
-                <span className="text-sm font-bold text-amber-400">Cajas</span>
-              </div>
-              <div className="p-5 space-y-3">
-                <div className="flex justify-between">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest text-zinc-500">Estado</p>
-                    <p className="text-sm font-semibold text-zinc-900">{record.cajas}</p>
+            {(() => {
+              const nonConform = isNonConform(record.porcentaje_cajas_no_conformes);
+              const withObs = hasText(record.observaciones_cajas);
+              return (
+                <div className={`bg-white border rounded-xl overflow-hidden ${nonConform ? 'border-red-500/30 bg-red-50/30' : withObs ? 'border-amber-400/40 bg-amber-50/40' : 'border-amber-500/20'}`}>
+                  <div className="px-5 py-3 border-b border-zinc-100 flex items-center gap-2">
+                    <Boxes className="h-4 w-4 text-amber-400" />
+                    <span className="text-sm font-bold text-amber-400">Cajas</span>
+                    {nonConform && (
+                      <Badge className="ml-auto bg-red-500/10 text-red-600 border border-red-500/20 text-[10px] tracking-widest uppercase px-3 py-1 rounded-full">
+                        No conforme
+                      </Badge>
+                    )}
+                    {!nonConform && withObs && (
+                      <Badge className="ml-auto bg-amber-400/10 text-amber-700 border border-amber-400/20 text-[10px] tracking-widest uppercase px-3 py-1 rounded-full">
+                        Observación
+                      </Badge>
+                    )}
                   </div>
-                  <div className="text-right">
-                    <p className="text-[10px] uppercase tracking-widest text-zinc-500">% No Conf.</p>
-                    <p className="text-2xl font-black tabular-nums text-zinc-900">{record.porcentaje_cajas_no_conformes}<span className="text-sm text-zinc-500">%</span></p>
+                  <div className="p-5 space-y-3">
+                    <div className="flex justify-between">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest text-zinc-500">Estado</p>
+                        <p className="text-sm font-semibold text-zinc-900">{record.cajas}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] uppercase tracking-widest text-zinc-500">% No Conf.</p>
+                        <p className={`text-2xl font-black tabular-nums ${nonConform ? 'text-red-600' : 'text-zinc-900'}`}>{record.porcentaje_cajas_no_conformes}<span className="text-sm text-zinc-500">%</span></p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-zinc-500">{record.observaciones_cajas || '—'}</p>
                   </div>
                 </div>
-                <p className="text-xs text-zinc-500">{record.observaciones_cajas || '—'}</p>
-              </div>
-            </div>
+              );
+            })()}
           </div>
         </section>
 
@@ -460,7 +546,7 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
             <h2 className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-semibold mb-3 flex items-center gap-2">
               <AlertCircle className="h-3.5 w-3.5" /> Acciones Correctivas
             </h2>
-            <div className="bg-white border border-zinc-200 rounded-xl p-5">
+            <div className={`bg-white border rounded-xl p-5 ${hasText(record.correccion) ? 'border-amber-400/40 bg-amber-50/40' : 'border-zinc-200'}`}>
               <p className="text-sm text-zinc-400 leading-relaxed">
                 {record.correccion || <span className="italic text-zinc-400">Sin acciones correctivas</span>}
               </p>
@@ -471,29 +557,13 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
             <h2 className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-semibold mb-3 flex items-center gap-2">
               <AlertCircle className="h-3.5 w-3.5" /> Obs. Unidades Faltantes
             </h2>
-            <div className="bg-white border border-zinc-200 rounded-xl p-5">
+            <div className={`bg-white border rounded-xl p-5 ${hasText(record.observaciones_faltantes) ? 'border-amber-400/40 bg-amber-50/40' : 'border-zinc-200'}`}>
               <p className="text-sm text-zinc-400 leading-relaxed">
                 {record.observaciones_faltantes || <span className="italic text-zinc-400">Sin observaciones sobre unidades faltantes</span>}
               </p>
             </div>
           </section>
         </div>
-
-        {/* ── Bottom CTA si pendiente ── */}
-        {isRecordPending(record) && (
-          <div className="flex items-center justify-between gap-4 bg-amber-400/5 border border-amber-400/20 rounded-xl px-6 py-4">
-            <p className="text-sm text-amber-700 font-medium">
-              Este registro tiene campos pendientes de completar.
-            </p>
-            <Button
-              onClick={() => setIsEditModalOpen(true)}
-              className="bg-amber-400 hover:bg-amber-300 text-zinc-950 font-semibold text-xs rounded-xl h-9 px-5 gap-1.5 shrink-0"
-            >
-              <Edit className="h-3.5 w-3.5" />
-              Completar Registro
-            </Button>
-          </div>
-        )}
 
       </div>
 

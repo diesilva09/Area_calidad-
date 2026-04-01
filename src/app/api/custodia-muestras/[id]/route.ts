@@ -1,19 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
-
-// Configuración de la base de datos
-const getPoolConfig = () => {
-  const config: any = {
-    host: '127.0.0.1', // Forzar IPv4 para evitar problemas de autenticación
-    port: 5432,
-    database: 'area_calidad',
-    user: 'postgres',
-    password: process.env.DB_PASSWORD || 'Coruna.24', // ← aquí va la clave real
-    ssl: { rejectUnauthorized: false },
-  };
-  
-  return config;
-};
+import { getMicroTable, getPoolConfig } from '../../micro-config';
 
 const pool = new Pool(getPoolConfig());
 
@@ -25,7 +12,7 @@ export async function GET(
     const { id } = await params;
 
     const query = `
-      SELECT 
+      SELECT
         id,
         codigo,
         tipo,
@@ -51,7 +38,7 @@ export async function GET(
         observaciones,
         created_at,
         updated_at
-      FROM custodia_muestras
+      FROM ${getMicroTable('custodia_muestras')}
       WHERE id = $1
     `;
 
@@ -108,8 +95,8 @@ export async function PUT(
     } = body;
 
     const query = `
-      UPDATE custodia_muestras
-      SET 
+      UPDATE ${getMicroTable('custodia_muestras')}
+      SET
         codigo = COALESCE($1, codigo),
         tipo = COALESCE($2, tipo),
         muestra_id = COALESCE($3, muestra_id),
@@ -189,7 +176,7 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    const query = 'DELETE FROM custodia_muestras WHERE id = $1 RETURNING *';
+    const query = `DELETE FROM ${getMicroTable('custodia_muestras')} WHERE id = $1 RETURNING *`;
 
     const result = await pool.query(query, [id]);
 

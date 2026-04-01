@@ -13,11 +13,14 @@ const getPoolConfig = () => {
 
   // NO agregar contraseña para evitar el error de SASL
   // Si PostgreSQL requiere contraseña, configurar en pg_hba.conf para 'trust'
-  
+
   return config;
 };
 
 const pool = new Pool(getPoolConfig());
+
+// Nombre del esquema para las tablas de microbiología
+const SCHEMA = 'lab_microbiologia';
 
 export async function GET(
   request: NextRequest,
@@ -27,7 +30,7 @@ export async function GET(
     const { id } = await params;
 
     const query = `
-      SELECT 
+      SELECT
         id,
         fecha,
         hora,
@@ -37,7 +40,7 @@ export async function GET(
         observaciones,
         created_at,
         updated_at
-      FROM condiciones_ambientales
+      FROM ${SCHEMA}.condiciones_ambientales
       WHERE id = $1
     `;
 
@@ -85,8 +88,8 @@ export async function PUT(
     }
 
     const query = `
-      UPDATE condiciones_ambientales 
-      SET 
+      UPDATE ${SCHEMA}.condiciones_ambientales
+      SET
         fecha = $1,
         hora = $2,
         temperatura = $3,

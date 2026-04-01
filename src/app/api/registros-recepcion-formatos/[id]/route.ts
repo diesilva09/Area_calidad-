@@ -1,19 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
-
-// Configuración de la base de datos
-const getPoolConfig = () => {
-  const config: any = {
-    host: '127.0.0.1', // Forzar IPv4 para evitar problemas de autenticación
-    port: 5432,
-    database: 'area_calidad',
-    user: 'postgres',
-    password: process.env.DB_PASSWORD || 'Coruna.24', // ← aquí va la clave real
-    ssl: { rejectUnauthorized: false },
-  };
-  
-  return config;
-};
+import { getMicroTable, getPoolConfig } from '../../micro-config';
 
 const pool = new Pool(getPoolConfig());
 
@@ -25,7 +12,7 @@ export async function GET(
     const { id } = await params;
 
     const query = `
-      SELECT 
+      SELECT
         id,
         fecha_entrega,
         fecha_registros,
@@ -36,7 +23,7 @@ export async function GET(
         observaciones,
         created_at,
         updated_at
-      FROM registros_recepcion_formatos
+      FROM ${getMicroTable('registros_recepcion_formatos')}
       WHERE id = $1
     `;
 
@@ -78,8 +65,8 @@ export async function PUT(
     } = body;
 
     const query = `
-      UPDATE registros_recepcion_formatos
-      SET 
+      UPDATE ${getMicroTable('registros_recepcion_formatos')}
+      SET
         fecha_entrega = COALESCE($1, fecha_entrega),
         fecha_registros = COALESCE($2, fecha_registros),
         codigo_version_registros = COALESCE($3, codigo_version_registros),
@@ -129,7 +116,7 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    const query = 'DELETE FROM registros_recepcion_formatos WHERE id = $1 RETURNING *';
+    const query = `DELETE FROM ${getMicroTable('registros_recepcion_formatos')} WHERE id = $1 RETURNING *`;
 
     const result = await pool.query(query, [id]);
 

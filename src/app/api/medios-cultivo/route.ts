@@ -1,19 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
-
-// Configuración de la base de datos
-const getPoolConfig = () => {
-  const config: any = {
-    host: '127.0.0.1', // Forzar IPv4 para evitar problemas de autenticación
-    port: 5432,
-    database: 'area_calidad',
-    user: 'postgres',
-    password: process.env.DB_PASSWORD || 'Coruna.24', // ← aquí va la clave real
-    ssl: { rejectUnauthorized: false },
-  };
-  
-  return config;
-};
+import { getMicroTable, getPoolConfig } from '../micro-config';
 
 const pool = new Pool(getPoolConfig());
 
@@ -25,7 +12,7 @@ export async function GET(request: NextRequest) {
     const fechaFin = searchParams.get('fecha_fin');
 
     let query = `
-      SELECT 
+      SELECT
         id,
         fecha,
         medio_cultivo,
@@ -40,7 +27,7 @@ export async function GET(request: NextRequest) {
         responsable,
         created_at,
         updated_at
-      FROM medios_cultivo
+      FROM ${getMicroTable('medios_cultivo')}
     `;
 
     const params: any[] = [];
@@ -103,7 +90,7 @@ export async function POST(request: NextRequest) {
     }
 
     const query = `
-      INSERT INTO medios_cultivo (
+      INSERT INTO ${getMicroTable('medios_cultivo')} (
         fecha,
         medio_cultivo,
         cantidad_ml,

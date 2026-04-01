@@ -381,12 +381,13 @@ export function AddEmbalajeRecordModal({
     if (etiquetaTimeout) {
       clearTimeout(etiquetaTimeout);
     }
-    
+
     // Nuevo timeout con debounce de 500ms
     const newTimeout = setTimeout(() => {
       calcularPorcentajeEtiquetaNoConforme();
+      calcularPorcentajeIncumplimiento();
     }, 500);
-    
+
     setEtiquetaTimeout(newTimeout);
   };
 
@@ -419,12 +420,13 @@ export function AddEmbalajeRecordModal({
     if (marcacionTimeout) {
       clearTimeout(marcacionTimeout);
     }
-    
+
     // Nuevo timeout con debounce de 500ms
     const newTimeout = setTimeout(() => {
       calcularPorcentajeMarcacionNoConforme();
+      calcularPorcentajeIncumplimiento();
     }, 500);
-    
+
     setMarcacionTimeout(newTimeout);
   };
 
@@ -457,12 +459,13 @@ export function AddEmbalajeRecordModal({
     if (presentacionTimeout) {
       clearTimeout(presentacionTimeout);
     }
-    
+
     // Nuevo timeout con debounce de 500ms
     const newTimeout = setTimeout(() => {
       calcularPorcentajePresentacionNoConforme();
+      calcularPorcentajeIncumplimiento();
     }, 500);
-    
+
     setPresentacionTimeout(newTimeout);
   };
 
@@ -495,26 +498,37 @@ export function AddEmbalajeRecordModal({
     if (cajasTimeout) {
       clearTimeout(cajasTimeout);
     }
-    
+
     // Nuevo timeout con debounce de 500ms
     const newTimeout = setTimeout(() => {
       calcularPorcentajeCajasNoConformes();
+      calcularPorcentajeIncumplimiento();
     }, 500);
-    
+
     setCajasTimeout(newTimeout);
   };
 
-  // Función para calcular el total de unidades no conformes (suma de todas las categorías)
+  // Función para calcular el total de unidades no conformes (suma directa de las 5 categorías)
+  // IMPORTANTE: Esta función es INDEPENDIENTE de los porcentajes y se llama directamente en los onChange
   const calcularUnidadesNoConformes = () => {
     const unidadesFaltantes = parseFloat(form.getValues('unidadesFaltantes') || '0');
     const etiquetaNoConforme = parseFloat(form.getValues('etiqueta') || '0');
     const marcacionNoConforme = parseFloat(form.getValues('marcacion') || '0');
     const presentacionNoConforme = parseFloat(form.getValues('presentacionNoConforme') || '0');
     const cajasNoConformes = parseFloat(form.getValues('cajas') || '0');
-    
+
+    // Suma directa de las 5 categorías - NO depende de totalUnidadesRevisadasReal
     const totalUnidadesNoConformes = unidadesFaltantes + etiquetaNoConforme + marcacionNoConforme + presentacionNoConforme + cajasNoConformes;
-    
+
     form.setValue('unidadesNoConformes', totalUnidadesNoConformes.toString());
+    console.log('🔢 Unidades No Conformes calculadas:', {
+      unidadesFaltantes,
+      etiquetaNoConforme,
+      marcacionNoConforme,
+      presentacionNoConforme,
+      cajasNoConformes,
+      total: totalUnidadesNoConformes
+    });
   };
 
   // Función para calcular el porcentaje de incumplimiento (promedio de todos los porcentajes)
@@ -544,6 +558,11 @@ export function AddEmbalajeRecordModal({
 
   const handleUpdateAsPending = async () => {
     if (!recordToEdit) return;
+
+    if (isSubmitting) {
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -553,6 +572,7 @@ export function AddEmbalajeRecordModal({
 
       await embalajeRecordsService.update(recordToEdit.id, {
         ...payload,
+        status: 'pending',
         updated_by: 'user',
       });
 
@@ -618,10 +638,9 @@ export function AddEmbalajeRecordModal({
   // Si estamos en modo edición y tenemos un registro, precargar los datos
   React.useEffect(() => {
     if (editMode && recordToEdit) {
-      const fechaFormateada = (() => {
-        const raw = recordToEdit.fecha as unknown;
+      const toYmd = (raw: unknown): string => {
+        if (!raw) return '';
         if (typeof raw === 'string') {
-          // Evitar desfases por zona horaria: tomar solo la parte YYYY-MM-DD
           const dateOnly = raw.slice(0, 10);
           if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return dateOnly;
           const parsed = new Date(raw);
@@ -631,7 +650,12 @@ export function AddEmbalajeRecordModal({
           return raw.toISOString().slice(0, 10);
         }
         return '';
-      })();
+      };
+
+      const fechaFormateada = toYmd(recordToEdit.fecha as unknown);
+      const fechaLimpiezaFormateada = toYmd((recordToEdit as any).fecha_limpieza as unknown);
+      const fechaInicioCronogramaFormateada = toYmd((recordToEdit as any).fecha_inicio_cronograma as unknown);
+      const fechaFinCronogramaFormateada = toYmd((recordToEdit as any).fecha_fin_cronograma as unknown);
 
       const mappedData = {
         fecha: fechaFormateada,
@@ -666,6 +690,14 @@ export function AddEmbalajeRecordModal({
         unidadesNoConformes: recordToEdit.unidades_no_conformes,
         porcentajeIncumplimiento: recordToEdit.porcentaje_incumplimiento,
         correccion: recordToEdit.correccion || '',
+        limpiezaArea: (recordToEdit as any).limpieza_area || '',
+        responsableLimpieza: (recordToEdit as any).responsable_limpieza || '',
+        fechaLimpieza: fechaLimpiezaFormateada,
+        observacionesLimpieza: (recordToEdit as any).observaciones_limpieza || '',
+        cronogramaImplementacion: (recordToEdit as any).cronograma_implementacion || '',
+        fechaInicioCronograma: fechaInicioCronogramaFormateada,
+        fechaFinCronograma: fechaFinCronogramaFormateada,
+        responsableCronograma: (recordToEdit as any).responsable_cronograma || '',
       };
       form.reset(mappedData);
 
@@ -742,55 +774,36 @@ export function AddEmbalajeRecordModal({
   };
 
   React.useEffect(() => {
+    if (!isOpen) return;
+    if (editMode) return;
+
     form.setValue('producto', productId);
     
     // Autocompletar presentación con el peso neto del producto
     const autocompletePresentacion = async () => {
       try {
-        // Usar la tabla producto_pesos_config con el método correcto
-        // Asumimos envase tipo "caja" por defecto para embalaje
-        const envaseTipo = "caja";
-        const pesosConfig = await ProductoPesosService.obtenerPesosPorProductoYEnvase(productId, envaseTipo);
-        
-        if (pesosConfig && pesosConfig.peso_neto_declarado) {
-          const pesoNeto = pesosConfig.peso_neto_declarado.toString();
-          form.setValue('presentacion', pesoNeto);
-          
-          // Solo mostrar toast si el campo estaba vacío
-          const currentPresentacion = form.getValues('presentacion');
-          if (!currentPresentacion || currentPresentacion === '') {
-            toast({
-              title: "Presentación autocompletada",
-              description: `Se ha autocompletado la presentación con el peso neto: ${pesoNeto}g`,
-              variant: "default",
-            });
-          }
-        } else {
-          // Intentar con otros tipos de envase comunes
-          const tiposEnvase = ["lata", "frasco", "bolsa", "botella"];
-          
-          for (const envase of tiposEnvase) {
-            try {
-              const pesosConfigFallback = await ProductoPesosService.obtenerPesosPorProductoYEnvase(productId, envase);
-              if (pesosConfigFallback && pesosConfigFallback.peso_neto_declarado) {
-                const pesoNeto = pesosConfigFallback.peso_neto_declarado.toString();
-                form.setValue('presentacion', pesoNeto);
-                
-                const currentPresentacion = form.getValues('presentacion');
-                if (!currentPresentacion || currentPresentacion === '') {
-                  toast({
-                    title: "Presentación autocompletada",
-                    description: `Se ha autocompletado la presentación con el peso neto: ${pesoNeto}g (envase: ${envase})`,
-                    variant: "default",
-                  });
-                }
-                
-                return;
-              }
-            } catch (error) {
-            }
-          }
-        }
+        const presentacionAntes = String(form.getValues('presentacion') || '').trim();
+        if (presentacionAntes) return;
+
+        const pesosConfig = await ProductoPesosService.buscarPesoExhaustivo(productId, categoryId);
+
+        const pesoNetoDeclarado = pesosConfig?.peso_neto_declarado;
+        const hasPesoNeto =
+          pesoNetoDeclarado !== undefined &&
+          pesoNetoDeclarado !== null &&
+          String(pesoNetoDeclarado).trim() !== '' &&
+          !Number.isNaN(Number(pesoNetoDeclarado));
+
+        if (!hasPesoNeto) return;
+
+        const pesoNeto = String(pesoNetoDeclarado);
+        form.setValue('presentacion', pesoNeto);
+
+        toast({
+          title: 'Presentación autocompletada',
+          description: `Se ha autocompletado la presentación con el peso neto: ${pesoNeto}g`,
+          variant: 'default',
+        });
       } catch (error) {
         toast({
           title: "Error al autocompletar",
@@ -807,7 +820,7 @@ export function AddEmbalajeRecordModal({
     if (!prefilledData?.mesCorte) {
       form.setValue('mesCorte', getMesActual());
     }
-  }, [isOpen, editMode, prefilledData?.mesCorte, prefilledData?.presentacion, form, productId, productName]);
+  }, [isOpen, editMode, prefilledData?.mesCorte, form, productId, productName, categoryId, toast]);
 
   // Cleanup del timeout cuando el modal se cierra
   React.useEffect(() => {
@@ -921,13 +934,22 @@ export function AddEmbalajeRecordModal({
   };
 
   const handleSubmitAsPending = () => {
+    if (isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
     try {
       const currentValues = form.getValues();
       const pendingValues = withPendingDefaults(currentValues);
       const payload = toSnakeCasePayload(pendingValues);
 
       if (onSuccessfulSubmit) {
-        onSuccessfulSubmit(payload);
+        onSuccessfulSubmit({
+          ...payload,
+          status: 'pending',
+        });
       }
 
       toast({
@@ -943,10 +965,16 @@ export function AddEmbalajeRecordModal({
         description: 'No se pudo guardar el registro como pendiente.',
         variant: 'destructive',
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   async function onSubmit(values: z.infer<typeof embalajeFormSchema>) {
+    if (isSubmitting) {
+      return;
+    }
+
     setIsSubmitting(true);
     
     try {
@@ -957,6 +985,7 @@ export function AddEmbalajeRecordModal({
         // Agregar campos adicionales para edición
         const updateData = {
           ...transformedValues,
+          status: 'completed',
           updated_by: 'user',
         };
         
@@ -971,7 +1000,10 @@ export function AddEmbalajeRecordModal({
       } else {
         // Modo creación: nuevo registro
         if (onSuccessfulSubmit) {
-          onSuccessfulSubmit(transformedValues);
+          onSuccessfulSubmit({
+            ...transformedValues,
+            status: 'completed',
+          });
         }
       }
       
@@ -1296,11 +1328,14 @@ export function AddEmbalajeRecordModal({
                             <FormItem>
                               <FormLabel># Unidades Faltantes</FormLabel>
                               <FormControl>
-                                <Input 
-                                  {...field} 
+                                <Input
+                                  {...field}
                                   type="number"
                                   onChange={(e) => {
                                     field.onChange(e);
+                                    // Calcular unidades no conformes INMEDIATAMENTE (sin debounce)
+                                    calcularUnidadesNoConformes();
+                                    // Calcular porcentajes con debounce
                                     handleCalculoPorcentaje();
                                   }}
                                 />
@@ -1366,12 +1401,15 @@ export function AddEmbalajeRecordModal({
                             <FormItem>
                               <FormLabel>Etiqueta</FormLabel>
                               <FormControl>
-                                <Input 
-                                  {...field} 
+                                <Input
+                                  {...field}
                                   type="number"
                                   onChange={(e) => {
                                     field.onChange(e);
-                                    handleCalculoPorcentaje();
+                                    // Calcular unidades no conformes INMEDIATAMENTE (sin debounce)
+                                    calcularUnidadesNoConformes();
+                                    // Calcular porcentajes con debounce
+                                    handleCalculoPorcentajeEtiqueta();
                                   }}
                                 />
                               </FormControl>
@@ -1430,12 +1468,15 @@ export function AddEmbalajeRecordModal({
                             <FormItem>
                               <FormLabel>Marcación</FormLabel>
                               <FormControl>
-                                <Input 
-                                  {...field} 
+                                <Input
+                                  {...field}
                                   type="number"
                                   onChange={(e) => {
                                     field.onChange(e);
-                                    handleCalculoPorcentaje();
+                                    // Calcular unidades no conformes INMEDIATAMENTE (sin debounce)
+                                    calcularUnidadesNoConformes();
+                                    // Calcular porcentajes con debounce
+                                    handleCalculoPorcentajeMarcacion();
                                   }}
                                 />
                               </FormControl>
@@ -1494,12 +1535,15 @@ export function AddEmbalajeRecordModal({
                             <FormItem>
                               <FormLabel>Presentación producto</FormLabel>
                               <FormControl>
-                                <Input 
-                                  {...field} 
+                                <Input
+                                  {...field}
                                   type="number"
                                   onChange={(e) => {
                                     field.onChange(e);
-                                    handleCalculoPorcentaje();
+                                    // Calcular unidades no conformes INMEDIATAMENTE (sin debounce)
+                                    calcularUnidadesNoConformes();
+                                    // Calcular porcentajes con debounce
+                                    handleCalculoPorcentajePresentacion();
                                   }}
                                 />
                               </FormControl>
@@ -1558,12 +1602,15 @@ export function AddEmbalajeRecordModal({
                             <FormItem>
                               <FormLabel>Cajas (sticker, particiones, caja)</FormLabel>
                               <FormControl>
-                                <Input 
-                                  {...field} 
+                                <Input
+                                  {...field}
                                   type="number"
                                   onChange={(e) => {
                                     field.onChange(e);
-                                    handleCalculoPorcentaje();
+                                    // Calcular unidades no conformes INMEDIATAMENTE (sin debounce)
+                                    calcularUnidadesNoConformes();
+                                    // Calcular porcentajes con debounce
+                                    handleCalculoPorcentajeCajas();
                                   }}
                                 />
                               </FormControl>
@@ -1856,7 +1903,7 @@ export function AddEmbalajeRecordModal({
               >
                 {isSubmitting 
                   ? (editMode ? 'Actualizando...' : 'Guardando...')
-                  : (editMode ? '💾 Guardar Cambios' : 'Guardar Registro')
+                  : (editMode ? ' Guardar Cambios' : 'Guardar Registro')
                 }
               </Button>
             </DialogFooter>

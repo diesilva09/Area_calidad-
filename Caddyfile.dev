@@ -1,0 +1,4 @@
+https://localhost:9443 {
+  tls ./localhost+2.pem ./localhost+2-key.pem
+  reverse_proxy 127.0.0.1:9002
+}

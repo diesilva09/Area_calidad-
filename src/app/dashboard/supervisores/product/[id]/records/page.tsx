@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { use } from 'react';
 import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Plus, Calendar, Package, Search, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Plus, Calendar, Package, Search, BarChart3, FileDown } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
@@ -95,13 +97,17 @@ interface ProductionRecord {
   created_by?: string;
 }
 
-export default function ProductProductionRecordsPage({ params }: { params: { id: string } }) {
+export default function ProductProductionRecordsPage({ params }: { params: Promise<{ id: string }> }) {
+  // En Next.js 16, params es una Promise que debe ser desempaquetada con use()
+  const resolvedParams = use(params);
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { id } = useParams();
   const searchParams = useSearchParams();
   const { toast } = useToast();
   const { saveScrollPosition } = useScrollRestoration();
+
+  const isDev = process.env.NODE_ENV !== 'production';
 
   const formatDate = (raw: unknown) => {
     const s = String(raw ?? '').trim();
@@ -112,8 +118,6 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
     return d.toLocaleDateString('es-ES');
   };
   
-  console.log('📊 Parámetros recibidos:', { id, params });
-
   const [product, setProduct] = useState<Product | null>(null);
   const [category, setCategory] = useState<ProductCategory | null>(null);
   const [records, setRecords] = useState<ProductionRecord[]>([]);
@@ -125,6 +129,7 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
   const [highlightedRecordId, setHighlightedRecordId] = useState<string | null>(null);
   const [equiposNombres, setEquiposNombres] = useState<Record<string, string>>({});
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'completed'>('all');
+  const autoCompleteOpenedRef = useRef(false);
 
   // Resaltar y hacer scroll a un registro cuando se regresa desde Detalles
   useEffect(() => {
@@ -145,8 +150,6 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
   }, [searchParams]);
 
   const cargarNombresEquipos = useCallback(async (recordsToProcess: ProductionRecord[]) => {
-    console.log('🔍 Cargando nombres de equipos para', recordsToProcess.length, 'registros');
-    console.log('📋 Registros a procesar:', recordsToProcess.map(r => ({ id: r.id, equipo: r.equipo })));
     const nombresMap: Record<string, string> = {};
 
     // Mapeo directo como fallback
@@ -171,48 +174,37 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
     for (const record of recordsToProcess) {
       if (record.equipo && !nombresMap[record.equipo]) {
         try {
-          console.log(`🔍 Buscando equipo con ID: ${record.equipo}`);
-
           // Primero intentar con el servicio
           const equipo = await AreasEquiposService.getEquipoPorId(record.equipo);
-          console.log(`📦 Respuesta del servicio:`, equipo);
 
           if (equipo && equipo.nombre) {
             nombresMap[record.equipo] = equipo.nombre;
-            console.log(`✅ Equipo encontrado vía servicio: ${record.equipo} -> ${equipo.nombre}`);
           } else {
             // Fallback al mapeo directo
             const nombreDirecto = equipoMapeoDirecto[record.equipo];
             if (nombreDirecto) {
               nombresMap[record.equipo] = nombreDirecto;
-              console.log(`🔄 Equipo encontrado vía mapeo directo: ${record.equipo} -> ${nombreDirecto}`);
             } else {
               nombresMap[record.equipo] = `Equipo ${record.equipo}`;
-              console.log(`⚠️ Equipo no encontrado, usando fallback: ${record.equipo} -> Equipo ${record.equipo}`);
             }
           }
         } catch (error) {
-          console.error(`❌ Error al obtener nombre del equipo ${record.equipo}:`, error);
-          // Fallback al mapeo directo
+          // Si falla el servicio, usar el mapeo directo
           const nombreDirecto = equipoMapeoDirecto[record.equipo];
           if (nombreDirecto) {
             nombresMap[record.equipo] = nombreDirecto;
-            console.log(`🔄 Equipo encontrado vía mapeo directo (error): ${record.equipo} -> ${nombreDirecto}`);
           } else {
             nombresMap[record.equipo] = `Equipo ${record.equipo}`;
-            console.log(`⚠️ Equipo no encontrado, usando fallback (error): ${record.equipo} -> Equipo ${record.equipo}`);
           }
         }
       }
     }
 
-    console.log('📊 Mapa final de nombres de equipos:', nombresMap);
     setEquiposNombres(nombresMap);
   }, []);
 
   const reloadRecords = useCallback(async (foundProduct: Product) => {
     if (!foundProduct) return;
-    console.log('🔄 Recargando registros de producción desde API...');
     const { productionRecordsService } = await import('@/lib/supervisores-data');
     const recordsData = await productionRecordsService.getByProductId(foundProduct.id);
     const productRecords = recordsData.filter((record: ProductionRecord) => {
@@ -242,26 +234,32 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
   useEffect(() => {
     const loadData = async () => {
       try {
-        const productId = params.id as string;
-        
+        const productId = resolvedParams.id as string;
+        console.log('🔍 [Product Records Page] Cargando producto con ID:', productId);
+
         // Cargar todas las categorías para encontrar el producto
         const { getProductCategories } = await import('@/lib/supervisores-data');
         const categories = await getProductCategories();
-        
+        console.log('📂 [Product Records Page] Categorías cargadas:', categories.length, categories.map(c => ({ id: c.id, name: c.name, productsCount: c.products.length })));
+
         // Buscar el producto en todas las categorías
         let foundProduct: Product | null = null;
         let foundCategory: ProductCategory | null = null;
-        
+
         // Si el ID contiene guión bajo, es un ID compuesto (nuevo formato)
         if (productId.includes('_')) {
           const [categoryId, productCode] = productId.split('_', 2);
+          console.log('🔍 [Product Records Page] ID compuesto detectado - categoryId:', categoryId, 'productCode:', productCode);
           const targetCategory = categories.find(cat => cat.id === categoryId);
+          console.log('🔍 [Product Records Page] Categoría encontrada:', targetCategory?.id, targetCategory?.name);
           if (targetCategory) {
             foundProduct = targetCategory.products.find((p: Product) => p.id === productCode) || null;
+            console.log('🔍 [Product Records Page] Producto encontrado:', foundProduct?.id, foundProduct?.name);
             foundCategory = targetCategory;
           }
         } else {
           // Búsqueda tradicional (compatibilidad hacia atrás)
+          console.log('🔍 [Product Records Page] Búsqueda tradicional...');
           for (const cat of categories) {
             const productInCategory = cat.products.find((p: Product) => p.id === productId);
             if (productInCategory) {
@@ -271,24 +269,49 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
             }
           }
         }
-        
+
+        console.log('📦 [Product Records Page] Resultado final - foundProduct:', foundProduct, 'foundCategory:', foundCategory);
+
         if (foundProduct && foundCategory) {
           setProduct(foundProduct);
           setCategory(foundCategory);
 
           await reloadRecords(foundProduct);
         } else {
-          console.error('Producto no encontrado');
+          console.error('❌ [Product Records Page] Producto NO encontrado. ID:', productId);
+          console.error('❌ [Product Records Page] categories:', categories);
         }
       } catch (error) {
-        console.error('Error al cargar datos:', error);
+        console.error('❌ [Product Records Page] Error cargando datos:', error);
       } finally {
         setLoading(false);
       }
     };
 
     loadData();
-  }, [params.id, reloadRecords]);
+  }, [resolvedParams.id, reloadRecords]);
+
+  useEffect(() => {
+    const targetId = searchParams?.get('completeRecord');
+    if (!targetId) return;
+    if (autoCompleteOpenedRef.current) return;
+    if (!product) return;
+
+    autoCompleteOpenedRef.current = true;
+
+    (async () => {
+      try {
+        const { productionRecordsService } = await import('@/lib/supervisores-data');
+        const completeRecord = await productionRecordsService.getById(String(targetId));
+        if (!completeRecord) return;
+
+        setIsModalOpen(true);
+        setEditingRecord(completeRecord as any);
+      } catch (e) {
+        // no-op
+      }
+    })();
+  }, [searchParams, product]);
 
   const filteredRecords = useMemo(() => {
     return records.filter(record => {
@@ -310,6 +333,17 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
     });
   }, [records, statusFilter, searchTerm]);
 
+  const exportRecord = (record: any) => {
+    const data: Record<string, any> = {};
+    for (const [key, value] of Object.entries(record)) {
+      data[key] = value;
+    }
+    const ws = XLSX.utils.json_to_sheet([data]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Registro');
+    XLSX.writeFile(wb, `RE-CAL-084_lote-`+String(record?.lote ?? 'sin-lote').replace(/[^a-zA-Z0-9_-]/g, '_')+`.xlsx`);
+  };
+
   const handleRecordAdded = async (savedRecord: any) => {
     // Si newRecord está vacío, es solo para limpiar el estado
     if (!savedRecord || Object.keys(savedRecord).length === 0) {
@@ -317,20 +351,15 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
       return;
     }
 
-    console.log('🔄 handleRecordAdd llamado con:', savedRecord);
-    console.log('🔄 Status del registro guardado:', savedRecord?.status);
-
     try {
       if (product) {
         await reloadRecords(product);
       }
     } catch (error) {
-      console.error('Error recargando registros después de guardar:', error);
     }
     
     // Si era un registro pendiente que se completó, mostrar mensaje especial
     if (editingRecord && editingRecord.status === 'pending' && savedRecord?.status === 'completed') {
-      console.log('✅ Registro pendiente completado exitosamente');
       toast({
         title: '✅ Registro Pendiente Completado',
         description: `El registro ha sido marcado como completado y ya no aparecerá en pendientes.`,
@@ -341,22 +370,16 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
     setEditingRecord(null); // Limpiar el registro en edición
     
     // Notificar a otras páginas que se crearon/actualizaron registros (removido para evitar bucles)
-    console.log('🔄 Actualización completada, sin notificación localStorage');
   };
 
   // Manejar completado de registro pendiente
   const handleCompletePendingRecord = async (record: ProductionRecord) => {
-    console.log('🔄 Completando registro pendiente:', record);
-    
     try {
       // Cargar el registro completo desde la base de datos usando el ID
-      console.log('📂 Cargando registro completo desde la base de datos, ID:', record.id);
       const { productionRecordsService } = await import('@/lib/supervisores-data');
       const completeRecord = await productionRecordsService.getById(record.id);
       
       if (completeRecord) {
-        console.log('✅ Registro completo cargado desde la base de datos:', completeRecord);
-        
         // Abrir el modal de producción con los datos completos del registro pendiente
         setIsModalOpen(true);
         setEditingRecord(completeRecord); // Cargar el registro COMPLETO para editar/completar
@@ -367,7 +390,6 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
           variant: "default",
         });
       } else {
-        console.error('❌ No se encontró el registro en la base de datos');
         toast({
           title: "Error",
           description: "No se pudo cargar el registro desde la base de datos",
@@ -375,7 +397,6 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
         });
       }
     } catch (error) {
-      console.error('❌ Error al cargar registro pendiente desde la base de datos:', error);
       toast({
         title: "Error",
         description: "No se pudo cargar el registro pendiente. Intente nuevamente.",
@@ -386,8 +407,6 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
 
   // Manejar edición de registro
   const handleEditRecord = async (record: ProductionRecord) => {
-    console.log('✏️ Editando registro:', record);
-
     if (record.status === 'completed') {
       toast({
         title: 'Edición no permitida',
@@ -399,13 +418,10 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
     
     try {
       // Cargar el registro completo desde la base de datos usando el ID
-      console.log('📂 Cargando registro completo para editar, ID:', record.id);
       const { productionRecordsService } = await import('@/lib/supervisores-data');
       const completeRecord = await productionRecordsService.getById(record.id);
       
       if (completeRecord) {
-        console.log('✅ Registro completo cargado para editar:', completeRecord);
-        
         // Abrir el modal de producción con los datos completos del registro para editar
         setIsModalOpen(true);
         setEditingRecord(completeRecord); // Cargar el registro COMPLETO para editar
@@ -416,7 +432,9 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
           variant: "default",
         });
       } else {
-        console.error('❌ No se encontró el registro en la base de datos');
+        if (isDev) {
+          console.error('❌ No se encontró el registro en la base de datos');
+        }
         toast({
           title: "Error",
           description: "No se pudo cargar el registro desde la base de datos",
@@ -424,7 +442,9 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
         });
       }
     } catch (error) {
-      console.error('❌ Error al cargar registro para editar:', error);
+      if (isDev) {
+        console.error('❌ Error al cargar registro para editar:', error);
+      }
       toast({
         title: "Error",
         description: "No se pudo cargar el registro para editar. Intente nuevamente.",
@@ -453,7 +473,6 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
   };
 
   if (loading) {
-    console.log('⏳ Página en estado de carga - Mostrando spinner');
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
@@ -465,14 +484,13 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
   }
 
   if (!product || !category) {
-    console.log('❌ Producto o categoría no encontrados:', { product, category });
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <Card className="w-full max-w-lg text-center">
           <CardHeader>
             <CardTitle className="text-red-600">Producto no encontrado</CardTitle>
             <CardDescription>
-              El producto con ID <strong>"{params.id}"</strong> no existe o ha sido eliminado.
+              El producto con ID <strong>"{resolvedParams.id}"</strong> no existe o ha sido eliminado.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -485,12 +503,6 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
     );
   }
 
-  console.log('✅ Página renderizada correctamente:', { 
-    productName: product.name, 
-    categoryName: category.name, 
-    recordsCount: records.length 
-  });
-
   return (
     <div className="min-h-screen bg-white p-3 sm:p-4 md:p-6 lg:p-8">
       <div className="max-w-6xl mx-auto">
@@ -501,7 +513,6 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
               if (category && product) {
                 const productIdStr = Array.isArray(id) ? id[0] : id;
                 const uniqueId = `${category.id}_${product.id}`;
-                console.log('🔙 Guardando producto para destacar:', uniqueId);
                 saveScrollPosition(uniqueId);
               }
             }}
@@ -568,8 +579,6 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
               </Button>
               <Button 
                 onClick={() => {
-                  console.log('🖱️ Botón "Agregar Registro" clickeado');
-                  console.log('📊 Estado actual:', { isModalOpen, productName: product.name });
                   setIsModalOpen(true);
                 }}
                 className="bg-green-600 hover:bg-green-700 text-white w-full sm:w-auto"
@@ -630,7 +639,15 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
             </Card>
           ) : (
             filteredRecords.map((record) => (
-              <div key={record.id} className="transition-transform hover:scale-[1.02]">
+              <div
+                key={record.id}
+                className="transition-transform hover:scale-[1.02]"
+                onClick={() => {
+                  if (record.status === 'pending') {
+                    router.push(`/dashboard/supervisores/production-record/${record.id}?returnTo=${encodeURIComponent(`/dashboard/supervisores/product/${resolvedParams.id}/records?highlightRecord=${record.id}`)}`);
+                  }
+                }}
+              >
                 <Card
                   className={
                     `bg-white border-gray-200 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer ` +
@@ -649,24 +666,24 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
                   )}
 
                   <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <CardTitle className={`text-lg ${highlightedRecordId === record.id ? 'text-blue-700 font-bold' : ''}`}>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <CardTitle className={`text-base sm:text-lg ${highlightedRecordId === record.id ? 'text-blue-700 font-bold' : ''}`}>
                           Lote: {record.lote}
                         </CardTitle>
-                        <CardDescription>
+                        <CardDescription className="text-xs sm:text-sm">
                           Fecha de producción: {formatDate(record.fechaproduccion)}
                         </CardDescription>
                       </div>
-                      <div className="flex gap-2">
-                        <Badge variant="outline">{record.tamano_lote} unidades</Badge>
-                        <Badge variant="secondary">{record.area}</Badge>
+                      <div className="flex flex-wrap gap-1 sm:gap-2 shrink-0">
+                        <Badge variant="outline" className="text-xs">{record.tamano_lote} u</Badge>
+                        <Badge variant="secondary" className="text-xs">{record.area}</Badge>
                         <Badge
                           variant={record.status === 'pending' ? 'secondary' : 'default'}
                           className={
-                            record.status === 'pending'
+                            `text-xs ` + (record.status === 'pending'
                               ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-100 border-yellow-300'
-                              : 'bg-green-100 text-green-800 hover:bg-green-100 border-green-300'
+                              : 'bg-green-100 text-green-800 hover:bg-green-100 border-green-300')
                           }
                         >
                           {record.status === 'pending' ? 'PENDIENTE' : 'COMPLETADO'}
@@ -688,7 +705,6 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
                             const equipoId = record.equipo;
                             const equipoNombre = equiposNombres[equipoId];
                             const valorMostrado = equipoNombre || (equipoId ? `Equipo ${equipoId}` : 'No especificado');
-                            console.log(`🔍 Mostrando equipo - ID: ${equipoId}, Nombre: ${equipoNombre}, Valor: ${valorMostrado}`);
                             return valorMostrado;
                           })()}
                         </p>
@@ -700,11 +716,14 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
                     </div>
 
                     <div className="flex gap-2 mt-3 pt-3 border-t">
+                      <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); exportRecord(record); }} className="text-gray-600 hover:text-gray-900">
+                        <FileDown className="h-3.5 w-3.5 mr-1" />Exportar
+                      </Button>
                       {record.status === 'pending' ? (
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleCompletePendingRecord(record)}
+                          onClick={(e) => { e.stopPropagation(); handleCompletePendingRecord(record); }}
                           className="text-blue-600 hover:text-blue-800 hover:bg-blue-50"
                         >
                           Completar Registro
@@ -718,7 +737,7 @@ export default function ProductProductionRecordsPage({ params }: { params: { id:
                             className="text-green-600 hover:text-green-800 hover:bg-green-50"
                           >
                             <Link
-                              href={`/dashboard/supervisores/production-record/${record.id}?returnTo=${encodeURIComponent(`/dashboard/supervisores/product/${params.id}/records?highlightRecord=${record.id}`)}`}
+                              href={`/dashboard/supervisores/production-record/${record.id}?returnTo=${encodeURIComponent(`/dashboard/supervisores/product/${resolvedParams.id}/records?highlightRecord=${record.id}`)}`}
                             >
                               Ver Detalles
                             </Link>

@@ -8,6 +8,7 @@ export interface EmbalajeRecord {
   created_by?: string;
   updated_by?: string;
   is_active: boolean;
+  status?: 'pending' | 'completed';
   fecha: string;
   mescorte: string;
   producto: string;

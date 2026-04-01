@@ -24,19 +24,30 @@ export class TemperaturaEnvasadoService {
   // Verificar si un producto tiene temperaturas configuradas
   static async productoConfigurado(productoId: string): Promise<boolean> {
     try {
-      console.log('🔍 Verificando producto:', productoId);
+      const isDev = process.env.NODE_ENV !== 'production';
+      if (isDev) {
+        console.log('🔍 Verificando producto:', productoId);
+      }
       const response = await fetch(`/api/temperatura-envasado?action=existe&productoId=${productoId}`);
-      console.log('🔍 Response status:', response.status);
+      if (isDev) {
+        console.log('🔍 Response status:', response.status);
+      }
       
       if (!response.ok) {
-        console.log('🔍 Response no ok:', response.statusText);
+        if (isDev) {
+          console.log('🔍 Response no ok:', response.statusText);
+        }
         return false;
       }
       const data = await response.json();
-      console.log('🔍 Response data:', data);
+      if (isDev) {
+        console.log('🔍 Response data:', data);
+      }
       return data.existe;
     } catch (error) {
-      console.error('Error al verificar configuración de temperaturas:', error);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('Error al verificar configuración de temperaturas:', error);
+      }
       return false;
     }
   }
@@ -47,16 +58,25 @@ export class TemperaturaEnvasadoService {
     max: number;
   } | null> {
     try {
-      console.log('🔍 Buscando rango:', productoId, envaseTipo);
+      const isDev = process.env.NODE_ENV !== 'production';
+      if (isDev) {
+        console.log('🔍 Buscando rango:', productoId, envaseTipo);
+      }
       const response = await fetch(`/api/temperatura-envasado?action=rango&productoId=${productoId}&envaseTipo=${envaseTipo}`);
-      console.log('🔍 Response status:', response.status);
+      if (isDev) {
+        console.log('🔍 Response status:', response.status);
+      }
       
       if (!response.ok) {
-        console.log('🔍 Response no ok:', response.statusText);
+        if (isDev) {
+          console.log('🔍 Response no ok:', response.statusText);
+        }
         return null;
       }
       const data = await response.json();
-      console.log('🔍 Response data:', data);
+      if (isDev) {
+        console.log('🔍 Response data:', data);
+      }
       
       const hasMin = data && data.temperatura_min !== undefined && data.temperatura_min !== null && String(data.temperatura_min).trim() !== '';
       const hasMax = data && data.temperatura_max !== undefined && data.temperatura_max !== null && String(data.temperatura_max).trim() !== '';
@@ -69,7 +89,9 @@ export class TemperaturaEnvasadoService {
       }
       return null;
     } catch (error) {
-      console.error('Error al obtener rango de temperatura:', error);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('Error al obtener rango de temperatura:', error);
+      }
       return null;
     }
   }
@@ -187,13 +209,13 @@ export class TemperaturaEnvasadoService {
   static async obtenerEnvasesProducto(productoId: string): Promise<string[]> {
     try {
       const response = await fetch(`/api/temperatura-envasado?action=envases&productoId=${productoId}`);
-      if (!response.ok) {
-        return [];
-      }
+      if (!response.ok) return [];
       const data = await response.json();
       return data.envases || [];
     } catch (error) {
-      console.error('Error al obtener envases del producto:', error);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('Error al obtener envases del producto:', error);
+      }
       return [];
     }
   }

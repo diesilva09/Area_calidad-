@@ -474,63 +474,63 @@ export const productsAPI = {
       throw error;
     }
   },
+
 };
 
 // Función combinada para obtener categorías con sus productos
 export async function getCategoriesWithProducts(): Promise<ProductCategory[]> {
-  try {
-    console.log('Obteniendo categorías...');
-    const categories = await categoriesAPI.getAll();
-    console.log('Categorías obtenidas:', categories);
-    
-    console.log('Obteniendo productos para cada categoría...');
-    const categoriesWithProducts = await Promise.all(
-      categories.map(async (category: any) => {
-        try {
-          console.log(`Obteniendo productos para categoría ${category.id} (${category.name})...`);
-          const products = await productsAPI.getByCategory(category.id);
-          console.log(`Productos obtenidos para ${category.id}:`, products.length);
-          
-          // Asegurar que cada producto tenga el category_id correcto
-          const validatedProducts = products.map((product: any) => {
-            const validatedProduct = {
-              ...product,
-              category_id: product.category_id || category.id, // Asegurar correlación
-            };
-            console.log(`Producto validado: ${validatedProduct.id} -> ${validatedProduct.name} (categoría: ${validatedProduct.category_id})`);
-            return validatedProduct;
-          });
-          
-          const categoryWithProducts = {
-            id: category.id,
-            name: category.name,
-            type: category.type || 'produccion',
-            products: validatedProducts
+  console.log('📂 [getCategoriesWithProducts] INICIANDO - Obteniendo categorías...');
+  const categories = await categoriesAPI.getAll();
+  console.log('📂 [getCategoriesWithProducts] Categorías obtenidas:', categories.length, categories);
+
+  console.log('📦 [getCategoriesWithProducts] Obteniendo productos para cada categoría...');
+  const categoriesWithProducts = await Promise.all(
+    categories.map(async (category: any) => {
+      try {
+        console.log(`📦 [getCategoriesWithProducts] Obteniendo productos para categoría ${category.id} (${category.name})...`);
+        const products = await productsAPI.getByCategory(category.id);
+        console.log(`📦 [getCategoriesWithProducts] Productos obtenidos para ${category.id}:`, products.length, products);
+
+        // Asegurar que cada producto tenga el category_id correcto
+        const validatedProducts = products.map((product: any) => {
+          const validatedProduct = {
+            ...product,
+            category_id: product.category_id || category.id, // Asegurar correlación
           };
-          
-          console.log(`Categoría final ${category.id}:`, {
-            name: categoryWithProducts.name,
-            productCount: categoryWithProducts.products.length,
-            products: categoryWithProducts.products.map(p => ({ id: p.id, name: p.name }))
-          });
-          
-          return categoryWithProducts;
-        } catch (productError) {
-          console.error(`Error obteniendo productos para categoría ${category.id}:`, productError);
-          return {
-            id: category.id,
-            name: category.name,
-            type: category.type || 'produccion',
-            products: []
-          };
-        }
-      })
-    );
-    
-    console.log('Categorías con productos finales:', categoriesWithProducts);
-    return categoriesWithProducts;
-  } catch (error) {
-    console.error('Error al obtener categorías con productos:', error);
-    return [];
-  }
+          console.log(`✅ [getCategoriesWithProducts] Producto validado: ${validatedProduct.id} -> ${validatedProduct.name} (categoría: ${validatedProduct.category_id})`);
+          return validatedProduct;
+        });
+
+        const categoryWithProducts = {
+          id: category.id,
+          name: category.name,
+          type: category.type || 'produccion',
+          products: validatedProducts
+        };
+
+        console.log(`✅ [getCategoriesWithProducts] Categoría final ${category.id}:`, {
+          name: categoryWithProducts.name,
+          productCount: categoryWithProducts.products.length,
+          products: categoryWithProducts.products.map(p => ({ id: p.id, name: p.name }))
+        });
+
+        return categoryWithProducts;
+      } catch (productError) {
+        console.error(`❌ [getCategoriesWithProducts] Error para categoría ${category.id}:`, productError);
+        return {
+          id: category.id,
+          name: category.name,
+          type: category.type || 'produccion',
+          products: [] // Retornar categoría vacía si falla
+        };
+      }
+    })
+  );
+
+  console.log('✅ [getCategoriesWithProducts] TOTAL - Categorías con productos:', categoriesWithProducts.length);
+  categoriesWithProducts.forEach(cat => {
+    console.log(`  - ${cat.name}: ${cat.products.length} productos`);
+  });
+
+  return categoriesWithProducts;
 }

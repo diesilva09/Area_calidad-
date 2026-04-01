@@ -31,15 +31,20 @@ const scrollElementIntoView = (element: Element, opts?: { offsetTop?: number }) 
   const offsetTop = opts?.offsetTop ?? 80;
   const behavior: ScrollBehavior = prefersReducedMotion() ? 'auto' : 'smooth';
 
+  const isSmallScreen = () => {
+    try {
+      return (
+        typeof window !== 'undefined' &&
+        (window.matchMedia?.('(max-width: 768px)')?.matches ||
+          window.matchMedia?.('(pointer: coarse)')?.matches)
+      );
+    } catch {
+      return false;
+    }
+  };
+
   const el = element as HTMLElement;
   const scrollParent = typeof window !== 'undefined' ? getScrollableParent(el) : null;
-
-  try {
-    // Intento 1: scrollIntoView
-    (element as any).scrollIntoView?.({ behavior, block: 'center', inline: 'nearest' });
-  } catch {
-    // Ignorar y usar fallback manual
-  }
 
   const adjustScroll = () => {
     // Fallback manual (especialmente útil en móviles con headers fijos)
@@ -60,12 +65,23 @@ const scrollElementIntoView = (element: Element, opts?: { offsetTop?: number }) 
     }
   };
 
+  if (!isSmallScreen()) {
+    try {
+      // En desktop suele ser más estable y suave usando scrollIntoView y luego un ajuste.
+      (element as any).scrollIntoView?.({ behavior, block: 'center', inline: 'nearest' });
+    } catch {
+      // Ignorar y usar fallback manual
+    }
+  }
+
   adjustScroll();
 
   // Ajuste extra: en móviles el layout puede seguir moviéndose (fonts/images/accordion)
-  setTimeout(() => {
-    adjustScroll();
-  }, 250);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      adjustScroll();
+    });
+  });
 };
 
 export const scrollToSelectorWithRetry = (opts: {
@@ -79,6 +95,7 @@ export const scrollToSelectorWithRetry = (opts: {
   const attemptDelayMs = opts.attemptDelayMs ?? 120;
   const offsetTop = opts.offsetTop ?? 96;
   let cancelled = false;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
   const tryFindAndScroll = (attempt = 0) => {
     if (cancelled) return;
@@ -86,13 +103,14 @@ export const scrollToSelectorWithRetry = (opts: {
 
     if (!el) {
       if (attempt < maxAttempts) {
-        setTimeout(() => tryFindAndScroll(attempt + 1), attemptDelayMs);
+        timeoutId = setTimeout(() => tryFindAndScroll(attempt + 1), attemptDelayMs);
       }
       return;
     }
 
     const doScroll = () => {
       if (cancelled) return;
+      if (!el.isConnected) return;
       scrollElementIntoView(el, { offsetTop });
       opts.onFound?.(el);
     };
@@ -104,6 +122,10 @@ export const scrollToSelectorWithRetry = (opts: {
 
   return () => {
     cancelled = true;
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
   };
 };
 
@@ -115,7 +137,6 @@ export function useScrollRestoration(enabled: boolean = true) {
     if (!enabled || !productId) return;
     try {
       sessionStorage.setItem(PRODUCT_KEY, productId);
-      console.log('💾 Producto guardado:', productId);
     } catch (error) {
       console.warn('Error al guardar:', error);
     }
@@ -131,23 +152,29 @@ export function useScrollRestoration(enabled: boolean = true) {
         hasRestored.current = true;
         return;
       }
-
-      console.log('🎯 Buscando producto:', productId);
       
       const maxAttempts = 20;
       const attemptDelayMs = 120;
       let cancelled = false;
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+      let clearHighlightTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
       const tryFindAndScroll = (attempt = 0) => {
         if (cancelled) return;
         const element = document.querySelector(`[data-product-id="${productId}"]`);
         if (!element) {
           if (attempt < maxAttempts) {
-            setTimeout(() => tryFindAndScroll(attempt + 1), attemptDelayMs);
+            timeoutId = setTimeout(() => tryFindAndScroll(attempt + 1), attemptDelayMs);
           } else {
-            console.log('⚠️ Producto no encontrado');
             hasRestored.current = true;
             sessionStorage.removeItem(PRODUCT_KEY);
+          }
+          return;
+        }
+
+        if (!(element as HTMLElement).isConnected) {
+          if (attempt < maxAttempts) {
+            timeoutId = setTimeout(() => tryFindAndScroll(attempt + 1), attemptDelayMs);
           }
           return;
         }
@@ -162,6 +189,8 @@ export function useScrollRestoration(enabled: boolean = true) {
         }
 
         const doScroll = () => {
+          if (cancelled) return;
+          if (!(element as HTMLElement).isConnected) return;
           scrollElementIntoView(element, { offsetTop: 96 });
           (element as HTMLElement).classList.add(
             'ring-4',
@@ -171,7 +200,9 @@ export function useScrollRestoration(enabled: boolean = true) {
             'shadow-xl'
           );
 
-          setTimeout(() => {
+          clearHighlightTimeoutId = setTimeout(() => {
+            if (cancelled) return;
+            if (!(element as HTMLElement).isConnected) return;
             (element as HTMLElement).classList.remove(
               'ring-4',
               'ring-blue-500',
@@ -180,8 +211,6 @@ export function useScrollRestoration(enabled: boolean = true) {
               'shadow-xl'
             );
           }, 4000);
-
-          console.log('✅ Producto destacado');
           hasRestored.current = true;
           sessionStorage.removeItem(PRODUCT_KEY);
         };
@@ -194,6 +223,14 @@ export function useScrollRestoration(enabled: boolean = true) {
 
       return () => {
         cancelled = true;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        if (clearHighlightTimeoutId) {
+          clearTimeout(clearHighlightTimeoutId);
+          clearHighlightTimeoutId = null;
+        }
         try {
           sessionStorage.removeItem(PRODUCT_KEY);
         } catch {

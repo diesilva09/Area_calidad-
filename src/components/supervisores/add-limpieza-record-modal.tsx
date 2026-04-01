@@ -28,9 +28,8 @@ import * as z from 'zod';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { getFechaActual, getMesActual, getHoraActual } from '@/lib/date-utils';
-import { Clock } from 'lucide-react';
+import { Calendar, Clock } from 'lucide-react';
 import { limpiezaTasksService, type LimpiezaTask } from '@/lib/limpieza-tasks-service';
-import { limpiezaVerificationsService, type LimpiezaVerification } from '@/lib/limpieza-verifications-service';
 import {
   limpiezaLiberacionesService,
   limpiezaRegistrosService,
@@ -77,6 +76,7 @@ const tomaLimpiezaSchema = z.object({
   observacionAtp: z.string().optional(),
   equipoAtp: z.string().optional(),
   parteAtp: z.string().optional(),
+  parteAtpOtro: z.string().optional(),
   deteccionAlergenosRi: z.string().optional(),
   deteccionAlergenosAc: z.string().optional(),
   deteccionAlergenosRf: z.string().optional(),
@@ -84,10 +84,15 @@ const tomaLimpiezaSchema = z.object({
   observacionAlergenos: z.string().optional(),
   equipoAlergenos: z.string().optional(),
   parteAlergenos: z.string().optional(),
+  parteAlergenosOtro: z.string().optional(),
   detergente: z.string().min(1, 'Campo requerido'),
   desinfectante: z.string().min(1, 'Campo requerido'),
   verificacionVisual: z.string().min(1, 'Campo requerido'),
   observacionVisual: z.string().optional(),
+  // Responsables por cada toma/liberación
+  verificadoPor: z.string().min(1, 'Campo requerido'),
+  responsableProduccion: z.string().optional(),
+  responsableMantenimiento: z.string().optional(),
 });
 
 const recal084RelaxedSchema = z.object({
@@ -121,8 +126,8 @@ export const limpiezaFormSchema = z.object({
   tipoVerificacion: z.string().min(1, 'Campo requerido'),
   tipoVerificacionOtro: z.string().optional(),
   verificadoPor: z.string().min(1, 'Campo requerido'),
-  responsableProduccion: z.string().min(1, 'Campo requerido'),
-  responsableMantenimiento: z.string().min(1, 'Campo requerido'),
+  responsableProduccion: z.string().optional(),
+  responsableMantenimiento: z.string().optional(),
   tomas: z.array(tomaLimpiezaSchema).min(1, 'Debe agregar al menos una toma'),
 });
 
@@ -156,27 +161,31 @@ type AddLimpiezaRecordModalProps = {
   onOpenChange: (isOpen: boolean) => void;
   onSuccessfulSubmit?: () => void;
   onTaskCompleted?: () => void; // Callback para notificar cuando se completa una tarea del cronograma
-  initialVerification?: LimpiezaVerification | null;
+  initialVerification?: any | null;
   registroIdToEdit?: string | null;
   liberacionIdToEdit?: string | null;
   initialTask?: LimpiezaTask | null; // Nueva prop para tarea inicial
   prefilledData?: Partial<{ fecha: string; mesCorte: string; lote: string; producto: string; linea: string; responsableProduccion: string; taskId?: number }>;
   viewOnlyMode?: boolean; // Nueva prop para modo de solo visualización
+  associatedTaskId?: number | null;
 };
 
 export function AddLimpiezaRecordModal({
   isOpen,
   onOpenChange,
   prefilledData,
+  onSuccessfulSubmit,
   initialTask,
   initialVerification,
   registroIdToEdit,
   liberacionIdToEdit,
-  onSuccessfulSubmit,
-  viewOnlyMode = false, // Por defecto no es modo de solo visualización
+  associatedTaskId: associatedTaskIdProp,
+  viewOnlyMode,
 }: AddLimpiezaRecordModalProps) {
   const { toast } = useToast();
   const { user } = useAuth();
+
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isEditMode, setIsEditMode] = React.useState(false);
   const [registroId, setRegistroId] = React.useState<string | null>(null);
   const [liberacionIdsByIndex, setLiberacionIdsByIndex] = React.useState<Record<number, string | null>>({});
@@ -189,6 +198,16 @@ export function AddLimpiezaRecordModal({
   const [mostrarCampoOtroLineaPorToma, setMostrarCampoOtroLineaPorToma] = React.useState<Record<number, boolean>>({});
   const [mostrarCampoOtroSuperficiePorToma, setMostrarCampoOtroSuperficiePorToma] = React.useState<Record<number, boolean>>({});
   const [tomaActivaIndex, setTomaActivaIndex] = React.useState(0);
+  const [liberacionHeaderByIndex, setLiberacionHeaderByIndex] = React.useState<
+    Record<
+      number,
+      {
+        verificadoPor: string;
+        responsableProduccion: string;
+        responsableMantenimiento: string;
+      }
+    >
+  >({});
 
   const getPartesDeEquipoPorNombre = React.useCallback(
     (equipoNombre: string) => {
@@ -214,9 +233,25 @@ export function AddLimpiezaRecordModal({
   const [registroSubView, setRegistroSubView] = React.useState<'lista' | 'detalle'>('detalle');
  // Almacenar datos precargados
   const [datosPrecargados, setDatosPrecargados] = React.useState<any>(null); // Almacenar datos precargados
+  const [datosPrecargadosAplicados, setDatosPrecargadosAplicados] = React.useState(false); // Bandera para controlar si ya se aplicaron
   const [associatedTaskId, setAssociatedTaskId] = React.useState<number | null>(null); // ID de la tarea asociada
-  const isRecal084Mode = Boolean(initialTask || associatedTaskId);
+  const isRecal084Mode = Boolean(initialTask || associatedTaskIdProp || associatedTaskId);
   const initialTaskPrefillKeyRef = React.useRef<string | null>(null);
+
+  // Refs para rastrear si el usuario ha editado manualmente los campos de linea/superficie por toma
+  // Esto evita que la normalización sobrescriba los valores seleccionados por el usuario
+  const userEditedLineaRef = React.useRef<Record<number, boolean>>({});
+  const userEditedSuperficieRef = React.useRef<Record<number, boolean>>({});
+
+  // Resetear los refs cuando cambia el registro que se está editando o cuando se cierra el modal
+  React.useEffect(() => {
+    if (registroIdToEdit || !isOpen) {
+      console.log('🔄 Resetear refs de edición - registroIdToEdit:', registroIdToEdit, 'isOpen:', isOpen);
+      userEditedLineaRef.current = {};
+      userEditedSuperficieRef.current = {};
+      setDatosPrecargadosAplicados(false); // Resetear bandera de datos precargados
+    }
+  }, [registroIdToEdit, isOpen]);
 
   const shouldShowLoteProducto = React.useMemo(() => {
     return Boolean(prefilledData || datosPrecargados || initialTask || forceShowLoteProducto);
@@ -280,39 +315,7 @@ export function AddLimpiezaRecordModal({
     viewOnlyMode || liberacionStatusByIndex?.[tomaActivaIndex] === 'completed';
 
   const getLiberacionStatus = (index: number) => {
-    const values = form.getValues(`tomas.${index}` as const);
-    if (!values) return 'pending' as const;
-
-    const hasBase = Boolean(String(values.hora || '').trim());
-    const hasEquipo = Boolean(String(values.linea || '').trim());
-    const hasParte = Boolean(String(values.superficie || '').trim());
-    const hasEstadoFiltro = Boolean(String(values.estadoFiltro || '').trim());
-    const hasPresencia = Boolean(String(values.presenciaElementosExtranos || '').trim());
-    const hasDetergente = Boolean(String(values.detergente || '').trim());
-    const hasDesinfectante = Boolean(String(values.desinfectante || '').trim());
-    const hasVerificacionVisual = Boolean(String(values.verificacionVisual || '').trim());
-
-    const needsFiltroDetails = String(values.estadoFiltro || '').trim() === '0';
-    const hasFiltroDetails = !needsFiltroDetails
-      ? true
-      : Boolean(String(values.novedadesFiltro || '').trim()) && Boolean(String(values.correccionesFiltro || '').trim());
-
-    const needsExtraDetails = String(values.presenciaElementosExtranos || '').trim() === 'Si';
-    const hasExtraDetails = !needsExtraDetails ? true : Boolean(String(values.detalleElementosExtranos || '').trim());
-
-    const completed =
-      hasBase &&
-      hasEquipo &&
-      hasParte &&
-      hasEstadoFiltro &&
-      hasPresencia &&
-      hasDetergente &&
-      hasDesinfectante &&
-      hasVerificacionVisual &&
-      hasFiltroDetails &&
-      hasExtraDetails;
-
-    return completed ? ('completed' as const) : ('pending' as const);
+    return (liberacionStatusByIndex?.[index] ?? 'pending') as 'pending' | 'completed';
   };
 
   const [wizardStep, setWizardStep] = React.useState<'identificacion' | 'registro'>(() => {
@@ -322,6 +325,7 @@ export function AddLimpiezaRecordModal({
   });
 
   const horaInputRef = React.useRef<HTMLInputElement | null>(null);
+  const fechaPickerRef = React.useRef<HTMLInputElement | null>(null);
 
   const openHoraPicker = React.useCallback(() => {
     if (effectiveViewOnlyMode) return;
@@ -337,6 +341,44 @@ export function AddLimpiezaRecordModal({
     el.focus();
     el.click();
   }, [effectiveViewOnlyMode]);
+
+  const openFechaPicker = React.useCallback(() => {
+    if (effectiveViewOnlyMode || Boolean(prefilledData?.fecha)) return;
+    const el = fechaPickerRef.current;
+    if (!el) return;
+
+    const anyEl = el as any;
+    if (typeof anyEl.showPicker === 'function') {
+      anyEl.showPicker();
+      return;
+    }
+
+    el.focus();
+    el.click();
+  }, [effectiveViewOnlyMode, prefilledData?.fecha]);
+
+  const toIsoDateFromForm = React.useCallback((value: string) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    const m = raw.match(/^(\d{2})\/(\d{2})\/(\d{2})$/);
+    if (!m) return '';
+    const dd = m[1];
+    const mm = m[2];
+    const yy = m[3];
+    return `20${yy}-${mm}-${dd}`;
+  }, []);
+
+  const toFormDateFromIso = React.useCallback((iso: string) => {
+    const raw = String(iso || '').trim();
+    if (!raw) return '';
+    const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return '';
+    const yyyy = m[1];
+    const mm = m[2];
+    const dd = m[3];
+    return `${dd}/${mm}/${yyyy.slice(-2)}`;
+  }, []);
 
   React.useEffect(() => {
     if (isOpen) {
@@ -357,6 +399,14 @@ export function AddLimpiezaRecordModal({
   const cargarEquipos = async () => {
     setIsLoadingEquipos(true);
     try {
+      if (initialVerification) {
+        toast({
+          title: 'Funcionalidad deshabilitada',
+          description: 'Las verificaciones de limpieza antiguas están deshabilitadas. Usa el registro nuevo (registros/liberaciones).',
+          variant: 'destructive',
+        });
+        return;
+      }
       const response = await fetch('/api/equipos');
       if (!response.ok) {
         throw new Error('Error al cargar equipos');
@@ -365,7 +415,7 @@ export function AddLimpiezaRecordModal({
       setEquipos(equiposData);
       
       // Después de cargar los equipos, aplicar datos precargados si existen
-      if (datosPrecargados) {
+      if (datosPrecargados && !datosPrecargadosAplicados && !isRecal084Mode) {
         console.log('🔄 Aplicando datos precargados después de cargar equipos:', datosPrecargados);
         
         // Verificar si el equipo precargado existe en la lista
@@ -390,8 +440,8 @@ export function AddLimpiezaRecordModal({
           form.setValue('responsableProduccion', datosPrecargados.responsableProduccion || '');
         }
         
-        // Limpiar datos precargados después de aplicarlos
-        setDatosPrecargados(null);
+        // Marcar como aplicados pero NO limpiar los datos todavía
+        setDatosPrecargadosAplicados(true);
       }
     } catch (error) {
       console.error('Error al cargar equipos:', error);
@@ -434,6 +484,112 @@ export function AddLimpiezaRecordModal({
       setIsLoadingPartesPorToma(prev => ({ ...prev, [tomaIndex]: false }));
     }
   };
+
+  const normalizeSelectsFromLiberaciones = React.useCallback(
+    (libs: any[]) => {
+      (libs || []).forEach((lib, idx) => {
+        const rawLineaFromDb = String(lib?.linea ?? '').trim();
+        const rawSuperficieFromDb = String(lib?.superficie ?? '').trim();
+
+        if (rawLineaFromDb) {
+          const equipoExiste = equipos.some((e) => String(e.nombre).trim() === rawLineaFromDb);
+          if (!equipoExiste) {
+            form.setValue(`tomas.${idx}.linea`, 'OTRO');
+            form.setValue(`tomas.${idx}.lineaOtro`, rawLineaFromDb);
+          } else {
+            form.setValue(`tomas.${idx}.linea`, rawLineaFromDb);
+            form.setValue(`tomas.${idx}.lineaOtro`, '');
+            const alreadyLoaded = Array.isArray(partesPorToma[idx]);
+            const isLoading = Boolean(isLoadingPartesPorToma[idx]);
+            if (!alreadyLoaded && !isLoading) {
+              cargarPartesEquipo(idx, rawLineaFromDb);
+            }
+          }
+        }
+
+        if (rawSuperficieFromDb) {
+          if (rawSuperficieFromDb === 'Todas las superficies cumplen') {
+            form.setValue(`tomas.${idx}.superficie`, rawSuperficieFromDb);
+            form.setValue(`tomas.${idx}.superficieOtro`, '');
+          } else {
+            const partes = Array.isArray(partesPorToma[idx])
+              ? partesPorToma[idx]
+              : rawLineaFromDb && rawLineaFromDb !== 'OTRO'
+                ? getPartesDeEquipoPorNombre(rawLineaFromDb)
+                : [];
+            const parteExiste = (partes || []).some((p: any) => String(p?.nombre ?? '').trim() === rawSuperficieFromDb);
+            if (parteExiste) {
+              form.setValue(`tomas.${idx}.superficie`, rawSuperficieFromDb);
+              form.setValue(`tomas.${idx}.superficieOtro`, '');
+            } else {
+              form.setValue(`tomas.${idx}.superficie`, 'OTRO');
+              form.setValue(`tomas.${idx}.superficieOtro`, rawSuperficieFromDb);
+            }
+          }
+        }
+
+        const rawEquipoAtp = String((lib as any)?.equipo_atp ?? '').trim();
+        const rawParteAtp = String((lib as any)?.parte_atp ?? '').trim();
+        if (rawParteAtp) {
+          const partesAtp = rawEquipoAtp ? getPartesDeEquipoPorNombre(rawEquipoAtp) : [];
+          const parteAtpExiste = (partesAtp || []).some((p: any) => String(p?.nombre ?? '').trim() === rawParteAtp);
+          if (parteAtpExiste) {
+            form.setValue(`tomas.${idx}.parteAtp`, rawParteAtp);
+            form.setValue(`tomas.${idx}.parteAtpOtro`, '');
+          } else {
+            form.setValue(`tomas.${idx}.parteAtp`, 'OTRO');
+            form.setValue(`tomas.${idx}.parteAtpOtro`, rawParteAtp);
+          }
+        }
+
+        const rawEquipoAlerg = String((lib as any)?.equipo_alergenos ?? '').trim();
+        const rawParteAlerg = String((lib as any)?.parte_alergenos ?? '').trim();
+        if (rawParteAlerg) {
+          const partesAlerg = rawEquipoAlerg ? getPartesDeEquipoPorNombre(rawEquipoAlerg) : [];
+          const parteAlergExiste = (partesAlerg || []).some((p: any) => String(p?.nombre ?? '').trim() === rawParteAlerg);
+          if (parteAlergExiste) {
+            form.setValue(`tomas.${idx}.parteAlergenos`, rawParteAlerg);
+            form.setValue(`tomas.${idx}.parteAlergenosOtro`, '');
+          } else {
+            form.setValue(`tomas.${idx}.parteAlergenos`, 'OTRO');
+            form.setValue(`tomas.${idx}.parteAlergenosOtro`, rawParteAlerg);
+          }
+        }
+      });
+    },
+    [equipos, form, getPartesDeEquipoPorNombre, isLoadingPartesPorToma, partesPorToma]
+  );
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    if (wizardStep !== 'registro') return;
+    if (registroSubView !== 'detalle') return;
+
+    const tipo = String(form.getValues('tipoVerificacion') || '').trim();
+    setMostrarCampoOtro(tipo === 'OTRO');
+
+    const linea = String(form.getValues(`tomas.${tomaActivaIndex}.linea` as const) || '').trim();
+    const superficie = String(form.getValues(`tomas.${tomaActivaIndex}.superficie` as const) || '').trim();
+
+    setMostrarCampoOtroLineaPorToma((prev) => ({ ...prev, [tomaActivaIndex]: linea === 'OTRO' }));
+    setMostrarCampoOtroSuperficiePorToma((prev) => ({ ...prev, [tomaActivaIndex]: superficie === 'OTRO' }));
+
+    if (linea && linea !== 'OTRO') {
+      const alreadyLoaded = Array.isArray(partesPorToma[tomaActivaIndex]);
+      const isLoading = Boolean(isLoadingPartesPorToma[tomaActivaIndex]);
+      if (!alreadyLoaded && !isLoading) {
+        cargarPartesEquipo(tomaActivaIndex, linea);
+      }
+    }
+  }, [
+    isOpen,
+    wizardStep,
+    registroSubView,
+    tomaActivaIndex,
+    form,
+    partesPorToma,
+    isLoadingPartesPorToma,
+  ]);
 
   // Efecto para cargar equipos cuando el modal se abre
   React.useEffect(() => {
@@ -513,7 +669,7 @@ export function AddLimpiezaRecordModal({
         // Precargar datos de la tarea en el formulario
         form.setValue('fecha', fechaFormateada);
         form.setValue('tipoVerificacion', initialTask.tipo_muestra || '');
-        form.setValue('verificadoPor', user?.name || '');
+        form.setValue('verificadoPor', '');
 
       // Asegurar al menos 1 liberación para que se guarde en BD
       if (!form.getValues('tomas')?.length) {
@@ -535,6 +691,7 @@ export function AddLimpiezaRecordModal({
           observacionAtp: '',
           equipoAtp: '',
           parteAtp: '',
+          parteAtpOtro: '',
           deteccionAlergenosRi: '',
           deteccionAlergenosAc: '',
           deteccionAlergenosRf: '',
@@ -542,10 +699,15 @@ export function AddLimpiezaRecordModal({
           observacionAlergenos: '',
           equipoAlergenos: '',
           parteAlergenos: '',
+          parteAlergenosOtro: '',
           detergente: '',
           desinfectante: '',
           verificacionVisual: '',
           observacionVisual: '',
+          // Responsables (requeridos por el schema) - NO autocompletar con user?.name
+          verificadoPor: '',
+          responsableProduccion: '',
+          responsableMantenimiento: '',
         });
         setTomaActivaIndex(0);
       } else {
@@ -569,7 +731,7 @@ export function AddLimpiezaRecordModal({
       // También precargar en el formulario pendiente
       pendingForm.setValue('fecha', fechaFormateada);
       pendingForm.setValue('tipoVerificacion', initialTask.tipo_muestra || '');
-      pendingForm.setValue('verificadoPor', user?.name || '');
+      pendingForm.setValue('verificadoPor', '');
 
       if (!pendingForm.getValues('tomas')?.length) {
         pendingForm.setValue('tomas', [
@@ -591,6 +753,7 @@ export function AddLimpiezaRecordModal({
             observacionAtp: '',
             equipoAtp: '',
             parteAtp: '',
+            parteAtpOtro: '',
             deteccionAlergenosRi: '',
             deteccionAlergenosAc: '',
             deteccionAlergenosRf: '',
@@ -598,6 +761,7 @@ export function AddLimpiezaRecordModal({
             observacionAlergenos: '',
             equipoAlergenos: '',
             parteAlergenos: '',
+            parteAlergenosOtro: '',
             detergente: '',
             desinfectante: '',
             verificacionVisual: '',
@@ -616,9 +780,9 @@ export function AddLimpiezaRecordModal({
         pendingForm.setValue('tomas.0.lineaOtro', initialTask.area || '');
       }
       
-        console.log('✅ Datos de tarea cargados en formulario');
+        console.log(' Datos de tarea cargados en formulario');
       } catch (error) {
-        console.error('❌ Error al precargar tarea de cronograma en modal:', error);
+        console.error(' Error al precargar tarea de cronograma en modal:', error);
         toast({
           title: 'Error',
           description: 'No se pudo abrir el registro para completar la tarea. Revise la consola.',
@@ -642,11 +806,11 @@ export function AddLimpiezaRecordModal({
       if (storedData) {
         try {
           const productionData = JSON.parse(storedData);
-          console.log('🔄 Cargando datos de producción en modal de limpieza:', productionData);
+          console.log(' Cargando datos de producción en modal de limpieza:', productionData);
           
           // Almacenar datos precargados para aplicar después de cargar equipos
           if (productionData.fecha || productionData.mesCorte || productionData.linea) {
-            console.log('🔄 Almacenando datos precargados:', {
+            console.log(' Almacenando datos precargados:', {
               fecha: productionData.fecha,
               mesCorte: productionData.mesCorte,
               linea: productionData.linea,
@@ -659,7 +823,7 @@ export function AddLimpiezaRecordModal({
             // Almacenar el ID de la tarea asociada si existe
             if (productionData.taskId) {
               setAssociatedTaskId(productionData.taskId);
-              console.log('📋 Tarea asociada ID:', productionData.taskId);
+              console.log(' Tarea asociada ID:', productionData.taskId);
             }
             
             // Limpiar datos precargados después de usarlos
@@ -672,120 +836,54 @@ export function AddLimpiezaRecordModal({
     }
   }, [isOpen, datosPrecargados, initialVerification, registroId, registroIdToEdit, viewOnlyMode]);
 
-  // Efecto para aplicar datos precargados cuando los equipos estén cargados
+  // Efecto específico para RECAL 084 - aplicar datos precargados sin limpiarlos prematuramente
   React.useEffect(() => {
-    // No aplicar datos precargados cuando se está editando/viendo/completando.
-    if (initialVerification) return;
-    if (viewOnlyMode) return;
-    if (registroIdToEdit) return;
-    if (registroId) return;
-
-    if (datosPrecargados && equipos.length > 0 && !isLoadingEquipos) {
-      console.log('🔄 Aplicando datos precargados (efecto adicional):', datosPrecargados);
+    // Solo ejecutar en modo RECAL 084 y cuando haya datos precargados
+    if (!isRecal084Mode || !datosPrecargados || datosPrecargadosAplicados) return;
+    
+    // Esperar a que los equipos estén cargados
+    if (equipos.length === 0 || isLoadingEquipos) return;
+    
+    // No aplicar si se está editando otro registro
+    if (registroIdToEdit || registroId) return;
+    
+    console.log('🔄 RECAL 084 - Aplicando datos precargados:', datosPrecargados);
+    
+    // Verificar si el equipo precargado existe
+    const equipoExiste = equipos.some((equipo: Equipo) => equipo.nombre === datosPrecargados.linea);
+    console.log('🔍 RECAL 084 - Equipo existe:', datosPrecargados.linea, '→', equipoExiste);
+    
+    if (equipoExiste) {
+      // Aplicar datos al formulario
+      form.setValue('fecha', datosPrecargados.fecha || getFechaActual());
+      form.setValue('mesCorte', datosPrecargados.mesCorte || getMesActual());
+      form.setValue('tomas.0.linea', datosPrecargados.linea || '');
+      form.setValue('responsableProduccion', datosPrecargados.responsableProduccion || '');
       
-      // Verificar si el equipo precargado existe en la lista
-      const equipoExiste = equipos.some((equipo: Equipo) => equipo.nombre === datosPrecargados.linea);
-      console.log('🔍 Equipo precargado existe:', datosPrecargados.linea, '→', equipoExiste);
+      // Cargar partes del equipo automáticamente
+      cargarPartesEquipo(0, datosPrecargados.linea);
       
-      if (equipoExiste) {
-        form.setValue('fecha', datosPrecargados.fecha || getFechaActual());
-        form.setValue('mesCorte', datosPrecargados.mesCorte || getMesActual());
-        form.setValue('tomas.0.linea', datosPrecargados.linea || '');
-        form.setValue('responsableProduccion', datosPrecargados.responsableProduccion || '');
-        
-        console.log('✅ Datos precargados aplicados exitosamente (efecto adicional)');
-      } else {
-        console.warn('⚠️ El equipo precargado no existe en la lista de equipos:', datosPrecargados.linea);
-        // Aplicar otros datos aunque el equipo no exista
-        form.setValue('fecha', datosPrecargados.fecha || getFechaActual());
-        form.setValue('mesCorte', datosPrecargados.mesCorte || getMesActual());
-        form.setValue('responsableProduccion', datosPrecargados.responsableProduccion || '');
-      }
-      
-      // Limpiar datos precargados después de aplicarlos
-      setDatosPrecargados(null);
+      console.log('✅ RECAL 084 - Datos precargados aplicados exitosamente');
+    } else {
+      console.warn('⚠️ RECAL 084 - Equipo no existe, aplicando datos parciales');
+      // Aplicar datos básicos aunque el equipo no exista
+      form.setValue('fecha', datosPrecargados.fecha || getFechaActual());
+      form.setValue('mesCorte', datosPrecargados.mesCorte || getMesActual());
+      form.setValue('responsableProduccion', datosPrecargados.responsableProduccion || '');
     }
+    
+    // Marcar como aplicados pero mantener los datos por si se necesitan más tarde
+    setDatosPrecargadosAplicados(true);
   }, [
+    isRecal084Mode,
     datosPrecargados,
+    datosPrecargadosAplicados,
     equipos,
     isLoadingEquipos,
     form,
-    initialVerification,
-    registroId,
-    registroIdToEdit,
-    viewOnlyMode,
-  ]);
-
-  // Efecto para limpiar formulario cuando es un nuevo registro
-  React.useEffect(() => {
-    // Solo limpiar cuando realmente es creación NUEVA. Si se abre para editar/ver un registro/liberación,
-    // este reset puede borrar los datos que se acaban de precargar desde BD.
-    if (
-      isOpen &&
-      !initialVerification &&
-      !datosPrecargados &&
-      !prefilledData &&
-      !registroIdToEdit &&
-      !registroId &&
-      !viewOnlyMode
-    ) {
-      console.log('🧹 Limpiando formulario para nuevo registro');
-      
-      // Resetear formulario principal a valores por defecto
-      form.reset({
-        fecha: getFechaActual(),
-        mesCorte: getMesActual(),
-        detalles: '',
-        lote: '',
-        producto: '',
-        tipoVerificacion: '',
-        verificadoPor: user?.name || '',
-        // Resetear todos los demás campos a vacío
-        tipoVerificacionOtro: '',
-        responsableProduccion: '',
-        responsableMantenimiento: '',
-        tomas: [],
-      });
-      
-      // Resetear formulario pendiente también
-      pendingForm.reset({
-        fecha: getFechaActual(),
-        mesCorte: getMesActual(),
-        detalles: '',
-        lote: '',
-        producto: '',
-        tipoVerificacion: '',
-        verificadoPor: user?.name || '',
-        tipoVerificacionOtro: '',
-        responsableProduccion: '',
-        responsableMantenimiento: '',
-        tomas: [],
-      });
-      
-      // Resetear estados adicionales
-      setMostrarCampoOtro(false);
-      setRegistroId(null);
-      setLiberacionIdsByIndex({});
-      setForceShowLoteProducto(false);
-      setTomaActivaIndex(0);
-      setPartesPorToma({});
-      setIsLoadingPartesPorToma({});
-      setMostrarCampoOtroLineaPorToma({});
-      setMostrarCampoOtroSuperficiePorToma({});
-      
-      console.log('✅ Formulario limpiado para nuevo registro');
-    }
-  }, [
-    isOpen,
-    initialVerification,
-    datosPrecargados,
-    prefilledData,
     registroIdToEdit,
     registroId,
-    viewOnlyMode,
-    form,
-    pendingForm,
-    user,
+    cargarPartesEquipo
   ]);
 
   React.useEffect(() => {
@@ -812,7 +910,7 @@ export function AddLimpiezaRecordModal({
         superficie: lib.superficie ?? '',
         // Guardar el valor original en '*Otro' para poder re-hidratar OTRO si no existe en el Select
         superficieOtro: lib.superficie ?? '',
-        estadoFiltro: lib.estado_filtro != null ? String(lib.estado_filtro) : '',
+        estadoFiltro: lib.estado_filtro != null ? String(lib.estado_filtro) : 'NA',
         novedadesFiltro: lib.novedades_filtro ?? '',
         correccionesFiltro: lib.correcciones_filtro ?? '',
         presenciaElementosExtranos: lib.presencia_elementos_extranos ?? '',
@@ -824,6 +922,7 @@ export function AddLimpiezaRecordModal({
         observacionAtp: lib.observacion_atp ?? '',
         equipoAtp: (lib as any).equipo_atp ?? '',
         parteAtp: (lib as any).parte_atp ?? '',
+        parteAtpOtro: '',
         deteccionAlergenosRi: lib.deteccion_alergenos_ri ?? '',
         deteccionAlergenosAc: lib.deteccion_alergenos_ac ?? '',
         deteccionAlergenosRf: lib.deteccion_alergenos_rf ?? '',
@@ -831,20 +930,39 @@ export function AddLimpiezaRecordModal({
         observacionAlergenos: lib.observacion_alergenos ?? '',
         equipoAlergenos: (lib as any).equipo_alergenos ?? '',
         parteAlergenos: (lib as any).parte_alergenos ?? '',
+        parteAlergenosOtro: '',
         detergente: lib.detergente ?? '',
         desinfectante: lib.desinfectante ?? '',
         verificacionVisual: lib.verificacion_visual != null ? String(lib.verificacion_visual) : '',
         observacionVisual: lib.observacion_visual ?? '',
+        // Responsables por cada toma/liberación
+        verificadoPor: lib.verificado_por ?? '',
+        responsableProduccion: lib.responsable_produccion ?? '',
+        responsableMantenimiento: lib.responsable_mantenimiento ?? '',
       }));
 
       const idsByIndex: Record<number, string | null> = {};
       const statusByIndex: Record<number, 'pending' | 'completed'> = {};
+      const headerByIndex: Record<
+        number,
+        {
+          verificadoPor: string;
+          responsableProduccion: string;
+          responsableMantenimiento: string;
+        }
+      > = {};
       for (let i = 0; i < (data.liberaciones ?? []).length; i++) {
         idsByIndex[i] = data.liberaciones[i]?.id ?? null;
         statusByIndex[i] = (data.liberaciones[i]?.status ?? 'pending') as 'pending' | 'completed';
+        headerByIndex[i] = {
+          verificadoPor: String(data.liberaciones[i]?.verificado_por ?? '').trim(),
+          responsableProduccion: String(data.liberaciones[i]?.responsable_produccion ?? '').trim(),
+          responsableMantenimiento: String(data.liberaciones[i]?.responsable_mantenimiento ?? '').trim(),
+        };
       }
       setLiberacionIdsByIndex(idsByIndex);
       setLiberacionStatusByIndex(statusByIndex);
+      setLiberacionHeaderByIndex(headerByIndex);
 
       const selectedIdx = liberacionIdToEdit
         ? (data.liberaciones ?? []).findIndex((l) => l.id === liberacionIdToEdit)
@@ -852,9 +970,18 @@ export function AddLimpiezaRecordModal({
       const safeSelectedIdx = selectedIdx >= 0 ? selectedIdx : 0;
       const selectedLiberacion = (data.liberaciones ?? [])[safeSelectedIdx];
 
-      // IMPORTANTE: asegurar que el fieldArray se hidrate correctamente.
-      // Con reset() a veces los fields quedan desincronizados y la UI aparece vacía.
-      tomasFieldArray.replace(tomas as any);
+      // Debug: Log de valores cargados desde BD
+      console.log('📥 loadRegistroToEdit - Valores cargados desde BD:');
+      console.log('  selectedLiberacion.verificado_por:', selectedLiberacion?.verificado_por);
+      console.log('  selectedLiberacion.responsable_produccion:', selectedLiberacion?.responsable_produccion);
+      console.log('  selectedLiberacion.responsable_mantenimiento:', selectedLiberacion?.responsable_mantenimiento);
+
+      // Resetear el ref de editados para permitir cargar valores desde BD
+      responsablesEditedRef.current = {
+        verificadoPor: false,
+        responsableProduccion: false,
+        responsableMantenimiento: false,
+      };
 
       // Resetear flags antes de re-hidratar (evita estados viejos al abrir varias veces)
       setMostrarCampoOtroLineaPorToma({});
@@ -868,11 +995,15 @@ export function AddLimpiezaRecordModal({
         producto: data.producto ?? '',
         tipoVerificacion: selectedLiberacion?.tipo_verificacion ?? '',
         tipoVerificacionOtro: '',
-        verificadoPor: selectedLiberacion?.verificado_por ?? user?.name ?? '',
+        verificadoPor: selectedLiberacion?.verificado_por ?? '',
         responsableProduccion: selectedLiberacion?.responsable_produccion ?? '',
         responsableMantenimiento: selectedLiberacion?.responsable_mantenimiento ?? '',
         tomas,
       });
+
+      // IMPORTANTE: asegurar que el fieldArray se hidrate correctamente.
+      // Si reset() corre después de replace(), puede desincronizar el fieldArray y la UI aparece vacía.
+      tomasFieldArray.replace(tomas as any);
 
       pendingForm.reset({
         fecha: fechaAsForm,
@@ -881,7 +1012,7 @@ export function AddLimpiezaRecordModal({
         lote: data.lote ?? '',
         producto: data.producto ?? '',
         tipoVerificacion: selectedLiberacion?.tipo_verificacion ?? '',
-        verificadoPor: selectedLiberacion?.verificado_por ?? user?.name ?? '',
+        verificadoPor: selectedLiberacion?.verificado_por ?? '',
         tipoVerificacionOtro: '',
         responsableProduccion: selectedLiberacion?.responsable_produccion ?? '',
         responsableMantenimiento: selectedLiberacion?.responsable_mantenimiento ?? '',
@@ -905,6 +1036,9 @@ export function AddLimpiezaRecordModal({
           pendingForm.setValue('tipoVerificacionOtro', rawTipo);
         }
       }
+
+      // Normalizar selects dependientes (incluye OTRO para superficie y partes ATP/Alérgenos)
+      normalizeSelectsFromLiberaciones(data.liberaciones ?? []);
 
       if (liberacionIdToEdit) {
         if (safeSelectedIdx >= 0) setTomaActivaIndex(safeSelectedIdx);
@@ -933,78 +1067,339 @@ export function AddLimpiezaRecordModal({
     user?.name,
   ]);
 
+  // Ref para rastrear si los valores ya fueron editados por el usuario
+  const responsablesEditedRef = React.useRef({
+    verificadoPor: false,
+    responsableProduccion: false,
+    responsableMantenimiento: false,
+  });
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    if (!registroIdToEdit && !registroId) return;
+    if (initialVerification) return;
+
+    const header = liberacionHeaderByIndex?.[tomaActivaIndex];
+    if (!header) return;
+
+    const nextVerificadoPor = header.verificadoPor || '';
+    const nextRespProd = header.responsableProduccion || '';
+    const nextRespMant = header.responsableMantenimiento || '';
+
+    // Solo actualizar si el usuario no ha editado los valores
+    if (!responsablesEditedRef.current.verificadoPor) {
+      form.setValue('verificadoPor', nextVerificadoPor);
+      pendingForm.setValue('verificadoPor', nextVerificadoPor);
+      // También actualizar en la toma activa para que cada liberación tenga sus propios responsables
+      form.setValue(`tomas.${tomaActivaIndex}.verificadoPor`, nextVerificadoPor);
+      pendingForm.setValue(`tomas.${tomaActivaIndex}.verificadoPor`, nextVerificadoPor);
+    }
+    if (!responsablesEditedRef.current.responsableProduccion) {
+      form.setValue('responsableProduccion', nextRespProd);
+      pendingForm.setValue('responsableProduccion', nextRespProd);
+      // También actualizar en la toma activa
+      form.setValue(`tomas.${tomaActivaIndex}.responsableProduccion`, nextRespProd);
+      pendingForm.setValue(`tomas.${tomaActivaIndex}.responsableProduccion`, nextRespProd);
+    }
+    if (!responsablesEditedRef.current.responsableMantenimiento) {
+      form.setValue('responsableMantenimiento', nextRespMant);
+      pendingForm.setValue('responsableMantenimiento', nextRespMant);
+      // También actualizar en la toma activa
+      form.setValue(`tomas.${tomaActivaIndex}.responsableMantenimiento`, nextRespMant);
+      pendingForm.setValue(`tomas.${tomaActivaIndex}.responsableMantenimiento`, nextRespMant);
+    }
+  }, [
+    isOpen,
+    registroIdToEdit,
+    registroId,
+    initialVerification,
+    tomaActivaIndex,
+    liberacionHeaderByIndex,
+    form,
+    pendingForm,
+    user?.name,
+  ]);
+
+  // Resetear el ref cuando se cierra el modal o se carga un registro nuevo
+  React.useEffect(() => {
+    if (!isOpen) {
+      responsablesEditedRef.current = {
+        verificadoPor: false,
+        responsableProduccion: false,
+        responsableMantenimiento: false,
+      };
+    }
+  }, [isOpen]);
+
+  // Sincronizar campos de responsables entre form y pendingForm cuando se escriben
+  // Esto asegura que al guardar como pendiente, los valores más recientes se mantengan
+  // Usamos un callback que no depende de form/pendingForm para evitar re-creaciones
+  const handleResponsableChange = React.useCallback((
+    field: 'verificadoPor' | 'responsableProduccion' | 'responsableMantenimiento',
+    value: string
+  ) => {
+    // Marcar como editado por el usuario
+    responsablesEditedRef.current[field] = true;
+
+    // Actualizar form principal
+    form.setValue(field, value);
+    // Actualizar pendingForm para persistencia
+    pendingForm.setValue(field, value);
+    // También actualizar en la toma activa para que cada liberación tenga sus propios responsables
+    form.setValue(`tomas.${tomaActivaIndex}.${field}`, value);
+    pendingForm.setValue(`tomas.${tomaActivaIndex}.${field}`, value);
+    // Debug log
+    console.log('✏️ handleResponsableChange:', field, '=', value, 'tomaActivaIndex:', tomaActivaIndex);
+  }, [form, pendingForm, tomaActivaIndex]);
+
+  // Función robusta para sincronizar TODOS los campos entre form y pendingForm
+  // Esto asegura que ambos formularios tengan exactamente los mismos valores
+  const syncFormsWithPendingForm = React.useCallback((source: 'form' | 'pendingForm' = 'form') => {
+    const sourceForm = source === 'form' ? form : pendingForm;
+    const targetForm = source === 'form' ? pendingForm : form;
+
+    const sourceValues = sourceForm.getValues();
+    const targetValues = targetForm.getValues();
+
+    // Lista completa de todos los campos del formulario que deben sincronizarse
+    const fieldsToSync: Array<keyof typeof sourceValues> = [
+      'fecha',
+      'mesCorte',
+      'detalles',
+      'lote',
+      'producto',
+      'tipoVerificacion',
+      'tipoVerificacionOtro',
+      'verificadoPor',
+      'responsableProduccion',
+      'responsableMantenimiento',
+    ];
+
+    // Sincronizar campos principales
+    fieldsToSync.forEach((field) => {
+      const sourceValue = sourceValues[field];
+      const targetValue = targetValues[field];
+
+      // Solo actualizar si el valor de origen es diferente y no es vacío
+      if (sourceValue !== targetValue) {
+        if (sourceValue !== undefined && sourceValue !== null && sourceValue !== '') {
+          targetForm.setValue(field, sourceValue as any);
+        }
+      }
+    });
+
+    // Sincronizar array de tomas completo usando setValue
+    const sourceTomas = sourceValues.tomas || [];
+    if (sourceTomas.length > 0) {
+      targetForm.setValue('tomas', sourceTomas as any);
+    }
+
+    // Sincronizar cada campo de cada toma individualmente
+    sourceTomas.forEach((toma, idx) => {
+      if (!toma) return;
+
+      const tomaFields: Array<keyof typeof toma> = [
+        'hora',
+        'linea',
+        'lineaOtro',
+        'superficie',
+        'superficieOtro',
+        'estadoFiltro',
+        'novedadesFiltro',
+        'correccionesFiltro',
+        'presenciaElementosExtranos',
+        'detalleElementosExtranos',
+        'resultadosAtpRi',
+        'resultadosAtpAc',
+        'resultadosAtpRf',
+        'loteHisopoAtp',
+        'observacionAtp',
+        'equipoAtp',
+        'parteAtp',
+        'parteAtpOtro',
+        'deteccionAlergenosRi',
+        'deteccionAlergenosAc',
+        'deteccionAlergenosRf',
+        'loteHisopoAlergenos',
+        'observacionAlergenos',
+        'equipoAlergenos',
+        'parteAlergenos',
+        'parteAlergenosOtro',
+        'detergente',
+        'desinfectante',
+        'verificacionVisual',
+        'observacionVisual',
+        'verificadoPor',
+        'responsableProduccion',
+        'responsableMantenimiento',
+      ];
+
+      tomaFields.forEach((field) => {
+        const sourceFieldValue = (toma as any)[field];
+        const targetFieldValue = (targetForm.getValues(`tomas.${idx}`) as any)?.[field];
+
+        if (sourceFieldValue !== targetFieldValue) {
+          if (sourceFieldValue !== undefined && sourceFieldValue !== null) {
+            targetForm.setValue(`tomas.${idx}.${field as string}`, sourceFieldValue as any);
+          }
+        }
+      });
+    });
+
+    console.log('🔄 syncFormsWithPendingForm ejecutado - source:', source, 'tomas:', sourceTomas.length);
+  }, [form, pendingForm]);
+
+  // Efecto para sincronizar formularios cuando cambia la toma activa
+  // Esto asegura que al cambiar entre liberaciones, los datos de responsables se mantengan
+  React.useEffect(() => {
+    if (!isOpen) return;
+
+    console.log('📍 tomaActivaIndex cambiado a:', tomaActivaIndex);
+
+    // Sincronizar los responsables desde la toma activa hacia los campos globales
+    const tomaActual = form.getValues(`tomas.${tomaActivaIndex}`);
+    if (tomaActual) {
+      const verificadoPorToma = tomaActual.verificadoPor || '';
+      const responsableProduccionToma = tomaActual.responsableProduccion || '';
+      const responsableMantenimientoToma = tomaActual.responsableMantenimiento || '';
+
+      // Solo actualizar si los valores de la toma no están vacíos
+      if (verificadoPorToma) {
+        form.setValue('verificadoPor', verificadoPorToma);
+        pendingForm.setValue('verificadoPor', verificadoPorToma);
+      }
+      if (responsableProduccionToma) {
+        form.setValue('responsableProduccion', responsableProduccionToma);
+        pendingForm.setValue('responsableProduccion', responsableProduccionToma);
+      }
+      if (responsableMantenimientoToma) {
+        form.setValue('responsableMantenimiento', responsableMantenimientoToma);
+        pendingForm.setValue('responsableMantenimiento', responsableMantenimientoToma);
+      }
+
+      // Actualizar los estados de mostrarCampoOtro basados en los valores de la toma activa
+      const lineaValue = tomaActual.linea || '';
+      const superficieValue = tomaActual.superficie || '';
+
+      setMostrarCampoOtroLineaPorToma(prev => ({ ...prev, [tomaActivaIndex]: lineaValue === 'OTRO' }));
+      setMostrarCampoOtroSuperficiePorToma(prev => ({ ...prev, [tomaActivaIndex]: superficieValue === 'OTRO' }));
+    }
+
+    // Sincronizar ambos formularios después de cambiar de toma
+    syncFormsWithPendingForm('form');
+  }, [tomaActivaIndex, isOpen, form, pendingForm, syncFormsWithPendingForm]);
+
   const normalizationRunRef = React.useRef<Record<string, boolean>>({});
 
   // Normalizar valores custom de OTRO para selects dependientes de listas dinámicas (equipos/partes).
   // Esto asegura que al reabrir una liberación, si el valor guardado no está en el Select,
   // se muestre como OTRO + input con el valor persistido. Importante: evitar loops de carga.
+  // NOTA: Solo ejecutar cuando se está cargando un registro existente, NO durante la edición del usuario.
   React.useEffect(() => {
     if (!isOpen) return;
+    // Solo normalizar cuando hay un registroIdToEdit o registroId (registro existente)
     const normalizationKey = registroIdToEdit ?? registroId;
     if (!normalizationKey) return;
+    // Si es un registro nuevo (sin ID), no normalizar
+    if (!registroIdToEdit && !registroId) return;
     if (equipos.length === 0) return;
 
     const tomasValues = form.getValues('tomas') || [];
     if (!tomasValues.length) return;
 
     tomasValues.forEach((toma, idx) => {
-      const rawLineaFromDb = String((toma as any)?.lineaOtro ?? (toma as any)?.linea ?? '').trim();
-      const rawSuperficieFromDb = String((toma as any)?.superficieOtro ?? (toma as any)?.superficie ?? '').trim();
+      // IMPORTANTE: Verificar si el usuario ha editado manualmente este campo
+      // Si el usuario ya editó el campo, NO sobrescribir con valores de la BD
+      if (userEditedLineaRef.current[idx]) {
+        console.log('⚠️ Normalización omitida para linea en idx', idx, '- editado por usuario');
+      } else {
+        const rawLineaFromDb = String((toma as any)?.lineaOtro ?? (toma as any)?.linea ?? '').trim();
+        const rawSuperficieFromDb = String((toma as any)?.superficieOtro ?? (toma as any)?.superficie ?? '').trim();
 
-      const equipoExiste = rawLineaFromDb
-        ? equipos.some((e) => String(e.nombre).trim() === rawLineaFromDb)
-        : false;
+        const rawEquipoAtpFromDb = String((toma as any)?.equipoAtp ?? '').trim();
+        const rawParteAtpFromDb = String((toma as any)?.parteAtpOtro ?? (toma as any)?.parteAtp ?? '').trim();
+        const rawEquipoAlergFromDb = String((toma as any)?.equipoAlergenos ?? '').trim();
+        const rawParteAlergFromDb = String((toma as any)?.parteAlergenosOtro ?? (toma as any)?.parteAlergenos ?? '').trim();
 
-      if (rawLineaFromDb && !equipoExiste) {
-        form.setValue(`tomas.${idx}.linea`, 'OTRO');
-        form.setValue(`tomas.${idx}.lineaOtro`, rawLineaFromDb);
-        setMostrarCampoOtroLineaPorToma((prev) => ({ ...prev, [idx]: true }));
-        // Si el equipo es OTRO, NO limpiar superficie: puede venir un valor custom persistido.
-        // Normalizar superficie contra el valor persistido para que se muestre como OTRO + input.
-        if (rawSuperficieFromDb) {
-          if (rawSuperficieFromDb === 'Todas las superficies cumplen') {
-            form.setValue(`tomas.${idx}.superficie`, rawSuperficieFromDb);
-            form.setValue(`tomas.${idx}.superficieOtro`, '');
-            setMostrarCampoOtroSuperficiePorToma((prev) => ({ ...prev, [idx]: false }));
-          } else {
-            form.setValue(`tomas.${idx}.superficie`, 'OTRO');
-            form.setValue(`tomas.${idx}.superficieOtro`, rawSuperficieFromDb);
-            setMostrarCampoOtroSuperficiePorToma((prev) => ({ ...prev, [idx]: true }));
+        const equipoExiste = rawLineaFromDb
+          ? equipos.some((e) => String(e.nombre).trim() === rawLineaFromDb)
+          : false;
+
+        if (rawLineaFromDb && !equipoExiste) {
+          form.setValue(`tomas.${idx}.linea`, 'OTRO');
+          form.setValue(`tomas.${idx}.lineaOtro`, rawLineaFromDb);
+          setMostrarCampoOtroLineaPorToma((prev) => ({ ...prev, [idx]: true }));
+          // Si el equipo es OTRO, NO limpiar superficie: puede venir un valor custom persistido.
+          // Normalizar superficie contra el valor persistido para que se muestre como OTRO + input.
+          if (rawSuperficieFromDb) {
+            if (rawSuperficieFromDb === 'Todas las superficies cumplen') {
+              form.setValue(`tomas.${idx}.superficie`, rawSuperficieFromDb);
+              form.setValue(`tomas.${idx}.superficieOtro`, '');
+              setMostrarCampoOtroSuperficiePorToma((prev) => ({ ...prev, [idx]: false }));
+            } else {
+              form.setValue(`tomas.${idx}.superficie`, 'OTRO');
+              form.setValue(`tomas.${idx}.superficieOtro`, rawSuperficieFromDb);
+              setMostrarCampoOtroSuperficiePorToma((prev) => ({ ...prev, [idx]: true }));
+            }
           }
         }
-        return;
-      }
 
-      if (rawLineaFromDb && equipoExiste) {
-        form.setValue(`tomas.${idx}.linea`, rawLineaFromDb);
-        setMostrarCampoOtroLineaPorToma((prev) => ({ ...prev, [idx]: false }));
+        if (rawLineaFromDb && equipoExiste) {
+          form.setValue(`tomas.${idx}.linea`, rawLineaFromDb);
+          setMostrarCampoOtroLineaPorToma((prev) => ({ ...prev, [idx]: false }));
 
-        const alreadyLoaded = Array.isArray(partesPorToma[idx]);
-        const isLoading = Boolean(isLoadingPartesPorToma[idx]);
-        if (!alreadyLoaded && !isLoading) {
-          cargarPartesEquipo(idx, rawLineaFromDb);
+          const alreadyLoaded = Array.isArray(partesPorToma[idx]);
+          const isLoading = Boolean(isLoadingPartesPorToma[idx]);
+          if (!alreadyLoaded && !isLoading) {
+            cargarPartesEquipo(idx, rawLineaFromDb);
+          }
         }
-      }
 
-      // Superficie: solo cuando ya hay partes cargadas (o si el usuario ya tiene OTRO)
-      if (!rawSuperficieFromDb) return;
-      if (rawSuperficieFromDb === 'Todas las superficies cumplen') {
-        form.setValue(`tomas.${idx}.superficie`, rawSuperficieFromDb);
-        setMostrarCampoOtroSuperficiePorToma((prev) => ({ ...prev, [idx]: false }));
-        return;
-      }
+        // Superficie: solo cuando ya hay partes cargadas (o si el usuario ya tiene OTRO)
+        // También verificar si el usuario editó manualmente la superficie
+        if (rawSuperficieFromDb && !userEditedSuperficieRef.current[idx]) {
+          if (rawSuperficieFromDb === 'Todas las superficies cumplen') {
+            form.setValue(`tomas.${idx}.superficie`, rawSuperficieFromDb);
+            setMostrarCampoOtroSuperficiePorToma((prev) => ({ ...prev, [idx]: false }));
+          } else {
+            const partes = partesPorToma[idx];
+            if (Array.isArray(partes)) {
+              const parteExiste = partes.some((p) => String(p.nombre).trim() === rawSuperficieFromDb);
+              if (parteExiste) {
+                form.setValue(`tomas.${idx}.superficie`, rawSuperficieFromDb);
+                setMostrarCampoOtroSuperficiePorToma((prev) => ({ ...prev, [idx]: false }));
+              } else {
+                form.setValue(`tomas.${idx}.superficie`, 'OTRO');
+                form.setValue(`tomas.${idx}.superficieOtro`, rawSuperficieFromDb);
+                setMostrarCampoOtroSuperficiePorToma((prev) => ({ ...prev, [idx]: true }));
+              }
+            }
+          }
+        }
 
-      const partes = partesPorToma[idx];
-      if (!Array.isArray(partes)) return;
+        if (rawParteAtpFromDb) {
+          const partesAtp = rawEquipoAtpFromDb ? getPartesDeEquipoPorNombre(rawEquipoAtpFromDb) : [];
+          const parteAtpExiste = (partesAtp || []).some((p: any) => String(p?.nombre ?? '').trim() === rawParteAtpFromDb);
+          if (parteAtpExiste) {
+            form.setValue(`tomas.${idx}.parteAtp`, rawParteAtpFromDb);
+            form.setValue(`tomas.${idx}.parteAtpOtro`, '');
+          } else {
+            form.setValue(`tomas.${idx}.parteAtp`, 'OTRO');
+            form.setValue(`tomas.${idx}.parteAtpOtro`, rawParteAtpFromDb);
+          }
+        }
 
-      const parteExiste = partes.some((p) => String(p.nombre).trim() === rawSuperficieFromDb);
-      if (parteExiste) {
-        form.setValue(`tomas.${idx}.superficie`, rawSuperficieFromDb);
-        setMostrarCampoOtroSuperficiePorToma((prev) => ({ ...prev, [idx]: false }));
-      } else {
-        form.setValue(`tomas.${idx}.superficie`, 'OTRO');
-        form.setValue(`tomas.${idx}.superficieOtro`, rawSuperficieFromDb);
-        setMostrarCampoOtroSuperficiePorToma((prev) => ({ ...prev, [idx]: true }));
+        if (rawParteAlergFromDb) {
+          const partesAlerg = rawEquipoAlergFromDb ? getPartesDeEquipoPorNombre(rawEquipoAlergFromDb) : [];
+          const parteAlergExiste = (partesAlerg || []).some((p: any) => String(p?.nombre ?? '').trim() === rawParteAlergFromDb);
+          if (parteAlergExiste) {
+            form.setValue(`tomas.${idx}.parteAlergenos`, rawParteAlergFromDb);
+            form.setValue(`tomas.${idx}.parteAlergenosOtro`, '');
+          } else {
+            form.setValue(`tomas.${idx}.parteAlergenos`, 'OTRO');
+            form.setValue(`tomas.${idx}.parteAlergenosOtro`, rawParteAlergFromDb);
+          }
+        }
       }
     });
 
@@ -1017,7 +1412,6 @@ export function AddLimpiezaRecordModal({
     partesPorToma,
     isLoadingPartesPorToma,
     form,
-    tomasFieldArray.fields.length,
   ]);
 
   React.useEffect(() => {
@@ -1056,6 +1450,7 @@ export function AddLimpiezaRecordModal({
             observacionAtp: '',
             equipoAtp: '',
             parteAtp: '',
+            parteAtpOtro: '',
             deteccionAlergenosRi: '',
             deteccionAlergenosAc: '',
             deteccionAlergenosRf: '',
@@ -1063,10 +1458,15 @@ export function AddLimpiezaRecordModal({
             observacionAlergenos: '',
             equipoAlergenos: '',
             parteAlergenos: '',
+            parteAlergenosOtro: '',
             detergente: '',
             desinfectante: '',
             verificacionVisual: '',
             observacionVisual: '',
+            // Responsables (requeridos por el schema) - NO autocompletar con user?.name
+            verificadoPor: '',
+            responsableProduccion: prefilledData.responsableProduccion || '',
+            responsableMantenimiento: '',
           });
           setTomaActivaIndex(0);
         } else {
@@ -1091,80 +1491,21 @@ export function AddLimpiezaRecordModal({
   // Efecto para precargar datos de verificación existente (modo edición)
   React.useEffect(() => {
     if (initialVerification && isOpen && !viewOnlyMode) {
+      toast({
+        title: 'Funcionalidad deshabilitada',
+        description: 'Las verificaciones de limpieza antiguas están deshabilitadas. Usa el registro nuevo (registros/liberaciones).',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Establecer modo edición cuando se está editando un registro existente
+    if ((registroIdToEdit || registroId) && isOpen && !viewOnlyMode) {
       setIsEditMode(true);
-      
-      // Formatear fecha al formato DD/MM/AA para el formulario
-      const fechaFormateada = format(new Date(initialVerification.fecha), 'dd/MM/yy');
-      
-      // Precargar todos los datos de la verificación existente
-      form.setValue('fecha', fechaFormateada);
-      form.setValue('mesCorte', initialVerification.mes_corte || '');
-      form.setValue('tipoVerificacion', initialVerification.tipo_verificacion || '');
-
-      if (!form.getValues('tomas')?.length) {
-        tomasFieldArray.append({
-          hora: initialVerification.hora || getHoraActual(),
-          linea: initialVerification.linea || '',
-          lineaOtro: '',
-          superficie: initialVerification.superficie || '',
-          superficieOtro: '',
-          estadoFiltro: initialVerification.estado_filtro?.toString() || '',
-          novedadesFiltro: '',
-          correccionesFiltro: '',
-          presenciaElementosExtranos: initialVerification.presencia_elementos_extranos || '',
-          detalleElementosExtranos: initialVerification.detalle_elementos_extranos || '',
-          resultadosAtpRi: initialVerification.resultados_atp_ri || '',
-          resultadosAtpAc: initialVerification.resultados_atp_ac || '',
-          resultadosAtpRf: initialVerification.resultados_atp_rf || '',
-          loteHisopoAtp: initialVerification.lote_hisopo || '',
-          observacionAtp: initialVerification.observacion_atp || '',
-          equipoAtp: (initialVerification as any).equipo_atp || '',
-          parteAtp: (initialVerification as any).parte_atp || '',
-          deteccionAlergenosRi: initialVerification.deteccion_alergenos_ri || '',
-          deteccionAlergenosAc: initialVerification.deteccion_alergenos_ac || '',
-          deteccionAlergenosRf: initialVerification.deteccion_alergenos_rf || '',
-          loteHisopoAlergenos: initialVerification.lote_hisopo2 || '',
-          observacionAlergenos: initialVerification.observacion_alergenos || '',
-          equipoAlergenos: (initialVerification as any).equipo_alergenos || '',
-          parteAlergenos: (initialVerification as any).parte_alergenos || '',
-          detergente: initialVerification.detergente || '',
-          desinfectante: initialVerification.desinfectante || '',
-          verificacionVisual: initialVerification.verificacion_visual?.toString() || '',
-          observacionVisual: initialVerification.observacion_visual || '',
-        });
-        setTomaActivaIndex(0);
-      }
-
-      form.setValue('tomas.0.linea', initialVerification.linea || '');
-      form.setValue('tomas.0.superficie', initialVerification.superficie || '');
-      form.setValue('tomas.0.estadoFiltro', initialVerification.estado_filtro?.toString() || '');
-      form.setValue('tomas.0.presenciaElementosExtranos', initialVerification.presencia_elementos_extranos || '');
-      form.setValue('tomas.0.detalleElementosExtranos', initialVerification.detalle_elementos_extranos || '');
-      form.setValue('tomas.0.resultadosAtpRi', initialVerification.resultados_atp_ri || '');
-      form.setValue('tomas.0.resultadosAtpAc', initialVerification.resultados_atp_ac || '');
-      form.setValue('tomas.0.resultadosAtpRf', initialVerification.resultados_atp_rf || '');
-      form.setValue('tomas.0.loteHisopoAtp', initialVerification.lote_hisopo || '');
-      form.setValue('tomas.0.observacionAtp', initialVerification.observacion_atp || '');
-      form.setValue('tomas.0.deteccionAlergenosRi', initialVerification.deteccion_alergenos_ri || '');
-      form.setValue('tomas.0.deteccionAlergenosAc', initialVerification.deteccion_alergenos_ac || '');
-      form.setValue('tomas.0.deteccionAlergenosRf', initialVerification.deteccion_alergenos_rf || '');
-      form.setValue('tomas.0.loteHisopoAlergenos', initialVerification.lote_hisopo2 || '');
-      form.setValue('tomas.0.observacionAlergenos', initialVerification.observacion_alergenos || '');
-      form.setValue('tomas.0.detergente', initialVerification.detergente || '');
-      form.setValue('tomas.0.desinfectante', initialVerification.desinfectante || '');
-      form.setValue('tomas.0.verificacionVisual', initialVerification.verificacion_visual?.toString() || '');
-      form.setValue('tomas.0.observacionVisual', initialVerification.observacion_visual || '');
-      form.setValue('verificadoPor', initialVerification.verificado_por || '');
-      form.setValue('responsableProduccion', initialVerification.responsable_produccion || '');
-      form.setValue('responsableMantenimiento', initialVerification.responsable_mantenimiento || '');
-
-      if (initialVerification.linea) {
-        cargarPartesEquipo(0, initialVerification.linea);
-      }
-    } else if (!initialVerification) {
+    } else if (!initialVerification && !registroIdToEdit && !registroId) {
       setIsEditMode(false);
     }
-  }, [initialVerification, isOpen, form, tomasFieldArray]);
+  }, [initialVerification, registroIdToEdit, registroId, isOpen, viewOnlyMode, toast]);
 
   // Efecto para actualizar las fechas cuando el modal se abre
   React.useEffect(() => {
@@ -1191,9 +1532,19 @@ export function AddLimpiezaRecordModal({
   }, [isOpen, prefilledData?.mesCorte, form, initialVerification, registroId, registroIdToEdit, viewOnlyMode]);
 
   async function onSubmit(values: z.infer<typeof limpiezaFormSchema>) {
-    console.log(' Enviando formulario de limpieza:', values);
-    
+    if (initialVerification) {
+      toast({
+        title: 'Funcionalidad deshabilitada',
+        description: 'Las verificaciones de limpieza antiguas están deshabilitadas. Usa el registro nuevo (registros/liberaciones).',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+
     try {
+      let savedRegistroId: string | null = null;
       if (liberacionStatusByIndex?.[tomaActivaIndex] === 'completed') {
         toast({
           title: 'Acción no permitida',
@@ -1202,96 +1553,7 @@ export function AddLimpiezaRecordModal({
         });
         return;
       }
-      if (isEditMode && initialVerification) {
-        // Modo edición: actualizar la verificación existente
-        console.log(' Actualizando verificación existente:', initialVerification.id);
-        
-        // Convertir fecha de DD/MM/AA a YYYY-MM-DD para la API
-        let fechaFormateada = values.fecha;
-        if (values.fecha.includes('/')) {
-          const partes = values.fecha.split('/');
-          if (partes.length === 3) {
-            const dia = partes[0].padStart(2, '0');
-            const mes = partes[1].padStart(2, '0');
-            const año = partes[2].length === 2 ? '20' + partes[2] : partes[2];
-            fechaFormateada = `${año}-${mes}-${dia}`;
-          }
-        }
-        
-        const toma0 = values.tomas[0];
-        const tipoVerificacionFinal =
-          String(values.tipoVerificacion || '').trim() === 'OTRO'
-            ? String(values.tipoVerificacionOtro || '').trim()
-            : String(values.tipoVerificacion || '').trim();
-        const lineaFinal =
-          String(toma0?.linea || '').trim() === 'OTRO'
-            ? String(toma0?.lineaOtro || '').trim()
-            : String(toma0?.linea || '').trim();
-        const superficieFinal =
-          String(toma0?.superficie || '').trim() === 'OTRO'
-            ? String(toma0?.superficieOtro || '').trim()
-            : String(toma0?.superficie || '').trim();
-        const updatedVerification = await limpiezaVerificationsService.update(initialVerification.id, {
-          fecha: fechaFormateada,
-          mes_corte: values.mesCorte,
-          hora: toma0.hora,
-          tipo_verificacion: tipoVerificacionFinal,
-          linea: lineaFinal,
-          superficie: superficieFinal,
-          estado_filtro: toma0.estadoFiltro ? parseInt(toma0.estadoFiltro) : 0,
-          presencia_elementos_extranos: toma0.presenciaElementosExtranos || null,
-          detalle_elementos_extranos: toma0.detalleElementosExtranos || null,
-          resultados_atp_ri: toma0.resultadosAtpRi || null,
-          resultados_atp_ac: toma0.resultadosAtpAc || null,
-          resultados_atp_rf: toma0.resultadosAtpRf || null,
-          lote_hisopo: toma0.loteHisopoAtp || null,
-          observacion_atp: toma0.observacionAtp || null,
-          deteccion_alergenos_ri: toma0.deteccionAlergenosRi || null,
-          deteccion_alergenos_ac: toma0.deteccionAlergenosAc || null,
-          deteccion_alergenos_rf: toma0.deteccionAlergenosRf || null,
-          lote_hisopo2: toma0.loteHisopoAlergenos || null,
-          observacion_alergenos: toma0.observacionAlergenos || null,
-          detergente: toma0.detergente || null,
-          desinfectante: toma0.desinfectante || null,
-          verificacion_visual: toma0.verificacionVisual ? parseInt(toma0.verificacionVisual) : 0,
-          observacion_visual: toma0.observacionVisual || null,
-          verificado_por: values.verificadoPor,
-          responsable_produccion: values.responsableProduccion,
-          responsable_mantenimiento: values.responsableMantenimiento,
-          status: 'completed', // Cambiar status a completed al actualizar
-        });
-        
-        console.log(' Verificación actualizada exitosamente:', updatedVerification);
-        
-        // Si era un registro pendiente que se está completando, verificar si hay una tarea relacionada
-        if (initialVerification.status === 'pending') {
-          console.log(' Buscando tarea relacionada para marcar como completada...');
-          
-          // Buscar tarea relacionada por fecha, tipo y línea
-          try {
-            const allTasks = await limpiezaTasksService.getAll();
-            const relatedTask = allTasks.find(task => 
-              task.fecha === initialVerification.fecha &&
-              task.tipo_muestra === initialVerification.tipo_verificacion &&
-              task.area === initialVerification.linea
-            );
-            
-            if (relatedTask && relatedTask.status === 'pending') {
-              console.log(' Marcando tarea relacionada como completada:', relatedTask.id);
-              await limpiezaTasksService.update(relatedTask.id, { status: 'completed' });
-              console.log(' Tarea marcada como completada exitosamente');
-            }
-          } catch (taskError) {
-            console.error(' Error al actualizar tarea relacionada:', taskError);
-            // No bloquear el flujo principal si falla la actualización de la tarea
-          }
-        }
-        
-        toast({
-          title: "Registro Completado",
-          description: "El registro de limpieza ha sido completado exitosamente.",
-        });
-      } else {
+      {
         // Nuevo modelo: guardar registro padre + solo liberación actual
         // Convertir fecha de DD/MM/AA a YYYY-MM-DD para la API
         let fechaFormateada = values.fecha;
@@ -1312,10 +1574,13 @@ export function AddLimpiezaRecordModal({
 
         const origin = initialTask ? 'cronograma' : shouldShowLoteProducto ? 'produccion' : 'manual';
         const nextRegistroId = registroId;
+        
 
         const buildLiberacionPayload = (idx: number) => {
           const toma = values.tomas[idx];
           const currentId = liberacionIdsByIndex[idx] ?? null;
+          const existingStatus = (liberacionStatusByIndex?.[idx] ?? 'pending') as 'pending' | 'completed';
+          const nextStatus = idx === tomaActivaIndex ? ('completed' as const) : existingStatus;
           const lineaFinal =
             String(toma?.linea || '').trim() === 'OTRO'
               ? String(toma?.lineaOtro || '').trim()
@@ -1333,33 +1598,44 @@ export function AddLimpiezaRecordModal({
             tipo_verificacion: tipoVerificacionFinal || null,
             linea: lineaFinal || null,
             superficie: superficieFinal || null,
-            estado_filtro: toma?.estadoFiltro ? parseInt(toma.estadoFiltro) : null,
+            estado_filtro: (() => {
+              const raw = String(toma?.estadoFiltro ?? '').trim();
+              if (!raw || raw === 'NA') return null;
+              const parsed = parseInt(raw);
+              return parsed === 0 || parsed === 1 ? parsed : null;
+            })(),
             novedades_filtro: toma?.novedadesFiltro || null,
             correcciones_filtro: toma?.correccionesFiltro || null,
             presencia_elementos_extranos: toma?.presenciaElementosExtranos || null,
             detalle_elementos_extranos: toma?.detalleElementosExtranos || null,
-            resultados_atp_ri: toma?.resultadosAtpRi || null,
-            resultados_atp_ac: toma?.resultadosAtpAc || null,
-            resultados_atp_rf: toma?.resultadosAtpRf || null,
-            lote_hisopo_atp: toma?.loteHisopoAtp || null,
-            observacion_atp: toma?.observacionAtp || null,
-            equipo_atp: toma?.equipoAtp || null,
-            parte_atp: toma?.parteAtp || null,
-            deteccion_alergenos_ri: toma?.deteccionAlergenosRi || null,
-            deteccion_alergenos_ac: toma?.deteccionAlergenosAc || null,
-            deteccion_alergenos_rf: toma?.deteccionAlergenosRf || null,
-            lote_hisopo_alergenos: toma?.loteHisopoAlergenos || null,
-            observacion_alergenos: toma?.observacionAlergenos || null,
-            equipo_alergenos: toma?.equipoAlergenos || null,
-            parte_alergenos: toma?.parteAlergenos || null,
+            resultadosAtpRi: toma?.resultadosAtpRi || null,
+            resultadosAtpAc: toma?.resultadosAtpAc || null,
+            resultadosAtpRf: toma?.resultadosAtpRf || null,
+            loteHisopoAtp: toma?.loteHisopoAtp || null,
+            observacionAtp: toma?.observacionAtp || null,
+            equipoAtp: toma?.equipoAtp || null,
+            parteAtp:
+              String(toma?.parteAtp || '').trim() === 'OTRO'
+                ? String(toma?.parteAtpOtro || '').trim() || null
+                : (toma?.parteAtp || null),
+            deteccionAlergenosRi: toma?.deteccionAlergenosRi || null,
+            deteccionAlergenosAc: toma?.deteccionAlergenosAc || null,
+            deteccionAlergenosRf: toma?.deteccionAlergenosRf || null,
+            loteHisopoAlergenos: toma?.loteHisopoAlergenos || null,
+            observacionAlergenos: toma?.observacionAlergenos || null,
+            equipoAlergenos: toma?.equipoAlergenos || null,
+            parteAlergenos:
+              String(toma?.parteAlergenos || '').trim() === 'OTRO'
+                ? String(toma?.parteAlergenosOtro || '').trim() || null
+                : (toma?.parteAlergenos || null),
             detergente: toma?.detergente || null,
             desinfectante: toma?.desinfectante || null,
-            verificacion_visual: toma?.verificacionVisual ? parseInt(toma.verificacionVisual) : null,
-            observacion_visual: toma?.observacionVisual || null,
+            verificacionVisual: toma?.verificacionVisual ? parseInt(toma.verificacionVisual) : null,
+            observacionVisual: toma?.observacionVisual || null,
             verificado_por: values.verificadoPor || null,
             responsable_produccion: values.responsableProduccion || null,
             responsable_mantenimiento: values.responsableMantenimiento || null,
-            status: 'completed' as const,
+            status: nextStatus,
             created_by: user?.name || null,
             updated_by: user?.name || null,
           };
@@ -1381,6 +1657,7 @@ export function AddLimpiezaRecordModal({
           });
 
           setRegistroId(created.id);
+          savedRegistroId = created.id;
           setLiberacionIdsByIndex((prev) => {
             const next = { ...prev };
             (created.liberaciones ?? []).forEach((lib: any, idx: number) => {
@@ -1415,6 +1692,8 @@ export function AddLimpiezaRecordModal({
             });
             return next;
           });
+
+          savedRegistroId = nextRegistroId;
         }
 
         if (initialTask) {
@@ -1437,15 +1716,131 @@ export function AddLimpiezaRecordModal({
           title: 'Registro Guardado',
           description: 'La liberación actual fue guardada como completada.',
         });
+
+        if (savedRegistroId) {
+          const data: LimpiezaRegistroWithLiberaciones = await limpiezaRegistrosService.getById(savedRegistroId);
+
+          setRegistroId(data.id);
+          setForceShowLoteProducto(data.origin === 'produccion');
+
+          const fecha = data.fecha;
+          const fechaAsForm = fecha.includes('-')
+            ? format(new Date(fecha), 'dd/MM/yy')
+            : fecha;
+
+          const tomas = (data.liberaciones ?? []).map((lib) => ({
+            hora: lib.hora ?? getHoraActual(),
+            linea: lib.linea ?? '',
+            lineaOtro: lib.linea ?? '',
+            superficie: lib.superficie ?? '',
+            superficieOtro: lib.superficie ?? '',
+            estadoFiltro: lib.estado_filtro != null ? String(lib.estado_filtro) : 'NA',
+            novedadesFiltro: lib.novedades_filtro ?? '',
+            correccionesFiltro: lib.correcciones_filtro ?? '',
+            presenciaElementosExtranos: lib.presencia_elementos_extranos ?? '',
+            detalleElementosExtranos: lib.detalle_elementos_extranos ?? '',
+            resultadosAtpRi: lib.resultados_atp_ri ?? '',
+            resultadosAtpAc: lib.resultados_atp_ac ?? '',
+            resultadosAtpRf: lib.resultados_atp_rf ?? '',
+            loteHisopoAtp: lib.lote_hisopo_atp ?? '',
+            observacionAtp: lib.observacion_atp ?? '',
+            equipoAtp: (lib as any).equipo_atp ?? '',
+            parteAtp: (lib as any).parte_atp ?? '',
+            parteAtpOtro: '',
+            deteccionAlergenosRi: lib.deteccion_alergenos_ri ?? '',
+            deteccionAlergenosAc: lib.deteccion_alergenos_ac ?? '',
+            deteccionAlergenosRf: lib.deteccion_alergenos_rf ?? '',
+            loteHisopoAlergenos: lib.lote_hisopo_alergenos ?? '',
+            observacionAlergenos: lib.observacion_alergenos ?? '',
+            equipoAlergenos: (lib as any).equipo_alergenos ?? '',
+            parteAlergenos: (lib as any).parte_alergenos ?? '',
+            parteAlergenosOtro: '',
+            detergente: lib.detergente ?? '',
+            desinfectante: lib.desinfectante ?? '',
+            verificacionVisual: lib.verificacion_visual != null ? String(lib.verificacion_visual) : '',
+            observacionVisual: lib.observacion_visual ?? '',
+            // Responsables por cada toma/liberación
+            verificadoPor: lib.verificado_por ?? '',
+            responsableProduccion: lib.responsable_produccion ?? '',
+            responsableMantenimiento: lib.responsable_mantenimiento ?? '',
+          }));
+
+          const idsByIndex: Record<number, string | null> = {};
+          const statusByIndex: Record<number, 'pending' | 'completed'> = {};
+          const headerByIndex: Record<
+            number,
+            {
+              verificadoPor: string;
+              responsableProduccion: string;
+              responsableMantenimiento: string;
+            }
+          > = {};
+          for (let i = 0; i < (data.liberaciones ?? []).length; i++) {
+            idsByIndex[i] = data.liberaciones[i]?.id ?? null;
+            statusByIndex[i] = (data.liberaciones[i]?.status ?? 'pending') as 'pending' | 'completed';
+            headerByIndex[i] = {
+              verificadoPor: String(data.liberaciones[i]?.verificado_por ?? '').trim(),
+              responsableProduccion: String(data.liberaciones[i]?.responsable_produccion ?? '').trim(),
+              responsableMantenimiento: String(data.liberaciones[i]?.responsable_mantenimiento ?? '').trim(),
+            };
+          }
+          setLiberacionIdsByIndex(idsByIndex);
+          setLiberacionStatusByIndex(statusByIndex);
+          setLiberacionHeaderByIndex(headerByIndex);
+
+          setMostrarCampoOtroLineaPorToma({});
+          setMostrarCampoOtroSuperficiePorToma({});
+
+          const safeSelectedIdx = Math.max(0, Math.min(tomaActivaIndex, (data.liberaciones ?? []).length - 1));
+          const selectedLiberacion = (data.liberaciones ?? [])[safeSelectedIdx];
+          const rawTipo = String(selectedLiberacion?.tipo_verificacion ?? '').trim();
+          const tipoIsKnown = rawTipo ? tipoVerificacionOptions.includes(rawTipo) : false;
+          const tipoVerificacion = rawTipo ? (tipoIsKnown ? rawTipo : 'OTRO') : '';
+          const tipoVerificacionOtro = rawTipo ? (tipoIsKnown ? '' : rawTipo) : '';
+
+          const verificadoPor = String(selectedLiberacion?.verificado_por ?? '').trim();
+          const responsableProduccion = String(selectedLiberacion?.responsable_produccion ?? '').trim();
+          const responsableMantenimiento = String(selectedLiberacion?.responsable_mantenimiento ?? '').trim();
+
+          form.reset({
+            fecha: fechaAsForm,
+            mesCorte: data.mes_corte ?? '',
+            detalles: data.detalles ?? '',
+            lote: data.lote ?? '',
+            producto: data.producto ?? '',
+            tipoVerificacion,
+            tipoVerificacionOtro,
+            verificadoPor,
+            responsableProduccion,
+            responsableMantenimiento,
+            tomas,
+          });
+          tomasFieldArray.replace(tomas as any);
+
+          pendingForm.reset({
+            fecha: fechaAsForm,
+            mesCorte: data.mes_corte ?? '',
+            detalles: data.detalles ?? '',
+            lote: data.lote ?? '',
+            producto: data.producto ?? '',
+            tipoVerificacion,
+            tipoVerificacionOtro,
+            verificadoPor,
+            responsableProduccion,
+            responsableMantenimiento,
+            tomas,
+          });
+
+          setMostrarCampoOtro(tipoVerificacion === 'OTRO');
+
+          normalizeSelectsFromLiberaciones(data.liberaciones ?? []);
+
+          setWizardStep('registro');
+          setRegistroSubView('lista');
+        }
       }
       
-      if (onSuccessfulSubmit) {
-        onSuccessfulSubmit();
-      } else {
-        onOpenChange(false);
-      }
-      
-      form.reset();
+      onSuccessfulSubmit?.();
     } catch (error) {
       console.error(' Error al guardar registro de limpieza:', error);
       toast({
@@ -1453,13 +1848,20 @@ export function AddLimpiezaRecordModal({
         description: "No se pudo guardar el registro de limpieza. Intente nuevamente.",
         variant: "destructive",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   async function onSubmitAsPending() {
-    console.log(' Guardando como pendiente...');
-    
+    if (isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
     try {
+      let savedRegistroId: string | null = null;
       if (liberacionStatusByIndex?.[tomaActivaIndex] === 'completed') {
         toast({
           title: 'Acción no permitida',
@@ -1468,45 +1870,43 @@ export function AddLimpiezaRecordModal({
         });
         return;
       }
+
+      // IMPORTANTE: Sincronizar ambos formularios antes de guardar para asegurar consistencia
+      syncFormsWithPendingForm('form');
+
+      // Obtener valores actualizados después de la sincronización
       const pendingValues = pendingForm.getValues();
       const mainFormValues = form.getValues();
 
-      const combinePrefer = <T,>(pendingValue: T, mainValue: T): T => {
-        const p: any = pendingValue as any;
-        if (p === undefined || p === null) return mainValue;
-        if (typeof p === 'string' && p.trim() === '') return mainValue;
-        return pendingValue;
-      };
-      
+      // Debug: Log de valores de responsables antes de combinar
+      console.log('🔍 onSubmitAsPending - Valores de responsables:');
+      console.log('  pendingForm.verificadoPor:', pendingValues.verificadoPor);
+      console.log('  pendingForm.responsableProduccion:', pendingValues.responsableProduccion);
+      console.log('  pendingForm.responsableMantenimiento:', pendingValues.responsableMantenimiento);
+      console.log('  form.verificadoPor:', mainFormValues.verificadoPor);
+      console.log('  form.responsableProduccion:', mainFormValues.responsableProduccion);
+      console.log('  form.responsableMantenimiento:', mainFormValues.responsableMantenimiento);
+      console.log('  pendingForm.tomas.length:', pendingValues.tomas?.length);
+      console.log('  form.tomas.length:', mainFormValues.tomas?.length);
+
       // Para guardar como pendiente, el usuario realmente edita el formulario principal (`form`).
-      // Usamos `pendingForm` solo como override cuando tenga valores no vacíos.
+      // PRIORIZAMOS: form > pendingForm para todos los campos
       const completeValues = {
         ...mainFormValues,
-        ...pendingValues,
-        fecha: combinePrefer(pendingValues.fecha as any, mainFormValues.fecha as any) || getFechaActual(),
-        mesCorte: combinePrefer(pendingValues.mesCorte as any, mainFormValues.mesCorte as any) || getMesActual(),
-        detalles: combinePrefer(pendingValues.detalles as any, mainFormValues.detalles as any) || '',
-        lote: combinePrefer(pendingValues.lote as any, mainFormValues.lote as any) || '',
-        producto: combinePrefer(pendingValues.producto as any, mainFormValues.producto as any) || '',
-        tipoVerificacion: combinePrefer(pendingValues.tipoVerificacion as any, mainFormValues.tipoVerificacion as any) || '',
-        verificadoPor: combinePrefer(pendingValues.verificadoPor as any, mainFormValues.verificadoPor as any) || user?.name || '',
-        tipoVerificacionOtro: combinePrefer(pendingValues.tipoVerificacionOtro as any, mainFormValues.tipoVerificacionOtro as any) || '',
-        responsableProduccion: combinePrefer(pendingValues.responsableProduccion as any, mainFormValues.responsableProduccion as any) || '',
-        responsableMantenimiento: combinePrefer(pendingValues.responsableMantenimiento as any, mainFormValues.responsableMantenimiento as any) || '',
-        // En "Guardar como Pendiente" el usuario edita realmente el formulario principal (`form`).
-        // `pendingForm` puede quedarse desactualizado cuando se agregan liberaciones con el fieldArray.
-        // Para evitar guardar solo 1 liberación, preferimos las tomas del `form` (o el array más largo).
-        tomas: (() => {
-          const mainTomas = Array.isArray(mainFormValues.tomas) ? mainFormValues.tomas : [];
-          const pendingTomas = Array.isArray(pendingValues.tomas) ? pendingValues.tomas : [];
-          if (mainTomas.length >= pendingTomas.length && mainTomas.length > 0) return mainTomas as any;
-          if (pendingTomas.length > 0) return pendingTomas as any;
-          return mainFormValues.tomas as any;
-        })(),
+        fecha: mainFormValues.fecha || pendingValues.fecha || getFechaActual(),
+        mesCorte: mainFormValues.mesCorte || pendingValues.mesCorte || getMesActual(),
+        detalles: mainFormValues.detalles || pendingValues.detalles || '',
+        lote: mainFormValues.lote || pendingValues.lote || '',
+        producto: mainFormValues.producto || pendingValues.producto || '',
+        tipoVerificacion: mainFormValues.tipoVerificacion || pendingValues.tipoVerificacion || '',
+        tipoVerificacionOtro: mainFormValues.tipoVerificacionOtro || pendingValues.tipoVerificacionOtro || '',
+        verificadoPor: mainFormValues.verificadoPor || pendingValues.verificadoPor || '',
+        responsableProduccion: mainFormValues.responsableProduccion || pendingValues.responsableProduccion || '',
+        responsableMantenimiento: mainFormValues.responsableMantenimiento || pendingValues.responsableMantenimiento || '',
+        // PRIORIZAMOS las tomas del form principal (que es donde el usuario está editando)
+        tomas: mainFormValues.tomas?.length > 0 ? mainFormValues.tomas : (pendingValues.tomas as any) || [],
       };
-      
-      console.log(' Valores completos para pendiente:', completeValues);
-      
+
       // Convertir fecha de DD/MM/AA a YYYY-MM-DD para la API
       let fechaFormateada = completeValues.fecha || getFechaActual();
       if (completeValues.fecha.includes('/')) {
@@ -1538,6 +1938,7 @@ export function AddLimpiezaRecordModal({
           observacionAtp: form.getValues(`tomas.${index}.observacionAtp` as const) as any,
           equipoAtp: form.getValues(`tomas.${index}.equipoAtp` as const) as any,
           parteAtp: form.getValues(`tomas.${index}.parteAtp` as const) as any,
+          parteAtpOtro: form.getValues(`tomas.${index}.parteAtpOtro` as const) as any,
           deteccionAlergenosRi: form.getValues(`tomas.${index}.deteccionAlergenosRi` as const) as any,
           deteccionAlergenosAc: form.getValues(`tomas.${index}.deteccionAlergenosAc` as const) as any,
           deteccionAlergenosRf: form.getValues(`tomas.${index}.deteccionAlergenosRf` as const) as any,
@@ -1545,10 +1946,15 @@ export function AddLimpiezaRecordModal({
           observacionAlergenos: form.getValues(`tomas.${index}.observacionAlergenos` as const) as any,
           equipoAlergenos: form.getValues(`tomas.${index}.equipoAlergenos` as const) as any,
           parteAlergenos: form.getValues(`tomas.${index}.parteAlergenos` as const) as any,
+          parteAlergenosOtro: form.getValues(`tomas.${index}.parteAlergenosOtro` as const) as any,
           detergente: form.getValues(`tomas.${index}.detergente` as const) as any,
           desinfectante: form.getValues(`tomas.${index}.desinfectante` as const) as any,
           verificacionVisual: form.getValues(`tomas.${index}.verificacionVisual` as const) as any,
           observacionVisual: form.getValues(`tomas.${index}.observacionVisual` as const) as any,
+          // Responsables por toma
+          verificadoPor: form.getValues(`tomas.${index}.verificadoPor` as const) as any,
+          responsableProduccion: form.getValues(`tomas.${index}.responsableProduccion` as const) as any,
+          responsableMantenimiento: form.getValues(`tomas.${index}.responsableMantenimiento` as const) as any,
         };
       };
 
@@ -1585,11 +1991,17 @@ export function AddLimpiezaRecordModal({
         resultadosAtpRf: preferNonEmpty(tomaFromForm.resultadosAtpRf, tomaFromValues.resultadosAtpRf),
         loteHisopoAtp: preferNonEmpty(tomaFromForm.loteHisopoAtp, tomaFromValues.loteHisopoAtp),
         observacionAtp: preferNonEmpty(tomaFromForm.observacionAtp, tomaFromValues.observacionAtp),
+        equipoAtp: preferNonEmpty(tomaFromForm.equipoAtp, tomaFromValues.equipoAtp),
+        parteAtp: preferNonEmpty(tomaFromForm.parteAtp, tomaFromValues.parteAtp),
+        parteAtpOtro: preferNonEmpty((tomaFromForm as any).parteAtpOtro, (tomaFromValues as any).parteAtpOtro),
         deteccionAlergenosRi: preferNonEmpty(tomaFromForm.deteccionAlergenosRi, tomaFromValues.deteccionAlergenosRi),
         deteccionAlergenosAc: preferNonEmpty(tomaFromForm.deteccionAlergenosAc, tomaFromValues.deteccionAlergenosAc),
         deteccionAlergenosRf: preferNonEmpty(tomaFromForm.deteccionAlergenosRf, tomaFromValues.deteccionAlergenosRf),
         loteHisopoAlergenos: preferNonEmpty(tomaFromForm.loteHisopoAlergenos, tomaFromValues.loteHisopoAlergenos),
         observacionAlergenos: preferNonEmpty(tomaFromForm.observacionAlergenos, tomaFromValues.observacionAlergenos),
+        equipoAlergenos: preferNonEmpty(tomaFromForm.equipoAlergenos, tomaFromValues.equipoAlergenos),
+        parteAlergenos: preferNonEmpty(tomaFromForm.parteAlergenos, tomaFromValues.parteAlergenos),
+        parteAlergenosOtro: preferNonEmpty((tomaFromForm as any).parteAlergenosOtro, (tomaFromValues as any).parteAlergenosOtro),
         detergente: preferNonEmpty(tomaFromForm.detergente, tomaFromValues.detergente),
         desinfectante: preferNonEmpty(tomaFromForm.desinfectante, tomaFromValues.desinfectante),
         verificacionVisual: preferNonEmpty(tomaFromForm.verificacionVisual, tomaFromValues.verificacionVisual),
@@ -1635,6 +2047,7 @@ export function AddLimpiezaRecordModal({
           observacionAtp: preferNonEmpty(tomaFromFormIdx.observacionAtp, tomaFromValuesIdx.observacionAtp),
           equipoAtp: preferNonEmpty(tomaFromFormIdx.equipoAtp, tomaFromValuesIdx.equipoAtp),
           parteAtp: preferNonEmpty(tomaFromFormIdx.parteAtp, tomaFromValuesIdx.parteAtp),
+          parteAtpOtro: preferNonEmpty(tomaFromFormIdx.parteAtpOtro, tomaFromValuesIdx.parteAtpOtro),
           deteccionAlergenosRi: preferNonEmpty(tomaFromFormIdx.deteccionAlergenosRi, tomaFromValuesIdx.deteccionAlergenosRi),
           deteccionAlergenosAc: preferNonEmpty(tomaFromFormIdx.deteccionAlergenosAc, tomaFromValuesIdx.deteccionAlergenosAc),
           deteccionAlergenosRf: preferNonEmpty(tomaFromFormIdx.deteccionAlergenosRf, tomaFromValuesIdx.deteccionAlergenosRf),
@@ -1642,10 +2055,15 @@ export function AddLimpiezaRecordModal({
           observacionAlergenos: preferNonEmpty(tomaFromFormIdx.observacionAlergenos, tomaFromValuesIdx.observacionAlergenos),
           equipoAlergenos: preferNonEmpty(tomaFromFormIdx.equipoAlergenos, tomaFromValuesIdx.equipoAlergenos),
           parteAlergenos: preferNonEmpty(tomaFromFormIdx.parteAlergenos, tomaFromValuesIdx.parteAlergenos),
+          parteAlergenosOtro: preferNonEmpty(tomaFromFormIdx.parteAlergenosOtro, tomaFromValuesIdx.parteAlergenosOtro),
           detergente: preferNonEmpty(tomaFromFormIdx.detergente, tomaFromValuesIdx.detergente),
           desinfectante: preferNonEmpty(tomaFromFormIdx.desinfectante, tomaFromValuesIdx.desinfectante),
           verificacionVisual: preferNonEmpty(tomaFromFormIdx.verificacionVisual, tomaFromValuesIdx.verificacionVisual),
           observacionVisual: preferNonEmpty(tomaFromFormIdx.observacionVisual, tomaFromValuesIdx.observacionVisual),
+          // Responsables por toma
+          verificadoPor: preferNonEmpty(tomaFromFormIdx.verificadoPor, tomaFromValuesIdx.verificadoPor),
+          responsableProduccion: preferNonEmpty(tomaFromFormIdx.responsableProduccion, tomaFromValuesIdx.responsableProduccion),
+          responsableMantenimiento: preferNonEmpty(tomaFromFormIdx.responsableMantenimiento, tomaFromValuesIdx.responsableMantenimiento),
         };
 
         const lineaFinal =
@@ -1667,7 +2085,12 @@ export function AddLimpiezaRecordModal({
           tipo_verificacion: tipoVerificacionFinal || null,
           linea: lineaFinal || null,
           superficie: superficieFinal || null,
-          estado_filtro: tomaMerged?.estadoFiltro ? parseInt(tomaMerged.estadoFiltro) : null,
+          estado_filtro: (() => {
+            const raw = String(tomaMerged?.estadoFiltro ?? '').trim();
+            if (!raw || raw === 'NA') return null;
+            const parsed = parseInt(raw);
+            return parsed === 0 || parsed === 1 ? parsed : null;
+          })(),
           novedades_filtro: tomaMerged?.novedadesFiltro || null,
           correcciones_filtro: tomaMerged?.correccionesFiltro || null,
           presencia_elementos_extranos: tomaMerged?.presenciaElementosExtranos || null,
@@ -1678,21 +2101,28 @@ export function AddLimpiezaRecordModal({
           lote_hisopo_atp: tomaMerged?.loteHisopoAtp || null,
           observacion_atp: tomaMerged?.observacionAtp || null,
           equipo_atp: tomaMerged?.equipoAtp || null,
-          parte_atp: tomaMerged?.parteAtp || null,
+          parte_atp:
+            String(tomaMerged?.parteAtp || '').trim() === 'OTRO'
+              ? String(tomaMerged?.parteAtpOtro || '').trim() || null
+              : (tomaMerged?.parteAtp || null),
           deteccion_alergenos_ri: tomaMerged?.deteccionAlergenosRi || null,
           deteccion_alergenos_ac: tomaMerged?.deteccionAlergenosAc || null,
           deteccion_alergenos_rf: tomaMerged?.deteccionAlergenosRf || null,
           lote_hisopo_alergenos: tomaMerged?.loteHisopoAlergenos || null,
           observacion_alergenos: tomaMerged?.observacionAlergenos || null,
           equipo_alergenos: tomaMerged?.equipoAlergenos || null,
-          parte_alergenos: tomaMerged?.parteAlergenos || null,
+          parte_alergenos:
+            String(tomaMerged?.parteAlergenos || '').trim() === 'OTRO'
+              ? String(tomaMerged?.parteAlergenosOtro || '').trim() || null
+              : (tomaMerged?.parteAlergenos || null),
           detergente: tomaMerged?.detergente || null,
           desinfectante: tomaMerged?.desinfectante || null,
           verificacion_visual: tomaMerged?.verificacionVisual ? parseInt(tomaMerged.verificacionVisual) : null,
           observacion_visual: tomaMerged?.observacionVisual || null,
-          verificado_por: completeValues.verificadoPor || user?.name || null,
-          responsable_produccion: completeValues.responsableProduccion || null,
-          responsable_mantenimiento: completeValues.responsableMantenimiento || null,
+          // Usar los responsables desde la toma individual, no desde los valores globales
+          verificado_por: tomaMerged?.verificadoPor || completeValues.verificadoPor || '',
+          responsable_produccion: tomaMerged?.responsableProduccion || completeValues.responsableProduccion || '',
+          responsable_mantenimiento: tomaMerged?.responsableMantenimiento || completeValues.responsableMantenimiento || '',
           status: 'pending' as const,
           created_by: user?.name || null,
           updated_by: user?.name || null,
@@ -1700,6 +2130,13 @@ export function AddLimpiezaRecordModal({
       };
 
       const liberacionesPayload = (tomasSafe || []).map((_, idx) => buildLiberacionPayload(idx));
+
+      // Debug: Log de valores finales antes de enviar a API
+      console.log('📤 onSubmitAsPending - Enviando a API:');
+      console.log('  completeValues.verificadoPor:', completeValues.verificadoPor);
+      console.log('  completeValues.responsableProduccion:', completeValues.responsableProduccion);
+      console.log('  completeValues.responsableMantenimiento:', completeValues.responsableMantenimiento);
+      console.log('  liberacionesPayload[0]:', liberacionesPayload[0]);
 
       if (!nextRegistroId) {
         const created = await limpiezaRegistrosService.create({
@@ -1715,6 +2152,7 @@ export function AddLimpiezaRecordModal({
         });
 
         setRegistroId(created.id);
+        savedRegistroId = created.id;
         setLiberacionIdsByIndex((prev) => {
           const next = { ...prev };
           (created.liberaciones ?? []).forEach((lib: any, idx: number) => {
@@ -1763,22 +2201,152 @@ export function AddLimpiezaRecordModal({
           });
           return next;
         });
+
+        savedRegistroId = nextRegistroId;
       }
       
       toast({
         title: "Registro Guardado como Pendiente",
         description: "La liberación actual fue guardada como pendiente. Puede completarla más tarde.",
       });
-      
-      if (onSuccessfulSubmit) {
-        onSuccessfulSubmit();
-      } else {
-        onOpenChange(false);
+
+      // Importante: el guardado puede completar bien pero la recarga/hidratación puede fallar
+      // (sobre todo en móvil). No mostrar error de guardado si solo falla el refresh.
+      if (savedRegistroId) {
+        try {
+          const data: LimpiezaRegistroWithLiberaciones = await limpiezaRegistrosService.getById(savedRegistroId);
+
+          setRegistroId(data.id);
+          setForceShowLoteProducto(data.origin === 'produccion');
+
+          const fecha = data.fecha;
+          const fechaAsForm = fecha.includes('-') ? format(new Date(fecha), 'dd/MM/yy') : fecha;
+
+          const tomas = (data.liberaciones ?? []).map((lib) => ({
+            hora: lib.hora ?? getHoraActual(),
+            linea: lib.linea ?? '',
+            lineaOtro: lib.linea ?? '',
+            superficie: lib.superficie ?? '',
+            superficieOtro: lib.superficie ?? '',
+            estadoFiltro: lib.estado_filtro != null ? String(lib.estado_filtro) : 'NA',
+            novedadesFiltro: lib.novedades_filtro ?? '',
+            correccionesFiltro: lib.correcciones_filtro ?? '',
+            presenciaElementosExtranos: lib.presencia_elementos_extranos ?? '',
+            detalleElementosExtranos: lib.detalle_elementos_extranos ?? '',
+            resultadosAtpRi: lib.resultados_atp_ri ?? '',
+            resultadosAtpAc: lib.resultados_atp_ac ?? '',
+            resultadosAtpRf: lib.resultados_atp_rf ?? '',
+            loteHisopoAtp: lib.lote_hisopo_atp ?? '',
+            observacionAtp: lib.observacion_atp ?? '',
+            equipoAtp: (lib as any).equipo_atp ?? '',
+            parteAtp: (lib as any).parte_atp ?? '',
+            parteAtpOtro: '',
+            deteccionAlergenosRi: lib.deteccion_alergenos_ri ?? '',
+            deteccionAlergenosAc: lib.deteccion_alergenos_ac ?? '',
+            deteccionAlergenosRf: lib.deteccion_alergenos_rf ?? '',
+            loteHisopoAlergenos: lib.lote_hisopo_alergenos ?? '',
+            observacionAlergenos: lib.observacion_alergenos ?? '',
+            equipoAlergenos: (lib as any).equipo_alergenos ?? '',
+            parteAlergenos: (lib as any).parte_alergenos ?? '',
+            parteAlergenosOtro: '',
+            detergente: lib.detergente ?? '',
+            desinfectante: lib.desinfectante ?? '',
+            verificacionVisual: lib.verificacion_visual != null ? String(lib.verificacion_visual) : '',
+            observacionVisual: lib.observacion_visual ?? '',
+            // Responsables por cada toma/liberación
+            verificadoPor: lib.verificado_por ?? '',
+            responsableProduccion: lib.responsable_produccion ?? '',
+            responsableMantenimiento: lib.responsable_mantenimiento ?? '',
+          }));
+
+          const idsByIndex: Record<number, string | null> = {};
+          const statusByIndex: Record<number, 'pending' | 'completed'> = {};
+          const headerByIndex: Record<
+            number,
+            {
+              verificadoPor: string;
+              responsableProduccion: string;
+              responsableMantenimiento: string;
+            }
+          > = {};
+          for (let i = 0; i < (data.liberaciones ?? []).length; i++) {
+            idsByIndex[i] = data.liberaciones[i]?.id ?? null;
+            statusByIndex[i] = (data.liberaciones[i]?.status ?? 'pending') as 'pending' | 'completed';
+            headerByIndex[i] = {
+              verificadoPor: String(data.liberaciones[i]?.verificado_por ?? '').trim(),
+              responsableProduccion: String(data.liberaciones[i]?.responsable_produccion ?? '').trim(),
+              responsableMantenimiento: String(data.liberaciones[i]?.responsable_mantenimiento ?? '').trim(),
+            };
+          }
+          setLiberacionIdsByIndex(idsByIndex);
+          setLiberacionStatusByIndex(statusByIndex);
+          setLiberacionHeaderByIndex(headerByIndex);
+
+          setMostrarCampoOtroLineaPorToma({});
+          setMostrarCampoOtroSuperficiePorToma({});
+
+          const safeSelectedIdx = Math.max(0, Math.min(tomaActivaIndex, (data.liberaciones ?? []).length - 1));
+          const selectedLiberacion = (data.liberaciones ?? [])[safeSelectedIdx];
+          const rawTipo = String(selectedLiberacion?.tipo_verificacion ?? '').trim();
+          const tipoIsKnown = rawTipo ? tipoVerificacionOptions.includes(rawTipo) : false;
+          const tipoVerificacion = rawTipo ? (tipoIsKnown ? rawTipo : 'OTRO') : '';
+          const tipoVerificacionOtro = rawTipo ? (tipoIsKnown ? '' : rawTipo) : '';
+
+          // Resetear el ref de editados para permitir cargar valores desde BD
+          responsablesEditedRef.current = {
+            verificadoPor: false,
+            responsableProduccion: false,
+            responsableMantenimiento: false,
+          };
+
+          form.reset({
+            fecha: fechaAsForm,
+            mesCorte: data.mes_corte ?? '',
+            detalles: data.detalles ?? '',
+            lote: data.lote ?? '',
+            producto: data.producto ?? '',
+            tipoVerificacion,
+            tipoVerificacionOtro,
+            verificadoPor: selectedLiberacion?.verificado_por ?? '',
+            responsableProduccion: selectedLiberacion?.responsable_produccion ?? '',
+            responsableMantenimiento: selectedLiberacion?.responsable_mantenimiento ?? '',
+            tomas,
+          });
+          tomasFieldArray.replace(tomas as any);
+
+          // También actualizar pendingForm con los mismos valores
+          pendingForm.reset({
+            fecha: fechaAsForm,
+            mesCorte: data.mes_corte ?? '',
+            detalles: data.detalles ?? '',
+            lote: data.lote ?? '',
+            producto: data.producto ?? '',
+            tipoVerificacion,
+            tipoVerificacionOtro,
+            verificadoPor: selectedLiberacion?.verificado_por ?? '',
+            responsableProduccion: selectedLiberacion?.responsable_produccion ?? '',
+            responsableMantenimiento: selectedLiberacion?.responsable_mantenimiento ?? '',
+            tomas,
+          });
+
+          setMostrarCampoOtro(tipoVerificacion === 'OTRO');
+
+          normalizeSelectsFromLiberaciones(data.liberaciones ?? []);
+
+          // IMPORTANTE: Sincronizar explícitamente después de hidratar para asegurar consistencia
+          setTimeout(() => {
+            syncFormsWithPendingForm('form');
+            console.log('✅ Hidratación completada - Datos sincronizados después de guardar como pendiente');
+          }, 100);
+
+          setWizardStep('registro');
+          setRegistroSubView('lista');
+        } catch (refreshError) {
+          console.warn('Error recargando/hidratando después de guardar como pendiente:', refreshError);
+        }
       }
       
-      // Resetear ambos formularios
-      form.reset();
-      pendingForm.reset();
+      onSuccessfulSubmit?.();
     } catch (error) {
       console.error('❌ Error al guardar como pendiente:', error);
       toast({
@@ -1786,6 +2354,8 @@ export function AddLimpiezaRecordModal({
         description: "No se pudo guardar el registro como pendiente. Intente nuevamente.",
         variant: "destructive",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -1820,7 +2390,7 @@ export function AddLimpiezaRecordModal({
               : isEditMode 
                 ? 'RE-CAL-037 CONSOLIDADO VERIFICACIÓN ORDEN, LIMPIEZA Y DESINFECCIÓN 2026' 
                 : 'RE-CAL-037 CONSOLIDADO VERIFICACIÓN ORDEN, LIMPIEZA Y DESINFECCIÓN 2026'}
-            {' [MULTI-TOMAS]'}
+            
           </DialogTitle>
           <DialogDescription asChild className="text-sm">
             <div className="space-y-1">
@@ -1847,11 +2417,36 @@ export function AddLimpiezaRecordModal({
                     <FormField control={form.control} name="fecha" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Fecha (DD/MM/AA)</FormLabel>
-                        <Input 
-                          disabled={effectiveViewOnlyMode || Boolean(prefilledData?.fecha)} 
-                          {...field} 
-                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
-                        />
+                        <div className="relative">
+                          <Input
+                            disabled={effectiveViewOnlyMode || Boolean(prefilledData?.fecha)}
+                            {...field}
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 pr-10 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            disabled={effectiveViewOnlyMode || Boolean(prefilledData?.fecha)}
+                            className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                            onClick={openFechaPicker}
+                            aria-label="Abrir calendario"
+                          >
+                            <Calendar className="h-4 w-4" />
+                          </Button>
+                          <input
+                            ref={fechaPickerRef}
+                            type="date"
+                            tabIndex={-1}
+                            className="sr-only"
+                            value={toIsoDateFromForm(field.value)}
+                            onChange={(e) => {
+                              const nextIso = e.target.value;
+                              const nextForm = toFormDateFromIso(nextIso);
+                              field.onChange(nextForm);
+                            }}
+                          />
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )} />
@@ -1870,7 +2465,7 @@ export function AddLimpiezaRecordModal({
 
                     <FormField control={form.control} name="detalles" render={({ field }) => (
                       <FormItem className="md:col-span-2 lg:col-span-3">
-                        <FormLabel>Detalles de labor de limpieza</FormLabel>
+                        <FormLabel>Detalles de limpieza</FormLabel>
                         <FormControl>
                           <Textarea disabled={effectiveViewOnlyMode} placeholder="Escriba detalles..." {...field} />
                         </FormControl>
@@ -1938,6 +2533,7 @@ export function AddLimpiezaRecordModal({
                               observacionAtp: '',
                               equipoAtp: '',
                               parteAtp: '',
+                              parteAtpOtro: '',
                               deteccionAlergenosRi: '',
                               deteccionAlergenosAc: '',
                               deteccionAlergenosRf: '',
@@ -1945,10 +2541,15 @@ export function AddLimpiezaRecordModal({
                               observacionAlergenos: '',
                               equipoAlergenos: '',
                               parteAlergenos: '',
+                              parteAlergenosOtro: '',
                               detergente: '',
                               desinfectante: '',
                               verificacionVisual: '',
                               observacionVisual: '',
+                              // Responsables (requeridos por el schema) - NO autocompletar con user?.name
+                              verificadoPor: '',
+                              responsableProduccion: '',
+                              responsableMantenimiento: '',
                             });
                             const nextIndex = tomasFieldArray.fields.length;
                             setTomaActivaIndex(nextIndex);
@@ -1971,39 +2572,37 @@ export function AddLimpiezaRecordModal({
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                          {tomasFieldArray.fields.map((toma, index) => (
-                            (() => {
-                              const status = getLiberacionStatus(index);
-                              const hora = String(form.getValues(`tomas.${index}.hora` as const) || '').trim();
-                              const statusClass =
-                                status === 'completed'
-                                  ? 'border-green-300 bg-green-50 text-green-800 hover:bg-green-100'
-                                  : 'border-yellow-300 bg-yellow-50 text-yellow-800 hover:bg-yellow-100';
+                          {tomasFieldArray.fields.map((toma, index) => {
+                            const status = getLiberacionStatus(index);
+                            const hora = String(form.getValues(`tomas.${index}.hora` as const) || '').trim();
+                            const statusClass =
+                              status === 'completed'
+                                ? 'border-green-300 bg-green-50 text-green-800 hover:bg-green-100'
+                                : 'border-yellow-300 bg-yellow-50 text-yellow-800 hover:bg-yellow-100';
 
-                              return (
-                            <Button
-                              key={toma.id}
-                              type="button"
-                              variant="outline"
-                              className={`justify-between ${statusClass}`}
-                              disabled={effectiveViewOnlyMode}
-                              onClick={() => {
-                                const horaActual = String(
-                                  form.getValues(`tomas.${index}.hora` as const) || ''
-                                ).trim();
-                                if (!horaActual) {
-                                  form.setValue(`tomas.${index}.hora` as const, getHoraActual());
-                                }
-                                setTomaActivaIndex(index);
-                                setRegistroSubView('detalle');
-                              }}
-                            >
-                              <span>Liberación {index + 1}</span>
-                              <span className="text-xs font-medium tabular-nums">{hora || '--:--'}</span>
-                            </Button>
-                              );
-                            })()
-                          ))}
+                            return (
+                              <Button
+                                key={toma.id}
+                                type="button"
+                                variant="outline"
+                                className={`justify-between ${statusClass}`}
+                                disabled={effectiveViewOnlyMode}
+                                onClick={() => {
+                                  const horaActual = String(
+                                    form.getValues(`tomas.${index}.hora` as const) || ''
+                                  ).trim();
+                                  if (!horaActual) {
+                                    form.setValue(`tomas.${index}.hora` as const, getHoraActual());
+                                  }
+                                  setTomaActivaIndex(index);
+                                  setRegistroSubView('detalle');
+                                }}
+                              >
+                                <span>Liberación {index + 1}</span>
+                                <span className="text-xs font-medium tabular-nums">{hora || '--:--'}</span>
+                              </Button>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -2065,6 +2664,7 @@ export function AddLimpiezaRecordModal({
                                 <Select
                                   disabled={effectiveViewOnlyMode}
                                   onValueChange={(value) => {
+                                    console.log('🟡 Tipo de Verificación cambiado - value:', value);
                                     field.onChange(value);
                                     setMostrarCampoOtro(value === 'OTRO');
                                     if (value !== 'OTRO') {
@@ -2096,12 +2696,24 @@ export function AddLimpiezaRecordModal({
                                 <Select
                                   disabled={effectiveViewOnlyMode || isLoadingEquipos}
                                   onValueChange={(value) => {
+                                    console.log('🔵 Equipo/Área cambiado - tomaActivaIndex:', tomaActivaIndex, 'value:', value);
+                                    // Marcar como editado por el usuario para evitar que la normalización lo sobrescriba
+                                    userEditedLineaRef.current[tomaActivaIndex] = true;
                                     field.onChange(value);
-                                    setMostrarCampoOtroLineaPorToma(prev => ({ ...prev, [tomaActivaIndex]: value === 'OTRO' }));
+                                    setMostrarCampoOtroLineaPorToma(prev => {
+                                      const newValue = value === 'OTRO';
+                                      console.log('🔵 setMostrarCampoOtroLineaPorToma:', tomaActivaIndex, '=>', newValue);
+                                      return { ...prev, [tomaActivaIndex]: newValue };
+                                    });
                                     cargarPartesEquipo(tomaActivaIndex, value);
                                     form.setValue(`tomas.${tomaActivaIndex}.superficie`, '');
                                     form.setValue(`tomas.${tomaActivaIndex}.superficieOtro`, '');
-                                    setMostrarCampoOtroSuperficiePorToma(prev => ({ ...prev, [tomaActivaIndex]: false }));
+                                    // También resetear el flag de superficie cuando cambia el equipo
+                                    userEditedSuperficieRef.current[tomaActivaIndex] = false;
+                                    setMostrarCampoOtroSuperficiePorToma(prev => {
+                                      console.log('🔵 setMostrarCampoOtroSuperficiePorToma:', tomaActivaIndex, '=> false');
+                                      return { ...prev, [tomaActivaIndex]: false };
+                                    });
                                   }}
                                   value={field.value}
                                 >
@@ -2139,8 +2751,15 @@ export function AddLimpiezaRecordModal({
                                 <Select
                                   disabled={effectiveViewOnlyMode || !!isLoadingPartesPorToma[tomaActivaIndex]}
                                   onValueChange={(value) => {
+                                    console.log('🟢 Superficie cambiada - tomaActivaIndex:', tomaActivaIndex, 'value:', value);
+                                    // Marcar como editado por el usuario para evitar que la normalización lo sobrescriba
+                                    userEditedSuperficieRef.current[tomaActivaIndex] = true;
                                     field.onChange(value);
-                                    setMostrarCampoOtroSuperficiePorToma(prev => ({ ...prev, [tomaActivaIndex]: value === 'OTRO' }));
+                                    setMostrarCampoOtroSuperficiePorToma(prev => {
+                                      const newValue = value === 'OTRO';
+                                      console.log('🟢 setMostrarCampoOtroSuperficiePorToma:', tomaActivaIndex, '=>', newValue);
+                                      return { ...prev, [tomaActivaIndex]: newValue };
+                                    });
                                   }}
                                   value={field.value}
                                 >
@@ -2190,7 +2809,17 @@ export function AddLimpiezaRecordModal({
                           <FormField control={form.control} name={`tomas.${tomaActivaIndex}.estadoFiltro`} render={({ field }) => (
                             <FormItem>
                               <FormLabel>Estado del Filtro</FormLabel>
-                              <Select disabled={effectiveViewOnlyMode} onValueChange={field.onChange} value={field.value}>
+                              <Select
+                                disabled={effectiveViewOnlyMode}
+                                onValueChange={(value) => {
+                                  field.onChange(value);
+                                  if (value === 'NA') {
+                                    form.setValue(`tomas.${tomaActivaIndex}.novedadesFiltro`, '');
+                                    form.setValue(`tomas.${tomaActivaIndex}.correccionesFiltro`, '');
+                                  }
+                                }}
+                                value={field.value}
+                              >
                                 <FormControl>
                                   <SelectTrigger>
                                     <SelectValue placeholder="Seleccione estado del filtro" />
@@ -2199,7 +2828,7 @@ export function AddLimpiezaRecordModal({
                                 <SelectContent>
                                   <SelectItem value="1">Cumple</SelectItem>
                                   <SelectItem value="0">No cumple</SelectItem>
-                                  <SelectItem value="2">No aplica</SelectItem>
+                                  <SelectItem value="NA">No aplica</SelectItem>
                                 </SelectContent>
                               </Select>
                               <FormMessage />
@@ -2212,7 +2841,7 @@ export function AddLimpiezaRecordModal({
                                 <FormItem>
                                   <FormLabel>Novedades</FormLabel>
                                   <FormControl>
-                                    <Textarea disabled={effectiveViewOnlyMode} placeholder="Describa las novedades..." {...field} />
+                                    <Textarea disabled={effectiveViewOnlyMode} placeholder="Describa las novedades..." className="min-h-[120px]" {...field} />
                                   </FormControl>
                                   <FormMessage />
                                 </FormItem>
@@ -2221,7 +2850,7 @@ export function AddLimpiezaRecordModal({
                                 <FormItem>
                                   <FormLabel>Correcciones</FormLabel>
                                   <FormControl>
-                                    <Textarea disabled={effectiveViewOnlyMode} placeholder="Describa las correcciones..." {...field} />
+                                    <Textarea disabled={effectiveViewOnlyMode} placeholder="Describa las correcciones..." className="min-h-[120px]" {...field} />
                                   </FormControl>
                                   <FormMessage />
                                 </FormItem>
@@ -2287,6 +2916,7 @@ export function AddLimpiezaRecordModal({
                                         const value = e.target.value;
                                         field.onChange(value);
                                         form.setValue(`tomas.${tomaActivaIndex}.parteAtp`, '');
+                                        form.setValue(`tomas.${tomaActivaIndex}.parteAtpOtro`, '');
                                       }}
                                     />
                                   </FormControl>
@@ -2304,12 +2934,14 @@ export function AddLimpiezaRecordModal({
                                     <Select
                                       disabled={
                                         effectiveViewOnlyMode ||
-                                        !String(form.getValues(`tomas.${tomaActivaIndex}.equipoAtp` as const) || '').trim() ||
-                                        getPartesDeEquipoPorNombre(
-                                          form.getValues(`tomas.${tomaActivaIndex}.equipoAtp` as const) as any
-                                        ).length === 0
+                                        !String(form.getValues(`tomas.${tomaActivaIndex}.equipoAtp` as const) || '').trim()
                                       }
-                                      onValueChange={field.onChange}
+                                      onValueChange={(value) => {
+                                        field.onChange(value);
+                                        if (value !== 'OTRO') {
+                                          form.setValue(`tomas.${tomaActivaIndex}.parteAtpOtro`, '');
+                                        }
+                                      }}
                                       value={field.value}
                                     >
                                       <FormControl>
@@ -2325,6 +2957,7 @@ export function AddLimpiezaRecordModal({
                                             {parte.nombre}
                                           </SelectItem>
                                         ))}
+                                        <SelectItem value="OTRO">OTRO</SelectItem>
                                       </SelectContent>
                                     </Select>
                                   </FormControl>
@@ -2332,6 +2965,22 @@ export function AddLimpiezaRecordModal({
                                 </FormItem>
                               )}
                             />
+
+                            {String(form.watch(`tomas.${tomaActivaIndex}.parteAtp`) || '').trim() === 'OTRO' && (
+                              <FormField
+                                control={form.control}
+                                name={`tomas.${tomaActivaIndex}.parteAtpOtro`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Especificar Parte (ATP)</FormLabel>
+                                    <FormControl>
+                                      <Input disabled={effectiveViewOnlyMode} placeholder="Escriba la parte..." {...field} />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            )}
                             <FormField control={form.control} name={`tomas.${tomaActivaIndex}.resultadosAtpRi`} render={({ field }) => (
                               <FormItem><FormLabel>Resultado URL (ATP) </FormLabel><FormControl><Input disabled={effectiveViewOnlyMode} type="url" {...field} /></FormControl><FormMessage /></FormItem>
                             )} />
@@ -2370,6 +3019,7 @@ export function AddLimpiezaRecordModal({
                                         const value = e.target.value;
                                         field.onChange(value);
                                         form.setValue(`tomas.${tomaActivaIndex}.parteAlergenos`, '');
+                                        form.setValue(`tomas.${tomaActivaIndex}.parteAlergenosOtro`, '');
                                       }}
                                     />
                                   </FormControl>
@@ -2387,12 +3037,14 @@ export function AddLimpiezaRecordModal({
                                     <Select
                                       disabled={
                                         effectiveViewOnlyMode ||
-                                        !String(form.getValues(`tomas.${tomaActivaIndex}.equipoAlergenos` as const) || '').trim() ||
-                                        getPartesDeEquipoPorNombre(
-                                          form.getValues(`tomas.${tomaActivaIndex}.equipoAlergenos` as const) as any
-                                        ).length === 0
+                                        !String(form.getValues(`tomas.${tomaActivaIndex}.equipoAlergenos` as const) || '').trim()
                                       }
-                                      onValueChange={field.onChange}
+                                      onValueChange={(value) => {
+                                        field.onChange(value);
+                                        if (value !== 'OTRO') {
+                                          form.setValue(`tomas.${tomaActivaIndex}.parteAlergenosOtro`, '');
+                                        }
+                                      }}
                                       value={field.value}
                                     >
                                       <FormControl>
@@ -2408,6 +3060,7 @@ export function AddLimpiezaRecordModal({
                                             {parte.nombre}
                                           </SelectItem>
                                         ))}
+                                        <SelectItem value="OTRO">OTRO</SelectItem>
                                       </SelectContent>
                                     </Select>
                                   </FormControl>
@@ -2415,6 +3068,22 @@ export function AddLimpiezaRecordModal({
                                 </FormItem>
                               )}
                             />
+
+                            {String(form.watch(`tomas.${tomaActivaIndex}.parteAlergenos`) || '').trim() === 'OTRO' && (
+                              <FormField
+                                control={form.control}
+                                name={`tomas.${tomaActivaIndex}.parteAlergenosOtro`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Especificar Parte (Alérgenos)</FormLabel>
+                                    <FormControl>
+                                      <Input disabled={effectiveViewOnlyMode} placeholder="Escriba la parte..." {...field} />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            )}
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -2515,15 +3184,70 @@ export function AddLimpiezaRecordModal({
                         <div className="rounded-md border p-4 space-y-4">
                           <div className="font-semibold">Responsables</div>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <FormField control={form.control} name="verificadoPor" render={({ field }) => (
-                              <FormItem><FormLabel>Verificado Por</FormLabel><FormControl><Input disabled={effectiveViewOnlyMode} {...field} /></FormControl><FormMessage /></FormItem>
-                            )} />
-                            <FormField control={form.control} name="responsableProduccion" render={({ field }) => (
-                              <FormItem><FormLabel>Responsable de Producción</FormLabel><FormControl><Input disabled={effectiveViewOnlyMode} {...field} /></FormControl><FormMessage /></FormItem>
-                            )} />
-                            <FormField control={form.control} name="responsableMantenimiento" render={({ field }) => (
-                              <FormItem><FormLabel>Responsable de Mantenimiento</FormLabel><FormControl><Input disabled={effectiveViewOnlyMode} {...field} /></FormControl><FormMessage /></FormItem>
-                            )} />
+                            <FormField
+                              control={form.control}
+                              name="verificadoPor"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Verificado Por</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      disabled={effectiveViewOnlyMode}
+                                      autoComplete="off"
+                                      autoCorrect="off"
+                                      autoCapitalize="none"
+                                      spellCheck="false"
+                                      {...field}
+                                      onChange={(e) => {
+                                        field.onChange(e);
+                                        handleResponsableChange('verificadoPor', e.target.value);
+                                      }}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="responsableProduccion"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Responsable de Producción</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      disabled={effectiveViewOnlyMode}
+                                      {...field}
+                                      onChange={(e) => {
+                                        field.onChange(e);
+                                        handleResponsableChange('responsableProduccion', e.target.value);
+                                      }}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="responsableMantenimiento"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Responsable de Mantenimiento</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      disabled={effectiveViewOnlyMode}
+                                      {...field}
+                                      onChange={(e) => {
+                                        field.onChange(e);
+                                        handleResponsableChange('responsableMantenimiento', e.target.value);
+                                      }}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
                           </div>
                         </div>
                       </div>
@@ -2541,12 +3265,12 @@ export function AddLimpiezaRecordModal({
                 <>
                   {wizardStep === 'identificacion' && (
                     <>
-                      <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                      <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
                         Cancelar
                       </Button>
                       <Button
                         type="button"
-                        disabled={!form.getValues('fecha') || !form.getValues('mesCorte')}
+                        disabled={isSubmitting || !form.getValues('fecha') || !form.getValues('mesCorte')}
                         onClick={() => {
                           setWizardStep('registro');
                           setRegistroSubView('lista');
@@ -2566,10 +3290,11 @@ export function AddLimpiezaRecordModal({
                           setWizardStep('identificacion');
                           setRegistroSubView('lista');
                         }}
+                        disabled={isSubmitting}
                       >
                         Volver
                       </Button>
-                      <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                      <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
                         Cancelar
                       </Button>
                     </>
@@ -2580,12 +3305,27 @@ export function AddLimpiezaRecordModal({
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={onSubmitAsPending}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onSubmitAsPending();
+                        }}
+                        onPointerUp={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onSubmitAsPending();
+                        }}
+                        onTouchEnd={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onSubmitAsPending();
+                        }}
                         className="border-yellow-600 text-yellow-600 hover:bg-yellow-50"
+                        disabled={isSubmitting}
                       >
                         Guardar como Pendiente
                       </Button>
-                      <Button type="button" onClick={onSubmitFromButtons}>
+                      <Button type="button" onClick={onSubmitFromButtons} disabled={isSubmitting}>
                         Guardar Registro
                       </Button>
                     </>
@@ -2599,3 +3339,4 @@ export function AddLimpiezaRecordModal({
     </Dialog>
   );
 }
+

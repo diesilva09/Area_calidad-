@@ -155,6 +155,7 @@ export interface EmbalajeRecord {
   created_by?: string;
   updated_by?: string;
   is_active: boolean;
+  status?: 'pending' | 'completed';
   fecha: Date;
   mescorte: string;
   producto: string;
@@ -622,7 +623,7 @@ export async function getProductionRecordsByCreatedDate(createdDate: string): Pr
       `SELECT *
        FROM production_records
        WHERE is_active = true
-         AND created_at::date = $1::date
+         AND (created_at AT TIME ZONE 'America/Bogota')::date = $1::date
        ORDER BY created_at DESC`,
       [date]
     );
@@ -737,11 +738,67 @@ export async function getProductionRecordById(id: string): Promise<ProductionRec
 }
 
 export async function createProductionRecord(record: Omit<ProductionRecord, 'id' | 'created_at' | 'updated_at' | 'is_active'>): Promise<ProductionRecord> {
+  const client = await pool.connect();
   try {
     console.log('Creando registro de producción:', record);
+
+    await client.query('BEGIN');
+
+    const dateOnly = (() => {
+      const raw: any = (record as any)?.fechaproduccion;
+      if (!raw) return null;
+      if (raw instanceof Date) return raw.toISOString().slice(0, 10);
+      const s = String(raw);
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+      const d = new Date(s);
+      if (isNaN(d.getTime())) return null;
+      return d.toISOString().slice(0, 10);
+    })();
+
+    const dedupeKey = `production_records|${String(record.producto ?? '').trim()}|${String(record.lote ?? '').trim()}|${String(dateOnly ?? '')}`;
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [dedupeKey]);
+
+    // Si ya existe un registro para el mismo producto+lote+fecha, retornarlo para evitar duplicados
+    if (dateOnly) {
+      try {
+        const existing = await client.query(
+          `SELECT *
+           FROM production_records
+           WHERE is_active = true
+             AND producto = $1
+             AND lote = $2
+             AND fechaproduccion::date = $3::date
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [record.producto, record.lote, dateOnly]
+        );
+        if (existing.rows.length > 0) {
+          await client.query('COMMIT');
+          return existing.rows[0];
+        }
+      } catch (error) {
+        // Si la columna fechaproduccion no existe (schema viejo), intentamos con fecha_produccion
+        const existingFallback = await client.query(
+          `SELECT *
+           FROM production_records
+           WHERE is_active = true
+             AND producto = $1
+             AND lote = $2
+             AND fecha_produccion::date = $3::date
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [record.producto, record.lote, dateOnly]
+        );
+        if (existingFallback.rows.length > 0) {
+          await client.query('COMMIT');
+          return existingFallback.rows[0];
+        }
+      }
+    }
+
     let result;
     try {
-      result = await pool.query(
+      result = await client.query(
         `INSERT INTO production_records (
           fechaproduccion, fechavencimiento, mescorte, producto, envase, lote, tamano_lote,
           letratamano_muestra, area, equipo, liberacion_inicial, verificacion_aleatoria,
@@ -946,13 +1003,22 @@ export async function createProductionRecord(record: Omit<ProductionRecord, 'id'
       const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
       const query = `INSERT INTO production_records (\n          ${columns.join(', ')}\n        ) VALUES (\n          ${placeholders}\n        ) RETURNING *`;
 
-      result = await pool.query(query, values);
+      result = await client.query(query, values);
     }
     console.log('Registro de producción creado exitosamente:', result.rows[0]);
+
+    await client.query('COMMIT');
     return result.rows[0];
   } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      // ignore
+    }
     console.error('Error al crear registro de producción:', error);
     throw error;
+  } finally {
+    client.release();
   }
 }
 
@@ -963,17 +1029,54 @@ export async function updateProductionRecord(id: string, record: Partial<Omit<Pr
     if (!record || typeof record !== 'object') {
       throw new Error('Invalid update payload');
     }
+    const hasStatusColumn = await (async () => {
+      try {
+        const res = await pool.query(
+          `
+            SELECT EXISTS (
+              SELECT 1
+              FROM information_schema.columns
+              WHERE table_schema = 'public'
+                AND table_name = 'production_records'
+                AND column_name = 'status'
+            ) AS exists;
+          `
+        );
+        return Boolean(res.rows?.[0]?.exists);
+      } catch {
+        return false;
+      }
+    })();
+
+    const existingColumns = await (async () => {
+      try {
+        const res = await pool.query(
+          `
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'production_records'
+          `
+        );
+        return new Set<string>((res.rows || []).map((r: any) => String(r?.column_name ?? '').trim()).filter(Boolean));
+      } catch {
+        return new Set<string>();
+      }
+    })();
+
     const fields: string[] = [];
     const values: unknown[] = [];
     let paramIndex = 1;
 
-    // Dinámicamente agregar campos que se van a actualizar
-    Object.keys(record ?? {}).forEach(key => {
-      if (record[key as keyof typeof record] !== undefined) {
-        fields.push(`${key} = $${paramIndex++}`);
-        values.push(record[key as keyof typeof record]);
-        console.log(`🔄 Campo ${key} = ${record[key as keyof typeof record]}`);
-      }
+    Object.keys(record ?? {}).forEach((key) => {
+      const value = (record as any)[key];
+      if (value === undefined) return;
+      if (!existingColumns.has(key)) return;
+      if (key === 'status' && !hasStatusColumn) return;
+
+      fields.push(`${key} = $${paramIndex++}`);
+      values.push(value);
+      console.log(`🔄 Campo ${key} = ${value}`);
     });
 
     if (fields.length === 0) {
@@ -1038,60 +1141,131 @@ export async function getEmbalajeRecordsByProduct(productName: string): Promise<
 }
 
 export async function createEmbalajeRecord(record: Omit<EmbalajeRecord, 'id' | 'created_at' | 'updated_at' | 'is_active'>): Promise<EmbalajeRecord> {
+  const client = await pool.connect();
   try {
     console.log('🔍 DEBUG: Creando registro de embalaje:', record);
     console.log('🔍 DEBUG: Tipo de fecha:', typeof record.fecha, record.fecha);
-    
-    // Primero verificar si la tabla existe
-    try {
-      const tableCheck = await pool.query(`
-        SELECT EXISTS (
-          SELECT FROM information_schema.tables 
-          WHERE table_schema = 'public' 
-          AND table_name = 'embalaje_records'
-        );
-      `);
-      console.log('🔍 DEBUG: ¿Existe la tabla embalaje_records?', tableCheck.rows[0].exists);
-    } catch (tableError) {
-      console.error('🔍 DEBUG: Error verificando tabla:', tableError);
+
+    await client.query('BEGIN');
+
+    const dateOnly = (() => {
+      const raw: any = (record as any)?.fecha;
+      if (!raw) return null;
+      if (raw instanceof Date) return raw.toISOString().slice(0, 10);
+      const s = String(raw);
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+      const d = new Date(s);
+      if (isNaN(d.getTime())) return null;
+      return d.toISOString().slice(0, 10);
+    })();
+
+    const dedupeKey = `embalaje_records|${String(record.producto ?? '').trim()}|${String(record.lote ?? '').trim()}|${String(dateOnly ?? '')}`;
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [dedupeKey]);
+
+    if (dateOnly) {
+      const existing = await client.query(
+        `SELECT *
+         FROM embalaje_records
+         WHERE is_active = true
+           AND producto = $1
+           AND lote = $2
+           AND fecha::date = $3::date
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [record.producto, record.lote, dateOnly]
+      );
+      if (existing.rows.length > 0) {
+        await client.query('COMMIT');
+        return existing.rows[0];
+      }
     }
+
+    const hasStatusColumn = await (async () => {
+      try {
+        const res = await client.query(
+          `
+            SELECT EXISTS (
+              SELECT 1
+              FROM information_schema.columns
+              WHERE table_schema = 'public'
+                AND table_name = 'embalaje_records'
+                AND column_name = 'status'
+            ) AS exists;
+          `
+        );
+        return Boolean(res.rows?.[0]?.exists);
+      } catch {
+        return false;
+      }
+    })();
     
-    const result = await pool.query(
-      `INSERT INTO embalaje_records (
-        fecha, mescorte, producto, presentacion, lote, tamano_lote,
-        nivel_inspeccion, cajas_revisadas, total_unidades_revisadas, total_unidades_revisadas_real,
-        observaciones_generales, unidades_faltantes, porcentaje_faltantes, observaciones_faltantes,
-        etiqueta, porcentaje_etiqueta_no_conforme, observaciones_etiqueta,
-        marcacion, porcentaje_marcacion_no_conforme, observaciones_marcacion,
-        presentacion_no_conforme, porcentaje_presentacion_no_conforme, observaciones_presentacion,
-        cajas, porcentaje_cajas_no_conformes, observaciones_cajas, correccion,
-        responsable_identificador_cajas, responsable_embalaje, responsable_calidad,
-        unidades_no_conformes, porcentaje_incumplimiento, created_by, updated_by
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
-        $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34
-      ) RETURNING *`,
-      [
-        record.fecha, record.mescorte, record.producto, record.presentacion, record.lote,
-        record.tamano_lote, record.nivel_inspeccion, record.cajas_revisadas,
-        record.total_unidades_revisadas, record.total_unidades_revisadas_real,
-        record.observaciones_generales, record.unidades_faltantes, record.porcentaje_faltantes,
-        record.observaciones_faltantes, record.etiqueta, record.porcentaje_etiqueta_no_conforme,
-        record.observaciones_etiqueta, record.marcacion, record.porcentaje_marcacion_no_conforme,
-        record.observaciones_marcacion, record.presentacion_no_conforme,
-        record.porcentaje_presentacion_no_conforme, record.observaciones_presentacion,
-        record.cajas, record.porcentaje_cajas_no_conformes, record.observaciones_cajas,
-        record.correccion, record.responsable_identificador_cajas, record.responsable_embalaje,
-        record.responsable_calidad, record.unidades_no_conformes, record.porcentaje_incumplimiento,
-        record.created_by, record.updated_by
-      ]
-    );
+    const insertQuery = hasStatusColumn
+      ? `INSERT INTO embalaje_records (
+          fecha, mescorte, producto, presentacion, lote, tamano_lote,
+          nivel_inspeccion, cajas_revisadas, total_unidades_revisadas, total_unidades_revisadas_real,
+          observaciones_generales, unidades_faltantes, porcentaje_faltantes, observaciones_faltantes,
+          etiqueta, porcentaje_etiqueta_no_conforme, observaciones_etiqueta,
+          marcacion, porcentaje_marcacion_no_conforme, observaciones_marcacion,
+          presentacion_no_conforme, porcentaje_presentacion_no_conforme, observaciones_presentacion,
+          cajas, porcentaje_cajas_no_conformes, observaciones_cajas, correccion,
+          responsable_identificador_cajas, responsable_embalaje, responsable_calidad,
+          unidades_no_conformes, porcentaje_incumplimiento, created_by, updated_by,
+          status
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
+          $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34,
+          $35
+        ) RETURNING *`
+      : `INSERT INTO embalaje_records (
+          fecha, mescorte, producto, presentacion, lote, tamano_lote,
+          nivel_inspeccion, cajas_revisadas, total_unidades_revisadas, total_unidades_revisadas_real,
+          observaciones_generales, unidades_faltantes, porcentaje_faltantes, observaciones_faltantes,
+          etiqueta, porcentaje_etiqueta_no_conforme, observaciones_etiqueta,
+          marcacion, porcentaje_marcacion_no_conforme, observaciones_marcacion,
+          presentacion_no_conforme, porcentaje_presentacion_no_conforme, observaciones_presentacion,
+          cajas, porcentaje_cajas_no_conformes, observaciones_cajas, correccion,
+          responsable_identificador_cajas, responsable_embalaje, responsable_calidad,
+          unidades_no_conformes, porcentaje_incumplimiento, created_by, updated_by
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
+          $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34
+        ) RETURNING *`;
+
+    const insertValues: any[] = [
+      record.fecha, record.mescorte, record.producto, record.presentacion, record.lote,
+      record.tamano_lote, record.nivel_inspeccion, record.cajas_revisadas,
+      record.total_unidades_revisadas, record.total_unidades_revisadas_real,
+      record.observaciones_generales, record.unidades_faltantes, record.porcentaje_faltantes,
+      record.observaciones_faltantes, record.etiqueta, record.porcentaje_etiqueta_no_conforme,
+      record.observaciones_etiqueta, record.marcacion, record.porcentaje_marcacion_no_conforme,
+      record.observaciones_marcacion, record.presentacion_no_conforme,
+      record.porcentaje_presentacion_no_conforme, record.observaciones_presentacion,
+      record.cajas, record.porcentaje_cajas_no_conformes, record.observaciones_cajas,
+      record.correccion, record.responsable_identificador_cajas, record.responsable_embalaje,
+      record.responsable_calidad, record.unidades_no_conformes, record.porcentaje_incumplimiento,
+      record.created_by, record.updated_by,
+    ];
+
+    if (hasStatusColumn) {
+      insertValues.push((record as any).status ?? 'completed');
+    }
+
+    const result = await client.query(insertQuery, insertValues);
     console.log('✅ Registro de embalaje creado exitosamente:', result.rows[0]);
+
+    await client.query('COMMIT');
     return result.rows[0];
   } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      // ignore
+    }
     console.error('❌ ERROR en createEmbalajeRecord:', error);
     console.error('❌ Detalles del error:', error instanceof Error ? error.message : 'Unknown error');
     throw error;
+  } finally {
+    client.release();
   }
 }
 
@@ -1101,17 +1275,55 @@ export async function updateEmbalajeRecord(id: string, record: Partial<Omit<Emba
     if (!record || typeof record !== 'object') {
       throw new Error('Invalid update payload');
     }
+
+    const hasStatusColumn = await (async () => {
+      try {
+        const res = await pool.query(
+          `
+            SELECT EXISTS (
+              SELECT 1
+              FROM information_schema.columns
+              WHERE table_schema = 'public'
+                AND table_name = 'embalaje_records'
+                AND column_name = 'status'
+            ) AS exists;
+          `
+        );
+        return Boolean(res.rows?.[0]?.exists);
+      } catch {
+        return false;
+      }
+    })();
+
+    const existingColumns = await (async () => {
+      try {
+        const res = await pool.query(
+          `
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'embalaje_records'
+          `
+        );
+        return new Set<string>((res.rows || []).map((r: any) => String(r?.column_name ?? '').trim()).filter(Boolean));
+      } catch {
+        return new Set<string>();
+      }
+    })();
+
     const fields: string[] = [];
     const values: unknown[] = [];
     let paramIndex = 1;
 
-    // Dinámicamente agregar campos que se van a actualizar
-    Object.keys(record ?? {}).forEach(key => {
-      if (record[key as keyof typeof record] !== undefined) {
-        fields.push(`${key} = $${paramIndex++}`);
-        values.push(record[key as keyof typeof record]);
-        console.log(`🔄 Campo ${key} = ${record[key as keyof typeof record]}`);
-      }
+    Object.keys(record ?? {}).forEach((key) => {
+      const value = (record as any)[key];
+      if (value === undefined) return;
+      if (!existingColumns.has(key)) return;
+      if (key === 'status' && !hasStatusColumn) return;
+
+      fields.push(`${key} = $${paramIndex++}`);
+      values.push(value);
+      console.log(`🔄 Campo ${key} = ${value}`);
     });
 
     if (fields.length === 0) {

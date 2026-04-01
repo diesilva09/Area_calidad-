@@ -43,6 +43,7 @@ import { useToast } from '@/hooks/use-toast';
 import { productionRecordsService } from '@/lib/supervisores-data';
 import { productService } from '@/lib/supervisores-data';
 import { limpiezaRegistrosService } from '@/lib/limpieza-registros-service';
+import { embalajeRecordsService } from '@/lib/embalaje-records-service';
 import { EnvasesService } from '@/lib/envases-config';
 import { AreasEquiposService } from '@/lib/areas-equipos-config';
 import { TemperaturaEnvasadoService } from '@/lib/temperatura-envasado-service';
@@ -50,6 +51,9 @@ import { ProductoPesosService } from "@/lib/producto-pesos-service";
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { getFechaActual, getMesActual } from '@/lib/date-utils';
+import { ChevronDown, Loader2, Plus, X } from 'lucide-react'; // Añadido para spinner
+import * as AccordionPrimitive from '@radix-ui/react-accordion';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const ProductCharts = dynamic(
   () => import('./product-charts').then((m) => m.ProductCharts),
@@ -88,6 +92,8 @@ export const productionFormSchema = z.object({
   inspeccionMicropesajeResultado: z.string().min(1, 'Campo requerido'),
   inspeccionMicropesajeResultadoObs: z.string().optional(),
   inspeccionMicropesajeResultadoCorreccion: z.string().optional(),
+  tieneObservacionesAnalisisPruebas: z.string().optional(),
+  observacionesAnalisisPruebasTexto: z.string().optional(),
   totalUnidadesRevisarDrenado: z.string().min(1, 'Campo requerido'),
   pesoDrenadoDeclarado: z.string().min(1, 'Campo requerido'),
   rangoPesoDrenadoMin: z.string().min(1, 'Campo requerido'),
@@ -98,6 +104,8 @@ export const productionFormSchema = z.object({
   debajoPesoDrenado: z.string().min(1, 'Campo requerido'),
   undIncumplenRangoDrenado: z.string().min(1, 'Campo requerido'),
   porcentajeIncumplenRangoDrenado: z.string().min(1, 'Campo requerido'),
+  tieneObservacionesPesoDrenado: z.string().optional(),
+  observacionesPesoDrenadoTexto: z.string().optional(),
   totalUnidadesRevisarNeto: z.string().min(1, 'Campo requerido'),
   pesoNetoDeclarado: z.string().min(1, 'Campo requerido'),
   pesosNetos: z.string().min(1, 'Campo requerido'),
@@ -106,6 +114,8 @@ export const productionFormSchema = z.object({
   debajoPesoNeto: z.string().min(1, 'Campo requerido'),
   undIncumplenRangoNeto: z.string().min(1, 'Campo requerido'),
   porcentajeIncumplenRangoNeto: z.string().min(1, 'Campo requerido'),
+  tieneObservacionesPesoNeto: z.string().optional(),
+  observacionesPesoNetoTexto: z.string().optional(),
   pruebasVacio: z.string().min(1, 'Campo requerido'),
   novedadesProceso: z.string().optional(),
   observacionesAccionesCorrectivas: z.string().optional(),
@@ -113,24 +123,25 @@ export const productionFormSchema = z.object({
   observacionesAccionesCorrectivasTemperatura: z.string().optional(),
   supervisorCalidad: z.string().nullable().optional(),
   responsableProduccion: z.string().min(1, 'Campo requerido'), // Campo agregado
-  fechaAnalisisPT: z.string().min(1, 'Campo requerido'),
-  noMezclaPT: z.string().min(1, 'Campo requerido'),
-  vacioPT: z.string().min(1, 'Campo requerido'),
-  pesoNetoRealPT: z.string().min(1, 'Campo requerido'),
-  pesoDrenadoRealPT: z.string().min(1, 'Campo requerido'),
-  brixPT: z.string().min(1, 'Campo requerido'),
-  phPT: z.string().min(1, 'Campo requerido'),
-  acidezPT: z.string().min(1, 'Campo requerido'),
-  ppmSo2PT: z.string().min(1, 'Campo requerido'),
-  consistenciaPT: z.string().min(1, 'Campo requerido'),
-  sensorialPT: z.string().min(1, 'Campo requerido'),
-  tapadoCierrePT: z.string().min(1, 'Campo requerido'),
-  etiquetaPT: z.string().min(1, 'Campo requerido'),
-  presentacionFinalPT: z.string().min(1, 'Campo requerido'),
-  ubicacionMuestraPT: z.string().min(1, 'Campo requerido'),
-  estadoPT: z.string().min(1, 'Campo requerido'),
+  hasAnalisisPT: z.boolean().optional(),
+  fechaAnalisisPT: z.string().optional(),
+  noMezclaPT: z.string().optional(),
+  vacioPT: z.string().optional(),
+  pesoNetoRealPT: z.string().optional(),
+  pesoDrenadoRealPT: z.string().optional(),
+  brixPT: z.string().optional(),
+  phPT: z.string().optional(),
+  acidezPT: z.string().optional(),
+  ppmSo2PT: z.string().optional(),
+  consistenciaPT: z.string().optional(),
+  sensorialPT: z.string().optional(),
+  tapadoCierrePT: z.string().optional(),
+  etiquetaPT: z.string().optional(),
+  presentacionFinalPT: z.string().optional(),
+  ubicacionMuestraPT: z.string().optional(),
+  estadoPT: z.string().optional(),
   observacionesPT: z.string().optional(),
-  responsableAnalisisPT: z.string().min(1, 'Campo requerido'),
+  responsableAnalisisPT: z.string().optional(),
 }).superRefine((values, ctx) => {
   // Cuando se completa un registro, valores placeholder como 'Pendiente' NO deben pasar validación.
   const requiredNonPlaceholderFields: Array<keyof typeof values> = [
@@ -175,6 +186,9 @@ export const productionFormSchema = z.object({
     'porcentajeIncumplenRangoNeto',
     'pruebasVacio',
     'responsableProduccion',
+  ];
+
+  const ptRequiredFields: Array<keyof typeof values> = [
     'fechaAnalisisPT',
     'noMezclaPT',
     'vacioPT',
@@ -193,6 +207,25 @@ export const productionFormSchema = z.object({
     'estadoPT',
     'responsableAnalisisPT',
   ];
+
+  if (values.hasAnalisisPT) {
+    requiredNonPlaceholderFields.push(...ptRequiredFields);
+  }
+
+  // Validación condicional: cuando PT está activado, estos campos deben tener valor
+  if (values.hasAnalisisPT) {
+    ptRequiredFields.forEach((field) => {
+      const raw = (values as any)?.[field];
+      const s = String(raw ?? '').trim();
+      if (!s) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field as any],
+          message: 'Campo requerido',
+        });
+      }
+    });
+  }
 
   requiredNonPlaceholderFields.forEach((field) => {
     const raw = (values as any)?.[field];
@@ -243,6 +276,8 @@ export const pendingProductionFormSchema = z.object({
   inspeccionMicropesajeResultado: z.string().optional(),
   inspeccionMicropesajeResultadoObs: z.string().optional(),
   inspeccionMicropesajeResultadoCorreccion: z.string().optional(),
+  tieneObservacionesAnalisisPruebas: z.string().optional(),
+  observacionesAnalisisPruebasTexto: z.string().optional(),
   totalUnidadesRevisarDrenado: z.string().optional(),
   pesoDrenadoDeclarado: z.string().optional(),
   rangoPesoDrenadoMin: z.string().optional(),
@@ -253,6 +288,8 @@ export const pendingProductionFormSchema = z.object({
   debajoPesoDrenado: z.string().optional(),
   undIncumplenRangoDrenado: z.string().optional(),
   porcentajeIncumplenRangoDrenado: z.string().optional(),
+  tieneObservacionesPesoDrenado: z.string().optional(),
+  observacionesPesoDrenadoTexto: z.string().optional(),
   totalUnidadesRevisarNeto: z.string().optional(),
   pesoNetoDeclarado: z.string().optional(),
   pesosNetos: z.string().optional(),
@@ -261,12 +298,15 @@ export const pendingProductionFormSchema = z.object({
   debajoPesoNeto: z.string().optional(),
   undIncumplenRangoNeto: z.string().optional(),
   porcentajeIncumplenRangoNeto: z.string().optional(),
+  tieneObservacionesPesoNeto: z.string().optional(),
+  observacionesPesoNetoTexto: z.string().optional(),
   pruebasVacio: z.string().optional(),
   novedadesProceso: z.string().optional(),
   observacionesAccionesCorrectivas: z.string().optional(),
   novedadesProcesoTemperatura: z.string().optional(),
   observacionesAccionesCorrectivasTemperatura: z.string().optional(),
   supervisorCalidad: z.string().nullable().optional(),
+  hasAnalisisPT: z.boolean().optional(),
   fechaAnalisisPT: z.string().optional(),
   noMezclaPT: z.string().optional(),
   vacioPT: z.string().optional(),
@@ -385,6 +425,16 @@ export function AddProductionRecordModal({
     return dentro ? 'border-green-500 focus:border-green-500' : 'border-red-500 focus:border-red-500';
   };
 
+  const getVacioPTInputClass = () => {
+    const value = String(vacioPTWatch || '').trim();
+    if (!value) return '';
+    const num = Number(value.replace(',', '.'));
+    if (!Number.isFinite(num)) return 'border-red-500 focus:border-red-500';
+    const minVacio = getMaxPruebaVacio();
+    if (minVacio === null) return '';
+    return num >= minVacio ? 'border-green-500 focus:border-green-500' : 'border-red-500 focus:border-red-500';
+  };
+
   // Debounce para temperaturas y cálculos
   const [debounceTimeout, setDebounceTimeout] = React.useState<NodeJS.Timeout | null>(null);
   const calculoDrenadosTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
@@ -392,6 +442,9 @@ export function AddProductionRecordModal({
   const [toastTimeouts, setToastTimeouts] = React.useState<NodeJS.Timeout[]>([]);
   const [isProcessingEnvase, setIsProcessingEnvase] = React.useState(false);
   const isHydratingRef = React.useRef(false);
+  const limpiezaCreationPromises = React.useRef<Map<string, Promise<any>>>(new Map());
+
+
 
   // Tabla de correspondencia Letra -> Nº Unidades a Revisar (misma que getMuestrasRequeridas)
   const tablaUnidadesPorLetra: { [key: string]: number } = {
@@ -475,7 +528,6 @@ export function AddProductionRecordModal({
         isChecking: false,
       });
     } catch (error: any) {
-      console.error('Error validando sampling rule:', error);
       setSamplingRuleValidation({
         isValid: false,
         message: error?.message || 'Error consultando regla de muestreo',
@@ -520,6 +572,8 @@ export function AddProductionRecordModal({
       inspeccionMicropesajeResultado: '',
       inspeccionMicropesajeResultadoObs: '',
       inspeccionMicropesajeResultadoCorreccion: '',
+      tieneObservacionesAnalisisPruebas: 'No',
+      observacionesAnalisisPruebasTexto: '',
       totalUnidadesRevisarDrenado: '',
       pesoDrenadoDeclarado: '',
       rangoPesoDrenadoMin: '',
@@ -530,6 +584,8 @@ export function AddProductionRecordModal({
       debajoPesoDrenado: '',
       undIncumplenRangoDrenado: '',
       porcentajeIncumplenRangoDrenado: '',
+      tieneObservacionesPesoDrenado: 'No',
+      observacionesPesoDrenadoTexto: '',
       totalUnidadesRevisarNeto: '',
       pesoNetoDeclarado: '',
       pesosNetos: '',
@@ -538,6 +594,8 @@ export function AddProductionRecordModal({
       debajoPesoNeto: '',
       undIncumplenRangoNeto: '',
       porcentajeIncumplenRangoNeto: '',
+      tieneObservacionesPesoNeto: 'No',
+      observacionesPesoNetoTexto: '',
       pruebasVacio: '',
       novedadesProceso: '',
       observacionesAccionesCorrectivas: '',
@@ -545,6 +603,7 @@ export function AddProductionRecordModal({
       observacionesAccionesCorrectivasTemperatura: '',
       supervisorCalidad: '',
       responsableProduccion: '',
+      hasAnalisisPT: false,
       fechaAnalisisPT: '',
       noMezclaPT: '',
       vacioPT: '',
@@ -574,7 +633,11 @@ export function AddProductionRecordModal({
   const vacioPTWatch = useWatch({ control: form.control, name: 'vacioPT' });
   const brixPTWatch = useWatch({ control: form.control, name: 'brixPT' });
   const phPTWatch = useWatch({ control: form.control, name: 'phPT' });
+  const tieneObservacionesAnalisisPruebasWatch = useWatch({ control: form.control, name: 'tieneObservacionesAnalisisPruebas' });
+  const tieneObservacionesPesoDrenadoWatch = useWatch({ control: form.control, name: 'tieneObservacionesPesoDrenado' });
+  const tieneObservacionesPesoNetoWatch = useWatch({ control: form.control, name: 'tieneObservacionesPesoNeto' });
   const acidezPTWatch = useWatch({ control: form.control, name: 'acidezPT' });
+  const hasAnalisisPTWatch = useWatch({ control: form.control, name: 'hasAnalisisPT' });
   const consistenciaPTWatch = useWatch({ control: form.control, name: 'consistenciaPT' });
   const ppmSo2PTWatch = useWatch({ control: form.control, name: 'ppmSo2PT' });
 
@@ -584,6 +647,76 @@ export function AddProductionRecordModal({
   const [presentacionFinalPTModo, setPresentacionFinalPTModo] = React.useState<'cumple' | 'no_cumple' | ''>('');
   const [presentacionFinalPTObs, setPresentacionFinalPTObs] = React.useState('');
   const [presentacionFinalPTCorr, setPresentacionFinalPTCorr] = React.useState('');
+
+  const PT_ANALYSES_MARKER = '__PT_ANALYSES_JSON__';
+
+  type ExtraPtAnalysis = {
+    fechaAnalisisPT: string;
+    noMezclaPT: string;
+    vacioPT: string;
+    pesoNetoRealPT: string;
+    pesoDrenadoRealPT: string;
+    brixPT: string;
+    phPT: string;
+    acidezPT: string;
+    ppmSo2PT: string;
+    consistenciaPT: string;
+    tapadoCierrePT: string;
+    etiquetaPT: string;
+    ubicacionMuestraPT: string;
+    estadoPT: string;
+    responsableAnalisisPT: string;
+    sensorialPT: string;
+    presentacionFinalPT: string;
+    observacionesPT: string;
+  };
+
+  const emptyExtraPtAnalysis = (): ExtraPtAnalysis => ({
+    fechaAnalisisPT: '',
+    noMezclaPT: '',
+    vacioPT: '',
+    pesoNetoRealPT: '',
+    pesoDrenadoRealPT: '',
+    brixPT: '',
+    phPT: '',
+    acidezPT: '',
+    ppmSo2PT: '',
+    consistenciaPT: '',
+    tapadoCierrePT: '',
+    etiquetaPT: '',
+    ubicacionMuestraPT: '',
+    estadoPT: '',
+    responsableAnalisisPT: '',
+    sensorialPT: '',
+    presentacionFinalPT: '',
+    observacionesPT: '',
+  });
+
+  const [extraPtAnalyses, setExtraPtAnalyses] = React.useState<ExtraPtAnalysis[]>([]);
+  const [ptActiveTab, setPtActiveTab] = React.useState<string>('analysis-1');
+
+  const splitPtObservaciones = (raw: unknown): { base: string; extras: ExtraPtAnalysis[] } => {
+    const s = String(raw ?? '').trim();
+    if (!s) return { base: '', extras: [] };
+    const idx = s.indexOf(PT_ANALYSES_MARKER);
+    if (idx === -1) return { base: s, extras: [] };
+
+    const base = String(s.slice(0, idx)).trim();
+    const after = String(s.slice(idx + PT_ANALYSES_MARKER.length)).trim();
+    try {
+      const parsed = JSON.parse(after);
+      const extras = Array.isArray(parsed) ? (parsed as ExtraPtAnalysis[]) : [];
+      return { base, extras };
+    } catch {
+      return { base: s, extras: [] };
+    }
+  };
+
+  const mergePtObservaciones = (base: string, extras: ExtraPtAnalysis[]) => {
+    const baseTrimmed = String(base ?? '').trim();
+    if (!extras?.length) return baseTrimmed;
+    return [baseTrimmed, PT_ANALYSES_MARKER, JSON.stringify(extras)].filter(Boolean).join('\n\n');
+  };
 
   const [novedadesProcesoModo, setNovedadesProcesoModo] = React.useState<'si' | 'no' | ''>('');
   const [novedadesProcesoTexto, setNovedadesProcesoTexto] = React.useState('');
@@ -1006,7 +1139,6 @@ export function AddProductionRecordModal({
     
     // Cargar datos del registro pendiente si existe
     if (editingRecord) {
-      console.log('🔄 Cargando datos del registro pendiente:', editingRecord);
       isHydratingRef.current = true;
 
       // Mapeo de campos de base de datos (snake_case) a campos del formulario (camelCase)
@@ -1069,12 +1201,12 @@ export function AddProductionRecordModal({
         // Observaciones y acciones
         'novedades_proceso': 'novedadesProceso',
         'observaciones_acciones_correctivas': 'observacionesAccionesCorrectivas',
-        
+
         // Responsables
         'responsable_produccion': 'responsableProduccion',
         'supervisor_calidad': 'supervisorCalidad',
         'responsable_analisis_pt': 'responsableAnalisisPT',
-        
+
         // Análisis PT
         'fechaanalisispt': 'fechaAnalisisPT',
         'no_mezcla_pt': 'noMezclaPT',
@@ -1093,7 +1225,6 @@ export function AddProductionRecordModal({
         'ubicacion_muestra_pt': 'ubicacionMuestraPT',
         'estado_pt': 'estadoPT',
         'observaciones_pt': 'observacionesPT',
-        'responsable_analisis_pt': 'responsableAnalisisPT',
       };
 
       // productionFormSchema tiene .superRefine() y se convierte en ZodEffects, por lo que no expone .shape.
@@ -1108,6 +1239,7 @@ export function AddProductionRecordModal({
       nextValues.producto = productId;
       nextValues.supervisorCalidad = '';
       nextValues.responsableProduccion = '';
+      nextValues.hasAnalisisPT = false;
 
       // 1) Volcar valores desde DB (incluyendo vacíos) mapeando nombres
       Object.keys(editingRecord).forEach((dbField: string) => {
@@ -1136,7 +1268,6 @@ export function AddProductionRecordModal({
           formField === 'pruebaHermeticidad' ||
           formField === 'inspeccionMicropesajeMezcla' ||
           formField === 'inspeccionMicropesajeResultado' ||
-          formField === 'vacioPT' ||
           formField === 'tapadoCierrePT' ||
           formField === 'etiquetaPT' ||
           formField === 'presentacionFinalPT' ||
@@ -1190,9 +1321,87 @@ export function AddProductionRecordModal({
         nextValues.inspeccionMicropesajeResultadoCorreccion = res.corr;
       }
 
+      // Rehidratar campos de observaciones (Sí/No + texto)
+      const obsAnalisisPruebas = String((nextValues as any).observacionesAnalisisPruebas ?? '').trim();
+      if (obsAnalisisPruebas) {
+        nextValues.tieneObservacionesAnalisisPruebas = 'Si';
+        nextValues.observacionesAnalisisPruebasTexto = obsAnalisisPruebas;
+      } else {
+        nextValues.tieneObservacionesAnalisisPruebas = 'No';
+        nextValues.observacionesAnalisisPruebasTexto = '';
+      }
+
+      const obsPesoDrenado = String((nextValues as any).observacionesPesoDrenado ?? '').trim();
+      if (obsPesoDrenado) {
+        nextValues.tieneObservacionesPesoDrenado = 'Si';
+        nextValues.observacionesPesoDrenadoTexto = obsPesoDrenado;
+      } else {
+        nextValues.tieneObservacionesPesoDrenado = 'No';
+        nextValues.observacionesPesoDrenadoTexto = '';
+      }
+
+      const obsPesoNeto = String((nextValues as any).observacionesPesoNeto ?? '').trim();
+      if (obsPesoNeto) {
+        nextValues.tieneObservacionesPesoNeto = 'Si';
+        nextValues.observacionesPesoNetoTexto = obsPesoNeto;
+      } else {
+        nextValues.tieneObservacionesPesoNeto = 'No';
+        nextValues.observacionesPesoNetoTexto = '';
+      }
+
       // Reset completo (evita que queden defaults/valores viejos en campos no presentes)
       form.reset(nextValues as any);
       pendingForm.reset(nextValues as any);
+
+      // Rehidratar análisis PT extra desde observacionesPT
+      const { base: obsBase, extras } = splitPtObservaciones((nextValues as any).observacionesPT);
+      if (extras.length) {
+        setExtraPtAnalyses(extras);
+        setPtActiveTab('analysis-1');
+
+        form.setValue('hasAnalisisPT', true, { shouldDirty: false, shouldTouch: false, shouldValidate: false });
+        pendingForm.setValue('hasAnalisisPT', true, { shouldDirty: false, shouldTouch: false, shouldValidate: false });
+      } else {
+        setExtraPtAnalyses([]);
+        setPtActiveTab('analysis-1');
+      }
+      if (String((nextValues as any).observacionesPT ?? '').includes(PT_ANALYSES_MARKER)) {
+        form.setValue('observacionesPT', obsBase, { shouldDirty: false, shouldTouch: false, shouldValidate: false });
+        pendingForm.setValue('observacionesPT', obsBase, { shouldDirty: false, shouldTouch: false, shouldValidate: false });
+      }
+
+      // Si ya hay datos PT en el registro, mostrar automáticamente la sección
+      const ptFieldsToCheck = [
+        'fechaAnalisisPT',
+        'noMezclaPT',
+        'vacioPT',
+        'pesoNetoRealPT',
+        'pesoDrenadoRealPT',
+        'brixPT',
+        'phPT',
+        'acidezPT',
+        'ppmSo2PT',
+        'consistenciaPT',
+        'sensorialPT',
+        'tapadoCierrePT',
+        'etiquetaPT',
+        'presentacionFinalPT',
+        'ubicacionMuestraPT',
+        'estadoPT',
+        'observacionesPT',
+        'responsableAnalisisPT',
+      ] as const;
+
+      const hasAnyPTValue = ptFieldsToCheck.some((k) => {
+        const v = String((nextValues as any)[k] ?? '').trim();
+        if (!v) return false;
+        return v.toLowerCase() !== 'pendiente';
+      });
+
+      if (hasAnyPTValue) {
+        form.setValue('hasAnalisisPT', true, { shouldDirty: false, shouldTouch: false, shouldValidate: false });
+        pendingForm.setValue('hasAnalisisPT', true, { shouldDirty: false, shouldTouch: false, shouldValidate: false });
+      }
 
       // Rehidratar Responsable de Calidad (cuando es "Otro")
       const responsableValueRaw = String((nextValues as any).responsableProduccion ?? '').trim();
@@ -1238,11 +1447,8 @@ export function AddProductionRecordModal({
       // Cargar equipos para el área del registro editado
       const areaValue = editingRecord.area || editingRecord['area'];
       if (areaValue) {
-        console.log('🔄 Cargando equipos para área del registro editado:', areaValue);
         cargarEquiposPorArea(areaValue);
       }
-      
-      console.log('✅ Todos los datos del registro pendiente cargados en ambos formularios');
 
       // Rehidratar casillas de pesos desde lo guardado (string con comas)
       const letra = String(editingRecord.letraTamanoMuestra || editingRecord.letratamano_muestra || '').trim();
@@ -1375,10 +1581,6 @@ export function AddProductionRecordModal({
           ? envaseRawValue
           : (envasesDisponibles.find(e => e.tipo === envaseRawValue)?.id || '');
 
-        console.log('🔄 Estableciendo envase (raw):', envaseRawValue);
-        console.log('🔄 Envase normalizado a id:', envaseIdEncontrado);
-        console.log('🔄 Envases disponibles (id -> tipo):', envasesDisponibles.map(e => `${e.id} -> ${e.tipo}`));
-
         if (envaseIdEncontrado) {
           form.setValue('envase', envaseIdEncontrado);
           pendingForm.setValue('envase', envaseIdEncontrado);
@@ -1386,15 +1588,12 @@ export function AddProductionRecordModal({
           // Si hay envase, recalcular vencimiento / autocompletados
           handleEnvaseChange(envaseIdEncontrado);
         } else {
-          console.log('⚠️ No se pudo mapear el envase guardado a un ID válido:', envaseRawValue);
         }
       } else {
-        console.log('⚠️ No se encontró valor de envase en el registro pendiente');
       }
       
       // Asegurar que el área se cargue correctamente
       if (areaValue) {
-        console.log('🔄 Estableciendo área:', areaValue);
         form.setValue('area', areaValue);
         pendingForm.setValue('area', areaValue);
       }
@@ -1457,7 +1656,6 @@ export function AddProductionRecordModal({
           clearQualityErrors();
         }
       } catch (error) {
-        console.error('Error cargando rangos de calidad:', error);
         if (!cancelled) {
           setCalidadRangoActual(null);
           setMaxPruebaVacioConfig(null);
@@ -1529,7 +1727,7 @@ export function AddProductionRecordModal({
         form.clearErrors(fieldName);
         return;
       }
-      if (n < min || n > max) {
+      if (n < (min as number) || n > (max as number)) {
         form.setError(fieldName, {
           type: 'manual',
           message: `Fuera de rango (${min} - ${max})`,
@@ -1606,14 +1804,14 @@ export function AddProductionRecordModal({
       toastTimeouts.forEach(timeout => clearTimeout(timeout));
       setIsProcessingEnvase(false);
       setLoteValidation({ isValid: true, message: '', isChecking: false });
+      limpiezaCreationPromises.current.clear(); // <-- nuevo
     };
   }, [debounceTimeout, toastTimeouts]);
+
 
   // Manejador personalizado para el cierre del modal
   const handleModalClose = (open: boolean) => {
     if (!open) {
-      console.log('🚪 Cerrando modal y limpiando estado...');
-      
       // Limpiar todos los timeouts
       if (debounceTimeout) {
         clearTimeout(debounceTimeout);
@@ -1648,9 +1846,7 @@ export function AddProductionRecordModal({
       // Cargar áreas desde la configuración fija
       const areas = AreasEquiposService.getTodasAreas();
       setAreasDisponibles(areas);
-      console.log('✅ Áreas cargadas:', areas.length, 'áreas');
     } catch (error) {
-      console.error('Error al cargar áreas:', error);
       toast({
         title: "Error",
         description: "No se pudieron cargar las áreas disponibles",
@@ -1665,12 +1861,10 @@ export function AddProductionRecordModal({
       // Cargar equipos según el área seleccionada desde la base de datos
       const equipos = await AreasEquiposService.getEquiposPorArea(areaId);
       setEquiposDisponibles(equipos);
-      console.log('✅ Equipos cargados para área', areaId, ':', equipos.length, 'equipos');
       
       // Limpiar el campo de equipo cuando cambia el área
       form.setValue('equipo', '');
     } catch (error) {
-      console.error('Error al cargar equipos:', error);
       toast({
         title: "Error",
         description: "No se pudieron cargar los equipos para esta área",
@@ -1682,7 +1876,6 @@ export function AddProductionRecordModal({
   };
 
   const handleAreaChange = async (areaId: string) => {
-    console.log('🎯 handleAreaChange llamado:', { areaId });
     await cargarEquiposPorArea(areaId);
     
     // Validar temperaturas si el área es Salsas o Conservas
@@ -1700,7 +1893,6 @@ export function AddProductionRecordModal({
     if (!productId) return;
     
     try {
-      console.log('🌡️ Validando temperaturas para producto:', productId);
       const configurado = await TemperaturaEnvasadoService.productoConfigurado(productId);
       
       if (!configurado) {
@@ -1733,7 +1925,6 @@ export function AddProductionRecordModal({
     if (!productId || !envaseTipo) return;
     
     try {
-      console.log('🌡️ Obteniendo rango para:', productId, envaseTipo);
       const rango = await TemperaturaEnvasadoService.obtenerRangoTemperatura(productId, envaseTipo);
       
       if (rango) {
@@ -1749,7 +1940,6 @@ export function AddProductionRecordModal({
           title: "Rango de Temperatura",
           description: `Rango permitido: ${rango.min}-${rango.max}°C`,
         });
-        console.log('✅ Rango encontrado:', rango);
       } else {
         setTemperaturaRango(null);
         // Limpiar errores si no hay rango
@@ -1766,7 +1956,6 @@ export function AddProductionRecordModal({
         });
       }
     } catch (error) {
-      console.error('Error obteniendo rango de temperatura:', error);
       setTemperaturaRango(null);
       // Limpiar errores en caso de error
       setErroresTemperatura({
@@ -1780,8 +1969,6 @@ export function AddProductionRecordModal({
 
   // Validar las 4 temperaturas en tiempo real con debounce
   const validarTemperaturasEnTiempoReal = (campo: string, valor: string) => {
-    console.log('🌡️ Validando temperatura:', { campo, valor, temperaturaRango });
-    
     // Limpiar timeout anterior
     if (debounceTimeout) {
       clearTimeout(debounceTimeout);
@@ -1791,18 +1978,15 @@ export function AddProductionRecordModal({
     const newTimeout = setTimeout(() => {
       // Verificar que el modal aún esté abierto antes de ejecutar
       if (!isOpen) {
-        console.log('🚫 Modal cerrado, cancelando validación de temperatura');
         return;
       }
       
       if (!temperaturaRango) {
-        console.log('❌ No hay rango de temperatura configurado');
         setErroresTemperatura(prev => ({ ...prev, [campo]: '' }));
         return;
       }
       
       if (!valor || valor.trim() === '') {
-        console.log('📝 Campo vacío, limpiando error');
         setErroresTemperatura(prev => ({ ...prev, [campo]: '' }));
         return;
       }
@@ -1810,20 +1994,16 @@ export function AddProductionRecordModal({
       const temp = parseNumberValue(valor);
       
       if (temp === null) {
-        console.log('❌ Valor no es número válido');
         setErroresTemperatura(prev => ({ ...prev, [campo]: '' }));
         return;
       }
       
       const dentroRango = temp >= temperaturaRango.min && temp <= temperaturaRango.max;
-      console.log('🎯 Validación:', { temp, rango: temperaturaRango, dentroRango });
       
       if (!dentroRango) {
         const mensajeError = `Fuera del rango (${temperaturaRango.min}-${temperaturaRango.max}°C)`;
-        console.log('❌ Error de temperatura:', mensajeError);
         setErroresTemperatura(prev => ({ ...prev, [campo]: mensajeError }));
       } else {
-        console.log('✅ Temperatura dentro del rango');
         setErroresTemperatura(prev => ({ ...prev, [campo]: '' }));
       }
     }, 300);
@@ -1834,11 +2014,8 @@ export function AddProductionRecordModal({
   // Validar todas las temperaturas
   const validarTodasLasTemperaturas = () => {
     if (!temperaturaRango) {
-      console.log('❌ No hay rango de temperatura para validar');
       return;
     }
-    
-    console.log('🔄 Validando todas las temperaturas con rango:', temperaturaRango);
     
     const temperaturas = {
       tempAM1: form.getValues('tempAM1'),
@@ -1846,8 +2023,6 @@ export function AddProductionRecordModal({
       tempPM1: form.getValues('tempPM1'),
       tempPM2: form.getValues('tempPM2'),
     };
-    
-    console.log('🌡️ Temperaturas actuales:', temperaturas);
     
     // Validar cada temperatura individualmente
     Object.entries(temperaturas).forEach(([campo, valor]) => {
@@ -1878,8 +2053,6 @@ export function AddProductionRecordModal({
         }
       }, 100);
       setToastTimeouts(prev => [...prev, toastTimeout]);
-      
-      console.log(`🔢 Autocompletado: Letra ${letraMayuscula} → ${unidades} unidades`);
     } else if (letra && letra.length === 1) {
       // Solo mostrar error si es una letra completa
       const errorToastTimeout = setTimeout(() => {
@@ -1899,7 +2072,6 @@ export function AddProductionRecordModal({
   const handleEnvaseChangeComplete = async (envaseSeleccionado: string) => {
     // Verificar que el modal aún esté abierto antes de procesar
     if (!isOpen) {
-      console.log('🚫 Modal cerrado, cancelando handleEnvaseChangeComplete');
       return;
     }
     
@@ -1908,18 +2080,14 @@ export function AddProductionRecordModal({
     // Evitar múltiples llamadas simultáneas
     const envaseActual = form.getValues('envase');
     if (envaseSeleccionado === envaseActual) {
-      console.log('🔄 Envase ya seleccionado, evitando llamada duplicada');
       return;
     }
     
     try {
-      console.log('🔍 Buscando configuración para producto:', productId, 'envase:', envaseSeleccionado);
-      
       // 1. Validar y cargar temperaturas
       const temperaturaRango = await TemperaturaEnvasadoService.obtenerRangoTemperatura(productId, envaseSeleccionado);
       
       if (temperaturaRango) {
-        console.log('✅ Rango de temperatura encontrado:', temperaturaRango);
         setTemperaturaRango(temperaturaRango);
         
         // Autocompletar envaseTemperatura con el mismo envase seleccionado
@@ -1934,8 +2102,6 @@ export function AddProductionRecordModal({
           });
         }
       } else {
-        console.log('❌ No se encontró configuración de temperaturas para:', productId, envaseSeleccionado);
-        
         // Autocompletar envaseTemperatura aunque no haya rango, para evitar error de validación
         form.setValue('envaseTemperatura', envaseSeleccionado);
         
@@ -1959,8 +2125,6 @@ export function AddProductionRecordModal({
       const pesosConfig = await ProductoPesosService.obtenerPesosPorProductoYEnvase(productId, envaseSeleccionado);
       
       if (pesosConfig) {
-        console.log('✅ Pesos encontrados:', pesosConfig);
-
         const isEmptyOrNA = (v: any) => {
           if (v === undefined || v === null) return true;
           const s = String(v).trim();
@@ -1996,8 +2160,6 @@ export function AddProductionRecordModal({
         });
         
       } else {
-        console.log('❌ No se encontró configuración de pesos para:', productId, envaseSeleccionado);
-
         const isEmptyOrNA = (v: any) => {
           if (v === undefined || v === null) return true;
           const s = String(v).trim();
@@ -2034,11 +2196,9 @@ export function AddProductionRecordModal({
       }
       
     } catch (error) {
-      console.error('❌ Error al cargar configuración:', error);
-      
       toast({
         title: "Error",
-        description: "No se pudo cargar la configuración completa",
+        description: "No se pudo cargar la configuración del producto",
         variant: "destructive",
       });
     }
@@ -2149,7 +2309,6 @@ export function AddProductionRecordModal({
     const newTimeout = setTimeout(() => {
       // Verificar que el modal aún esté abierto antes de ejecutar
       if (!isOpen) {
-        console.log('🚫 Modal cerrado, cancelando cálculo de pesos drenados');
         return;
       }
       
@@ -2170,7 +2329,6 @@ export function AddProductionRecordModal({
     const newTimeout = setTimeout(() => {
       // Verificar que el modal aún esté abierto antes de ejecutar
       if (!isOpen) {
-        console.log('🚫 Modal cerrado, cancelando cálculo de pesos netos');
         return;
       }
       
@@ -2298,32 +2456,24 @@ export function AddProductionRecordModal({
 
   // Calcular fecha de vencimiento cuando cambia el envase o la fecha de producción
   const handleEnvaseChange = (envaseSeleccionadoId: string) => {
-    console.log('🔄 Cambiando envase a:', envaseSeleccionadoId);
-    
     // Evitar múltiples procesamientos simultáneos
     if (isProcessingEnvase) {
-      console.log('🔄 Ya se está procesando un cambio de envase, ignorando');
       return;
     }
     
     setIsProcessingEnvase(true);
     
     const fechaProduccion = form.getValues('fechaProduccion');
-    console.log('📅 Fecha producción actual:', fechaProduccion);
-    console.log('📦 Envases disponibles:', envasesDisponibles);
     
     // Validación síncrona para evitar problemas de DOM
     if (!envaseSeleccionadoId || !fechaProduccion) {
-      console.log('❌ Faltan datos:', { envaseSeleccionadoId, fechaProduccion });
       setIsProcessingEnvase(false);
       return;
     }
     
     const envase = envasesDisponibles.find(e => e.id === envaseSeleccionadoId);
-    console.log('🔍 Envase encontrado:', envase);
     
     if (!envase) {
-      console.log('❌ No se encontró el envase con ID:', envaseSeleccionadoId);
       setIsProcessingEnvase(false);
       return;
     }
@@ -2333,7 +2483,6 @@ export function AddProductionRecordModal({
       fechaProduccion, 
       envase.mesesVencimiento
     );
-    console.log('⏰ Fecha vencimiento calculada:', fechaVencimiento);
     
     // Actualizar formulario de forma síncrona
     form.setValue('fechaVencimiento', fechaVencimiento);
@@ -2341,7 +2490,6 @@ export function AddProductionRecordModal({
     // Autocompletar temperaturas y pesos de forma asíncrona pero sin anidamientos
     handleEnvaseChangeComplete(envase.tipo)
       .catch(error => {
-        console.error('Error en handleEnvaseChangeComplete:', error);
       })
       .finally(() => {
         setIsProcessingEnvase(false);
@@ -2369,10 +2517,7 @@ export function AddProductionRecordModal({
       // Cargar envases desde la configuración fija
       const envases = EnvasesService.getTodosEnvases();
       setEnvasesDisponibles(envases);
-      console.log('✅ Envases cargados:', envases.length, 'envases');
-      console.log('📦 Lista de envases disponibles:', envases);
     } catch (error) {
-      console.error('Error al cargar envases:', error);
       toast({
         title: "Error",
         description: "No se pudieron cargar los envases disponibles",
@@ -2403,27 +2548,26 @@ export function AddProductionRecordModal({
     try {
       // Obtener todos los registros de producción
       const records = await productionRecordsService.getAll();
-      
+
       // Buscar si el lote ya existe (case insensitive)
-      const loteExistente = records.find(record => 
-        record.lote.toLowerCase() === lote.toLowerCase()
+      const loteExistente = records.find((record: any) =>
+        record.lote?.toLowerCase() === lote.toLowerCase()
       );
 
       if (loteExistente) {
         setLoteValidation({
           isValid: false,
-          message: `⚠️ El lote "${lote}" ya existe para el producto "${loteExistente.producto}"`,
+          message: `El lote "${lote}" ya existe para el producto "${loteExistente.producto}"`,
           isChecking: false
         });
       } else {
         setLoteValidation({
           isValid: true,
-          message: '✅ Lote disponible',
+          message: 'Lote disponible',
           isChecking: false
         });
       }
     } catch (error) {
-      console.error('Error al verificar lote:', error);
       setLoteValidation({
         isValid: true,
         message: 'No se pudo verificar el lote',
@@ -2434,87 +2578,73 @@ export function AddProductionRecordModal({
 
   // Función para probar la conexión a la base de datos
   async function testDatabaseConnection() {
-    console.log('🧪 Iniciando prueba de conexión a la base de datos...');
-    
     try {
       // Intentar obtener registros existentes para probar la conexión
       const records = await productionRecordsService.getAll();
-      console.log('✅ Conexión exitosa. Registros encontrados:', records.length);
       return true;
     } catch (error) {
-      console.error('❌ Error de conexión a la base de datos:', error);
       return false;
     }
   }
 
-  const createAutomaticLimpiezaRecord = async (
-    values: {
-      fechaProduccion: string;
-      mesCorte: string;
-      equipo: string;
-      responsableProduccion?: string;
-      lote?: string;
-      producto?: string;
-      productoNombre?: string;
-    },
-    savedRecordId: string | null
-  ) => {
-    // Convertir fecha de producción al formato YYYY-MM-DD que espera la base de datos
-    let fechaFormateada = values.fechaProduccion;
-    if (values.fechaProduccion.includes('/')) {
-      const partes = values.fechaProduccion.split('/');
-      if (partes.length === 3) {
-        const dia = partes[0].padStart(2, '0');
-        const mes = partes[1].padStart(2, '0');
-        const año = partes[2].length === 2 ? '20' + partes[2] : partes[2];
-        fechaFormateada = `${año}-${mes}-${dia}`;
-      }
+const createAutomaticLimpiezaRecord = async (
+  values: {
+    fechaProduccion: string;
+    mesCorte: string;
+    equipo: string;
+    responsableProduccion?: string;
+    lote?: string;
+    producto?: string;
+    productoNombre?: string;
+  },
+  savedRecordId: string | null
+) => {
+  // Formatear fecha
+  let fechaFormateada = values.fechaProduccion;
+  if (values.fechaProduccion.includes('/')) {
+    const partes = values.fechaProduccion.split('/');
+    if (partes.length === 3) {
+      const dia = partes[0].padStart(2, '0');
+      const mes = partes[1].padStart(2, '0');
+      const año = partes[2].length === 2 ? '20' + partes[2] : partes[2];
+      fechaFormateada = `${año}-${mes}-${dia}`;
     }
+  }
 
-    console.log('🔍 Creando registro de limpieza automático...');
-    console.log('🧹 Datos para registro de limpieza:', {
-      fecha: values.fechaProduccion,
-      mes_corte: values.mesCorte,
-      equipo: values.equipo,
-      responsableProduccion: values.responsableProduccion,
-      productionRecordId: savedRecordId,
-    });
+  // Clave única (si algún campo es undefined se convierte a cadena vacía)
+  const key = `${fechaFormateada}-${values.lote || ''}-${values.producto || ''}-${values.equipo || ''}-${savedRecordId || ''}`;
 
-    // Crear automáticamente registro de limpieza
+  // Si ya hay una promesa en curso para esta clave, la retornamos sin hacer nada más
+  const existingPromise = limpiezaCreationPromises.current.get(key);
+  if (existingPromise) {
+    return existingPromise;
+  }
+
+  // Creamos una nueva promesa
+  const promise = (async () => {
     try {
-      // Verificar si ya existe un registro de limpieza para esta producción (nuevo modelo)
+      // 1. Verificar si ya existe un registro de limpieza
       const existingLimpiezaRegistros = await limpiezaRegistrosService.getByDate(fechaFormateada);
       const duplicateLimpieza = existingLimpiezaRegistros.find((r) => {
         if (r.origin !== 'produccion') return false;
-        // Preferir vínculo explícito al production record
         if (savedRecordId && r.generated_from_production_record_id) {
           return String(r.generated_from_production_record_id) === String(savedRecordId);
         }
-
-        // Fallback: detectar por lote+producto (o cuando aún no exista el vínculo al production record)
         const loteMatch = (r.lote || '') === (values.lote || '');
         const productoMatch = (r.producto || '') === (values.producto || '');
         return loteMatch && productoMatch;
       });
 
-      if (duplicateLimpieza) {
-        console.log('⚠️ Ya existe un registro de limpieza para esta producción, omitiendo creación automática');
-        return;
-      }
+      if (duplicateLimpieza) return;
 
-      // Convertir código de equipo a nombre para el registro de limpieza
-      let nombreEquipo = values.equipo; // Por defecto usar el código
+      // 2. Obtener nombre del equipo (opcional)
+      let nombreEquipo = values.equipo;
       try {
         const equipo = await AreasEquiposService.getEquipoPorId(values.equipo);
-        if (equipo && equipo.nombre) {
-          nombreEquipo = equipo.nombre;
-          console.log('✅ Equipo convertido:', values.equipo, '→', nombreEquipo);
-        }
-      } catch (error) {
-        console.warn('⚠️ No se pudo obtener nombre del equipo, usando código:', values.equipo);
-      }
+        if (equipo && equipo.nombre) nombreEquipo = equipo.nombre;
+      } catch {}
 
-      const horaActual = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+      // 3. Crear el registro de limpieza
       const limpiezaRegistroPayload = {
         fecha: fechaFormateada,
         mes_corte: values.mesCorte,
@@ -2525,21 +2655,23 @@ export function AddProductionRecordModal({
         created_by: 'Sistema Automático',
       };
 
-      console.log('🧹 Enviando registro de limpieza (nuevo modelo) a la API...');
-      const savedLimpiezaRegistro = await limpiezaRegistrosService.create(limpiezaRegistroPayload);
-      console.log('✅ Registro de limpieza creado automáticamente (nuevo modelo):', savedLimpiezaRegistro);
-    } catch (limpiezaError) {
-      console.error('❌ Error - Registro de limpieza automático:', limpiezaError);
-      console.error('❌ Detalles del error:', limpiezaError instanceof Error ? limpiezaError.message : 'Error desconocido');
+      await limpiezaRegistrosService.create(limpiezaRegistroPayload);
+    } catch (error) {
+      console.error('Error al crear registro de limpieza:', error);
+    } finally {
+      // Una vez terminada (éxito o error), eliminamos la promesa del mapa
+      limpiezaCreationPromises.current.delete(key);
     }
-  };
+  })();
+
+  // Guardamos la promesa en el mapa
+  limpiezaCreationPromises.current.set(key, promise);
+  return promise;
+};
 
   async function onSubmitAsPending() {
-    console.log('🔄 onSubmitAsPending EJECUTADO - Guardando como pendiente');
-    
     // Prevenir múltiples envíos
     if (isSubmitting) {
-      console.log('⚠️ Ya se está procesando un envío pendiente, ignorando clic duplicado');
       return;
     }
 
@@ -2560,17 +2692,15 @@ export function AddProductionRecordModal({
     
     // Sincronizar TODOS los valores del formulario principal al formulario pendiente antes de validar
     const mainFormValues = form.getValues();
-    console.log('📊 Sincronizando TODOS los valores del formulario principal al pendiente...');
     
     // Obtener todas las claves desde los valores actuales del formulario principal.
     // Nota: productionFormSchema tiene .superRefine(), por lo que se vuelve ZodEffects y no expone .shape.
     const allFormFields = Object.keys(mainFormValues ?? {});
-    
+
     // Sincronizar TODOS los campos
-    allFormFields.forEach((field: keyof z.infer<typeof productionFormSchema>) => {
-      const value = mainFormValues[field];
+    allFormFields.forEach((field) => {
+      const value = mainFormValues[field as keyof typeof mainFormValues];
       if (value !== undefined && value !== null && value !== '') {
-        console.log(`🔄 Sincronizando campo ${field}:`, value);
         pendingForm.setValue(field as any, value);
       }
     });
@@ -2579,30 +2709,19 @@ export function AddProductionRecordModal({
     const pendingValues = pendingForm.getValues();
     const updatedMainFormValues = form.getValues();
     
-    console.log('📊 Valores del formulario principal (completos):', updatedMainFormValues);
-    console.log('📊 Valores del formulario pendiente (sincronizados):', pendingValues);
-    
-    // Debug específico para campos requeridos
-    console.log('🔍 Campos principales específicos:');
-    console.log('  - fechaProduccion (main):', updatedMainFormValues.fechaProduccion);
-    console.log('  - fechaProduccion (pending):', pendingValues.fechaProduccion);
-    console.log('  - lote (main):', updatedMainFormValues.lote);
-    console.log('  - lote (pending):', pendingValues.lote);
-    console.log('  - tamanoLote (main):', updatedMainFormValues.tamanoLote);
-    console.log('  - tamanoLote (pending):', pendingValues.tamanoLote);
-    console.log('  - area (main):', updatedMainFormValues.area);
-    console.log('  - area (pending):', pendingValues.area);
-    console.log('  - equipo (main):', updatedMainFormValues.equipo);
-    console.log('  - equipo (pending):', pendingValues.equipo);
-    console.log('  - responsableProduccion (main):', updatedMainFormValues.responsableProduccion);
-    console.log('  - responsableProduccion (pending):', pendingValues.responsableProduccion);
-    
     // Validar directamente los valores del formulario principal (que es donde el usuario ingresa los datos)
-    const requiredFields = ['fechaProduccion', 'mesCorte', 'producto', 'envase', 'lote', 'tamanoLote', 'area', 'equipo', 'responsableProduccion'];
-    const missingFields = requiredFields.filter(field => !updatedMainFormValues[field]);
-    
-    console.log('🔍 Campos requeridos:', requiredFields);
-    console.log('🔍 Campos faltantes:', missingFields);
+    const requiredFields: Array<keyof typeof updatedMainFormValues> = [
+      'fechaProduccion',
+      'mesCorte',
+      'producto',
+      'envase',
+      'lote',
+      'tamanoLote',
+      'area',
+      'equipo',
+      'responsableProduccion',
+    ];
+    const missingFields = requiredFields.filter((field) => !updatedMainFormValues[field]);
     
     if (missingFields.length > 0) {
       toast({
@@ -2738,6 +2857,14 @@ export function AddProductionRecordModal({
         status: 'pending',
       };
 
+      // Campo auxiliar solo de UI (no existe en BD)
+      delete completeValues.hasAnalisisPT;
+
+      completeValues.observacionesPT = mergePtObservaciones(
+        String(updatedMainFormValues.observacionesPT ?? ''),
+        extraPtAnalyses
+      );
+
       // Persistir auxiliares (aunque no existan en DB) para que el frontend pueda rehidratar
       // en caso de usar un backend alterno o cache intermedio.
       // (El backend actual ignora estos campos en PUT, pero se mantienen en el payload en memoria.)
@@ -2751,15 +2878,16 @@ export function AddProductionRecordModal({
       (completeValues as any).inspeccionMicropesajeMezclaCorreccion = updatedMainFormValues.inspeccionMicropesajeMezclaCorreccion;
       (completeValues as any).inspeccionMicropesajeResultadoObs = updatedMainFormValues.inspeccionMicropesajeResultadoObs;
       (completeValues as any).inspeccionMicropesajeResultadoCorreccion = updatedMainFormValues.inspeccionMicropesajeResultadoCorreccion;
+      (completeValues as any).observacionesAnalisisPruebas = updatedMainFormValues.observacionesAnalisisPruebasTexto;
+      (completeValues as any).observacionesPesoDrenado = updatedMainFormValues.observacionesPesoDrenadoTexto;
+      (completeValues as any).observacionesPesoNeto = updatedMainFormValues.observacionesPesoNetoTexto;
 
-      console.log('🔍 Guardando registro como pendiente en la base de datos...');
       let savedRecord: any;
       if (editingRecord?.id) {
         savedRecord = await productionRecordsService.update(editingRecord.id, completeValues);
       } else {
         savedRecord = await productionRecordsService.create(completeValues);
       }
-      console.log('✅ Registro guardado como pendiente:', savedRecord);
 
       await createAutomaticLimpiezaRecord(
         {
@@ -2785,7 +2913,6 @@ export function AddProductionRecordModal({
 
       onOpenChange(false);
     } catch (error) {
-      console.error('❌ Error general en onSubmitAsPending:', error);
       const errorMessage = error instanceof Error ? error.message : 'No se pudo guardar el registro como pendiente.';
       toast({
         title: 'Error al guardar como pendiente',
@@ -2798,11 +2925,9 @@ export function AddProductionRecordModal({
   }
 
   async function onSubmit(values: z.infer<typeof productionFormSchema>) {
-    console.log('� onSubmit EJECUTADO - Enviando datos:', values);
     
     // Prevenir múltiples envíos
     if (isSubmitting) {
-      console.log('⚠️ Ya se está procesando un envío, ignorando clic duplicado');
       return;
     }
 
@@ -2933,39 +3058,39 @@ export function AddProductionRecordModal({
         productoNombre: productName,
         observacionesAccionesCorrectivas: observacionesAccionesCorrectivasFinal,
         novedadesProceso: novedadesProcesoFinal,
+        observacionesAnalisisPruebas: values.observacionesAnalisisPruebasTexto,
+        observacionesPesoDrenado: values.observacionesPesoDrenadoTexto,
+        observacionesPesoNeto: values.observacionesPesoNetoTexto,
       };
 
-      console.log('🔍 Paso 3: Guardando registro de producción en la base de datos...');
+      // Campo auxiliar solo de UI (no existe en BD)
+      delete valuesToSave.hasAnalisisPT;
+
+      valuesToSave.observacionesPT = mergePtObservaciones(String(values.observacionesPT ?? ''), extraPtAnalyses);
+
       let savedRecord: any;
       if (editingRecord?.id) {
-        console.log('📝 Actualizando registro pendiente existente');
-        console.log('📝 ID del registro a actualizar:', editingRecord.id);
-        console.log('📝 Status actual del registro:', editingRecord.status);
         const updatedValues = {
           ...valuesToSave,
           status: 'completed'
         };
-        console.log('📝 Valores que se van a actualizar (incluyendo status=completed):', updatedValues);
         savedRecord = await productionRecordsService.update(editingRecord.id, updatedValues);
-        console.log('✅ Registro actualizado - Nuevo status:', savedRecord?.status);
       } else {
-        console.log('🆕 Creando nuevo registro');
         savedRecord = await productionRecordsService.create({
           ...valuesToSave,
           status: 'completed'
         });
       }
-      console.log('✅ Paso 3 completado - Registro guardado:', savedRecord);
 
       // Mostrar confirmación específica para registros completados
       if (editingRecord?.id && savedRecord?.status === 'completed') {
         toast({
-          title: '✅ Registro Completado Exitosamente',
+          title: 'Registro Completado Exitosamente',
           description: `El registro pendiente (lote: ${savedRecord.lote || 'N/A'}) ha sido marcado como completado.`,
         });
       } else if (savedRecord?.status === 'completed') {
         toast({
-          title: '✅ Registro Guardado',
+          title: 'Registro Guardado',
           description: `Registro completado guardado (lote: ${savedRecord.lote || 'N/A'})`,
         });
       }
@@ -2995,13 +3120,6 @@ export function AddProductionRecordModal({
         savedRecord?.id ?? null
       );
       
-      console.log(' Paso 5: Creando registro de embalaje automático...');
-      console.log(' Datos para registro de embalaje:', {
-        fecha: values.fechaProduccion,
-        mes_corte: values.mesCorte,
-        lote: values.lote,
-        responsable: values.responsableProduccion
-      });
       
       // Crear automáticamente registro de embalaje
       try {
@@ -3019,14 +3137,13 @@ export function AddProductionRecordModal({
         }
 
         // Verificar si ya existe un registro de embalaje para esta producción
-        const existingEmbalajeRecords = await embalajeService.getAll();
-        const duplicateEmbalaje = existingEmbalajeRecords.find(record => 
-          record.fecha === fechaFormateadaEmbalaje && 
+        const existingEmbalajeRecords = await embalajeRecordsService.getAll();
+        const duplicateEmbalaje = existingEmbalajeRecords.find((record: any) =>
+          record.fecha === fechaFormateadaEmbalaje &&
           record.lote === values.lote
         );
         
         if (duplicateEmbalaje) {
-          console.log(' Ya existe un registro de embalaje para esta producción, omitiendo creación automática');
         } else {
         // Preparar datos para el modal de embalaje
         const embalajeModalData = {
@@ -3039,19 +3156,13 @@ export function AddProductionRecordModal({
           observacionesGenerales: `Registro automático post-producción - Lote: ${values.lote}`
         };
         
-        console.log(' Abriendo modal de embalaje con datos precargados:', embalajeModalData);
-        
         // Abrir modal de embalaje con datos precargados
         if (onOpenEmbalajeModal) {
           onOpenEmbalajeModal(embalajeModalData);
         } else {
-          console.warn(' onOpenEmbalajeModal no proporcionado, no se puede abrir modal de embalaje');
         }
         }
       } catch (embalajeError) {
-        console.error(' Error en paso 5 - Registro de embalaje automático:', embalajeError);
-        console.error(' Detalles del error:', embalajeError instanceof Error ? embalajeError.message : 'Error desconocido');
-        
         toast({
           title: "Registros creados parcialmente",
           description: `Se han creado registros de producción y limpieza, pero hubo un error al crear el registro de embalaje automático.`,
@@ -3059,19 +3170,14 @@ export function AddProductionRecordModal({
         });
       }
       
-      console.log(' Paso 6: Ejecutando callbacks finales...');
       if (onSuccessfulSubmit) {
         onSuccessfulSubmit(savedRecord || (valuesToSave as any));
       }
       
-      console.log(' Paso 6: Cerrando modal...');
       // Cerrar el modal
       onOpenChange(false);
-      console.log(' Todos los pasos completados exitosamente');
       
     } catch (error) {
-      console.error(' Error general en onSubmit:', error);
-      
       // Mostrar toast de error con detalles
       const errorMessage = error instanceof Error ? error.message : "No se pudo guardar el registro. Intente nuevamente.";
       
@@ -3081,8 +3187,6 @@ export function AddProductionRecordModal({
         variant: "destructive",
       });
       
-      // Mostrar alerta con más detalles para depuración
-      alert(`Error de base de datos:\n${errorMessage}\n\nRevisa la consola del navegador (F12) para más detalles.`);
     } finally {
       // Asegurar que el estado de submitting siempre se resetee
       setIsSubmitting(false);
@@ -3100,7 +3204,7 @@ export function AddProductionRecordModal({
               : 'RE-CAL-084 CONSOLIDADO VERIFICACIÓN PROCESO DE PRODUCCIÓN'
             }
           </DialogTitle>
-          <DialogDescription className="text-sm">
+          <DialogDescription asChild className="text-sm">
             <div className="space-y-1">
               <div><strong>Formato:</strong> RE-CAL-084</div>
               <div><strong>Tipo:</strong> CONSOLIDADO VERIFICACIÓN PROCESO DE PRODUCCIÓN</div>
@@ -3120,21 +3224,13 @@ export function AddProductionRecordModal({
             onSubmit={form.handleSubmit(
               onSubmit,
               (errors) => {
-                console.error(' Validación fallida (onInvalid):', errors);
                 const firstKey = Object.keys(errors || {})[0];
-
-                if (firstKey === 'responsableProduccion') {
-                  console.error(' Debug responsableProduccion:', {
-                    responsableProduccion: form.getValues('responsableProduccion'),
-                    supervisorCalidad: form.getValues('supervisorCalidad'),
-                  });
-                }
 
                 toast({
                   title: 'Campos requeridos',
                   description:
                     firstKey === 'responsableProduccion'
-                      ? `Revisa el campo: ${firstKey} (valor actual: "${String(form.getValues('responsableProduccion') || '')}")`
+                      ? `Revisa el campo: ${firstKey}`
                       : firstKey
                         ? `Revisa el campo: ${firstKey}`
                         : 'Revisa los campos marcados en rojo.',
@@ -3161,11 +3257,11 @@ export function AddProductionRecordModal({
                           <FormItem>
                             <FormLabel>Fecha Producción (DD/MM/AA)</FormLabel>
                             <FormControl>
-                              <DateInput 
-                                {...field} 
-                                onChange={(value) => {
-                                  field.onChange(value);
-                                  handleFechaProduccionChange(value || '');
+                              <DateInput
+                                {...field}
+                                onChange={(e) => {
+                                  field.onChange(e);
+                                  handleFechaProduccionChange(e.target.value || '');
                                 }}
                               />
                             </FormControl>
@@ -3225,7 +3321,6 @@ export function AddProductionRecordModal({
                               <Select
                                 value={field.value}
                                 onValueChange={(value) => {
-                                  console.log(' Envase seleccionado:', value);
                                   field.onChange(value);
                                   handleEnvaseChange(value);
                                 }}
@@ -3547,8 +3642,8 @@ export function AddProductionRecordModal({
                                   <FormLabel>Novedades</FormLabel>
                                   <Textarea
                                     value={liberacionInicialNov}
-                                    rows={2}
-                                    maxLength={500}
+                                    rows={4}
+                                    maxLength={2000}
                                     onChange={(e) => {
                                       const value = e.target.value;
                                       setLiberacionInicialNov(value);
@@ -3560,8 +3655,8 @@ export function AddProductionRecordModal({
                                   <FormLabel>Correcciones</FormLabel>
                                   <Textarea
                                     value={liberacionInicialCorr}
-                                    rows={2}
-                                    maxLength={500}
+                                    rows={4}
+                                    maxLength={2000}
                                     onChange={(e) => {
                                       const value = e.target.value;
                                       setLiberacionInicialCorr(value);
@@ -3628,8 +3723,8 @@ export function AddProductionRecordModal({
                                   <FormLabel>Novedades</FormLabel>
                                   <Textarea
                                     value={verificacionAleatoriaNov}
-                                    rows={2}
-                                    maxLength={500}
+                                    rows={4}
+                                    maxLength={2000}
                                     onChange={(e) => {
                                       const value = e.target.value;
                                       setVerificacionAleatoriaNov(value);
@@ -3641,8 +3736,8 @@ export function AddProductionRecordModal({
                                   <FormLabel>Correcciones</FormLabel>
                                   <Textarea
                                     value={verificacionAleatoriaCorr}
-                                    rows={2}
-                                    maxLength={500}
+                                    rows={4}
+                                    maxLength={2000}
                                     onChange={(e) => {
                                       const value = e.target.value;
                                       setVerificacionAleatoriaCorr(value);
@@ -3690,7 +3785,7 @@ export function AddProductionRecordModal({
                       {temperaturaRango && (
                         <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                           <p className="text-sm font-medium text-blue-800">
-                            🌡️ Rango de temperatura configurado: {temperaturaRango.min}°C - {temperaturaRango.max}°C
+                            Rango de temperatura configurado: {temperaturaRango.min}°C - {temperaturaRango.max}°C
                           </p>
                           <p className="text-xs text-blue-600 mt-1">
                             Las temperaturas fuera de este rango se marcarán en rojo
@@ -3838,8 +3933,8 @@ export function AddProductionRecordModal({
                                       <FormLabel>Novedades encontradas</FormLabel>
                                       <Textarea
                                         value={novedadesTemperaturaTexto}
-                                        rows={3}
-                                        maxLength={1000}
+                                        rows={5}
+                                        maxLength={3000}
                                         onChange={(e) => {
                                           const value = e.target.value;
                                           setNovedadesTemperaturaTexto(value);
@@ -3852,8 +3947,8 @@ export function AddProductionRecordModal({
                                       <FormLabel>Correcciones</FormLabel>
                                       <Textarea
                                         value={novedadesTemperaturaCorrecciones}
-                                        rows={3}
-                                        maxLength={1000}
+                                        rows={5}
+                                        maxLength={3000}
                                         onChange={(e) => {
                                           const value = e.target.value;
                                           setNovedadesTemperaturaCorrecciones(value);
@@ -3913,8 +4008,8 @@ export function AddProductionRecordModal({
                                     <FormControl>
                                       <Textarea 
                                         {...obsField} 
-                                        rows={3}
-                                        maxLength={500}
+                                        rows={4}
+                                        maxLength={2000}
                                       />
                                     </FormControl>
                                     <FormMessage />
@@ -3930,8 +4025,8 @@ export function AddProductionRecordModal({
                                     <FormControl>
                                       <Textarea 
                                         {...corrField} 
-                                        rows={3}
-                                        maxLength={500}
+                                        rows={4}
+                                        maxLength={2000}
                                       />
                                     </FormControl>
                                     <FormMessage />
@@ -3974,8 +4069,8 @@ export function AddProductionRecordModal({
                                     <FormControl>
                                       <Textarea 
                                         {...obsField} 
-                                        rows={3}
-                                        maxLength={500}
+                                        rows={4}
+                                        maxLength={2000}
                                       />
                                     </FormControl>
                                     <FormMessage />
@@ -3991,8 +4086,8 @@ export function AddProductionRecordModal({
                                     <FormControl>
                                       <Textarea 
                                         {...corrField} 
-                                        rows={3}
-                                        maxLength={500}
+                                        rows={4}
+                                        maxLength={2000}
                                       />
                                     </FormControl>
                                     <FormMessage />
@@ -4035,8 +4130,8 @@ export function AddProductionRecordModal({
                                     <FormControl>
                                       <Textarea 
                                         {...obsField} 
-                                        rows={3}
-                                        maxLength={500}
+                                        rows={4}
+                                        maxLength={2000}
                                       />
                                     </FormControl>
                                     <FormMessage />
@@ -4052,8 +4147,8 @@ export function AddProductionRecordModal({
                                     <FormControl>
                                       <Textarea 
                                         {...corrField} 
-                                        rows={3}
-                                        maxLength={500}
+                                        rows={4}
+                                        maxLength={2000}
                                       />
                                     </FormControl>
                                     <FormMessage />
@@ -4094,10 +4189,10 @@ export function AddProductionRecordModal({
                                   <FormItem>
                                     <FormLabel>Observaciones</FormLabel>
                                     <FormControl>
-                                      <Textarea 
-                                        {...obsField} 
-                                        rows={3}
-                                        maxLength={500}
+                                      <Textarea
+                                        {...obsField}
+                                        rows={4}
+                                        maxLength={2000}
                                       />
                                     </FormControl>
                                     <FormMessage />
@@ -4111,10 +4206,10 @@ export function AddProductionRecordModal({
                                   <FormItem>
                                     <FormLabel>Correcciones</FormLabel>
                                     <FormControl>
-                                      <Textarea 
-                                        {...corrField} 
-                                        rows={3}
-                                        maxLength={500}
+                                      <Textarea
+                                        {...corrField}
+                                        rows={4}
+                                        maxLength={2000}
                                       />
                                     </FormControl>
                                     <FormMessage />
@@ -4127,6 +4222,51 @@ export function AddProductionRecordModal({
                         </FormItem>
                       )}
                     />
+                    <FormField
+                      control={form.control}
+                      name="tieneObservacionesAnalisisPruebas"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            Observaciones
+                          </FormLabel>
+                          <FormControl>
+                            <Select value={field.value || 'No'} onValueChange={field.onChange}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Seleccione..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="No">No</SelectItem>
+                                <SelectItem value="Si">Sí</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    {tieneObservacionesAnalisisPruebasWatch === 'Si' && (
+                      <FormField
+                        control={form.control}
+                        name="observacionesAnalisisPruebasTexto"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>
+                              Escriba las observaciones
+                            </FormLabel>
+                            <FormControl>
+                              <Textarea
+                                {...field}
+                                rows={3}
+                                placeholder="Escriba observaciones..."
+                                maxLength={2000}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
                   </AccordionContent>
                 </AccordionItem>
 
@@ -4313,13 +4453,58 @@ export function AddProductionRecordModal({
                             <FormMessage />
                             {letra && pesosCount > 0 && pesosCount !== muestrasRequeridas && (
                               <p className="text-sm text-orange-600 mt-1">
-                                ⚠️ Se requieren {muestrasRequeridas} valores
+                                Se requieren {muestrasRequeridas} valores
                               </p>
                             )}
                           </FormItem>
                         );
                       }}
                     />
+                    <FormField
+                      control={form.control}
+                      name="tieneObservacionesPesoDrenado"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            Observaciones
+                          </FormLabel>
+                          <FormControl>
+                            <Select value={field.value || 'No'} onValueChange={field.onChange}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Seleccione..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="No">No</SelectItem>
+                                <SelectItem value="Si">Sí</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    {tieneObservacionesPesoDrenadoWatch === 'Si' && (
+                      <FormField
+                        control={form.control}
+                        name="observacionesPesoDrenadoTexto"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>
+                              Escriba las observaciones
+                            </FormLabel>
+                            <FormControl>
+                              <Textarea
+                                {...field}
+                                rows={3}
+                                placeholder="Escriba observaciones..."
+                                maxLength={2000}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
                   </AccordionContent>
                 </AccordionItem>
 
@@ -4476,6 +4661,51 @@ export function AddProductionRecordModal({
                         );
                       }}
                     />
+                    <FormField
+                      control={form.control}
+                      name="tieneObservacionesPesoNeto"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>
+                            Observaciones
+                          </FormLabel>
+                          <FormControl>
+                            <Select value={field.value || 'No'} onValueChange={field.onChange}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Seleccione..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="No">No</SelectItem>
+                                <SelectItem value="Si">Sí</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    {tieneObservacionesPesoNetoWatch === 'Si' && (
+                      <FormField
+                        control={form.control}
+                        name="observacionesPesoNetoTexto"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>
+                              Escriba las observaciones
+                            </FormLabel>
+                            <FormControl>
+                              <Textarea
+                                {...field}
+                                rows={3}
+                                placeholder="Escriba observaciones..."
+                                maxLength={2000}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
                   </AccordionContent>
                 </AccordionItem>
 
@@ -4564,8 +4794,8 @@ export function AddProductionRecordModal({
                                     <FormLabel>Novedades encontradas</FormLabel>
                                     <Textarea
                                       value={novedadesProcesoTexto}
-                                      rows={3}
-                                      maxLength={1000}
+                                      rows={5}
+                                      maxLength={3000}
                                       onChange={(e) => {
                                         const value = e.target.value;
                                         setNovedadesProcesoTexto(value);
@@ -4578,8 +4808,8 @@ export function AddProductionRecordModal({
                                     <FormLabel>Correcciones</FormLabel>
                                     <Textarea
                                       value={novedadesProcesoCorrecciones}
-                                      rows={3}
-                                      maxLength={1000}
+                                      rows={5}
+                                      maxLength={3000}
                                       onChange={(e) => {
                                         const value = e.target.value;
                                         setNovedadesProcesoCorrecciones(value);
@@ -4603,410 +4833,631 @@ export function AddProductionRecordModal({
                 </AccordionItem>
 
                 <AccordionItem value="analisis-pt">
-                  <AccordionTrigger>
-                    Análisis de Producto Terminado (PT)
-                  </AccordionTrigger>
-                  <AccordionContent className="space-y-4">
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="fechaAnalisisPT"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Fecha Análisis PT</FormLabel>
-                            <FormControl>
-                              <DateInput {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="noMezclaPT"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>No. Mezcla PT</FormLabel>
-                            <FormControl>
-                              <Input {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="vacioPT"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Vacío INCH/HG</FormLabel>
-                            <FormControl>
-                              <Input {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="pesoNetoRealPT"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Peso Neto Real</FormLabel>
-                            <FormControl>
-                              <Input {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="pesoDrenadoRealPT"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Peso Drenado Real</FormLabel>
-                            <FormControl>
-                              <Input {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="brixPT"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>°Brix</FormLabel>
-                            {calidadRangoActual && (
-                              <div className="text-xs text-muted-foreground">
-                                Rango: {calidadRangoActual.brix_min} - {calidadRangoActual.brix_max}
-                              </div>
-                            )}
-                            <FormControl>
-                              <Input type="number" {...field} className={getPtRangeInputClass('brixPT')} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="phPT"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>pH</FormLabel>
-                            {calidadRangoActual && (
-                              <div className="text-xs text-muted-foreground">
-                                Rango: {calidadRangoActual.ph_min} - {calidadRangoActual.ph_max}
-                              </div>
-                            )}
-                            <FormControl>
-                              <Input type="number" {...field} className={getPtRangeInputClass('phPT')} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="acidezPT"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Acidez</FormLabel>
-                            {calidadRangoActual && (
-                              <div className="text-xs text-muted-foreground">
-                                Rango: {calidadRangoActual.acidez_min} - {calidadRangoActual.acidez_max}
-                              </div>
-                            )}
-                            <FormControl>
-                              <Input type="number" {...field} className={getPtRangeInputClass('acidezPT')} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="ppmSo2PT"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>PPM-SO2</FormLabel>
-                            {calidadRangoActual && (
-                              <div className="text-xs text-muted-foreground">
-                                Rango: {calidadRangoActual.ppm_so2_min} - {calidadRangoActual.ppm_so2_max}
-                              </div>
-                            )}
-                            <FormControl>
-                              <Input type="number" {...field} className={getPtRangeInputClass('ppmSo2PT')} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="consistenciaPT"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Consistencia</FormLabel>
-                            {calidadRangoActual && (
-                              <div className="text-xs text-muted-foreground">
-                                Rango: {calidadRangoActual.consistencia_min} - {calidadRangoActual.consistencia_max}
-                              </div>
-                            )}
-                            <FormControl>
-                              <Input type="number" {...field} className={getPtRangeInputClass('consistenciaPT')} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="tapadoCierrePT"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Tapado y Cierre</FormLabel>
-                            <FormControl>
-                              <Select value={field.value} onValueChange={field.onChange}>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Seleccione..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="Conforme">Conforme</SelectItem>
-                                  <SelectItem value="No conforme">No conforme</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="etiquetaPT"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Etiqueta</FormLabel>
-                            <FormControl>
-                              <Select value={field.value} onValueChange={field.onChange}>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Seleccione..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="Conforme">Conforme</SelectItem>
-                                  <SelectItem value="No conforme">No conforme</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="ubicacionMuestraPT"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Ubicación Muestra</FormLabel>
-                            <FormControl>
-                              <Input {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="estadoPT"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>
-                              Estado
-                            </FormLabel>
-                            <FormControl>
-                              <Select value={field.value} onValueChange={field.onChange}>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Seleccione estado..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="Rechazado">Rechazado</SelectItem>
-                                  <SelectItem value="Liberado">Liberado</SelectItem>
-                                  <SelectItem value="Retenido">Retenido</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="responsableAnalisisPT"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Responsable Análisis</FormLabel>
-                            <FormControl>
-                              <Input {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+                  <AccordionPrimitive.Header className="flex items-center">
+                    <AccordionPrimitive.Trigger className="flex flex-1 items-center justify-between py-4 font-medium transition-all hover:underline [&[data-state=open]>svg]:rotate-180">
+                      Análisis de Producto Terminado (PT)
+                      <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200" />
+                    </AccordionPrimitive.Trigger>
+                    <div className="ml-3 shrink-0">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-8"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (!hasAnalisisPTWatch) {
+                            form.setValue('hasAnalisisPT', true, {
+                              shouldDirty: true,
+                              shouldTouch: true,
+                              shouldValidate: false,
+                            });
+                            pendingForm.setValue('hasAnalisisPT', true, {
+                              shouldDirty: true,
+                              shouldTouch: true,
+                              shouldValidate: false,
+                            });
+                          }
+
+                          setExtraPtAnalyses((prev) => {
+                            const next = [...(prev || []), emptyExtraPtAnalysis()];
+                            const nextIndex = next.length + 1;
+                            setPtActiveTab(`analysis-${nextIndex}`);
+                            return next;
+                          });
+                        }}
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Agregar análisis
+                      </Button>
                     </div>
-                    <FormField
-                      control={form.control}
-                      name="sensorialPT"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>
-                            Sensorial (Textura, color, olor, sabor)
-                          </FormLabel>
-                          <FormControl>
-                            <div className="space-y-2">
-                              <Select
-                                value={sensorialPTModo}
-                                onValueChange={(v) => {
-                                  const modo = (v as any) as 'cumple' | 'no_cumple' | '';
-                                  setSensorialPTModo(modo);
-                                  if (modo === 'cumple') {
-                                    field.onChange('Cumple');
-                                  } else if (modo === 'no_cumple') {
-                                    field.onChange(buildNoCumpleText('Sensorial', sensorialPTObs, sensorialPTCorr));
-                                  } else {
-                                    field.onChange('');
-                                  }
-                                }}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Seleccione..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="cumple">Cumple</SelectItem>
-                                  <SelectItem value="no_cumple">No cumple</SelectItem>
-                                </SelectContent>
-                              </Select>
+                  </AccordionPrimitive.Header>
+                  <AccordionContent className="space-y-4">
+                    <Tabs value={ptActiveTab} onValueChange={setPtActiveTab}>
+                        <TabsList className="w-full justify-start">
+                          <TabsTrigger value="analysis-1">Análisis 1</TabsTrigger>
+                          {extraPtAnalyses.map((_, idx) => {
+                            const tabValue = `analysis-${idx + 2}`;
+                            return (
+                              <div key={tabValue} className="flex items-center">
+                                <TabsTrigger value={tabValue}>{`Análisis ${idx + 2}`}</TabsTrigger>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  className="h-8 w-8 p-0"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
 
-                              {sensorialPTModo === 'no_cumple' && (
-                                <div className="grid gap-2">
-                                  <Textarea
-                                    value={sensorialPTObs}
-                                    rows={3}
-                                    className="min-h-[96px]"
-                                    onChange={(e) => {
-                                      const v = e.target.value;
-                                      setSensorialPTObs(v);
-                                      field.onChange(buildNoCumpleText('Sensorial', v, sensorialPTCorr));
-                                    }}
-                                    placeholder="Observaciones"
-                                  />
-                                  <Textarea
-                                    value={sensorialPTCorr}
-                                    rows={3}
-                                    className="min-h-[96px]"
-                                    onChange={(e) => {
-                                      const v = e.target.value;
-                                      setSensorialPTCorr(v);
-                                      field.onChange(buildNoCumpleText('Sensorial', sensorialPTObs, v));
-                                    }}
-                                    placeholder="Corrección"
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="presentacionFinalPT"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Presentación Final</FormLabel>
-                          <FormControl>
-                            <div className="space-y-2">
-                              <Select
-                                value={presentacionFinalPTModo}
-                                onValueChange={(v) => {
-                                  const modo = (v as any) as 'cumple' | 'no_cumple' | '';
-                                  setPresentacionFinalPTModo(modo);
-                                  if (modo === 'cumple') {
-                                    field.onChange('Cumple');
-                                  } else if (modo === 'no_cumple') {
-                                    field.onChange(
-                                      buildNoCumpleText('Presentación Final', presentacionFinalPTObs, presentacionFinalPTCorr)
-                                    );
-                                  } else {
-                                    field.onChange('');
-                                  }
-                                }}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Seleccione..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="cumple">Cumple</SelectItem>
-                                  <SelectItem value="no_cumple">No cumple</SelectItem>
-                                </SelectContent>
-                              </Select>
+                                    setExtraPtAnalyses((prev) => {
+                                      const next = [...(prev || [])];
+                                      next.splice(idx, 1);
 
-                              {presentacionFinalPTModo === 'no_cumple' && (
-                                <div className="grid gap-2">
-                                  <Textarea
-                                    value={presentacionFinalPTObs}
-                                    rows={3}
-                                    className="min-h-[96px]"
-                                    onChange={(e) => {
-                                      const v = e.target.value;
-                                      setPresentacionFinalPTObs(v);
-                                      field.onChange(
-                                        buildNoCumpleText('Presentación Final', v, presentacionFinalPTCorr)
-                                      );
-                                    }}
-                                    placeholder="Observaciones"
-                                  />
-                                  <Textarea
-                                    value={presentacionFinalPTCorr}
-                                    rows={3}
-                                    className="min-h-[96px]"
-                                    onChange={(e) => {
-                                      const v = e.target.value;
-                                      setPresentacionFinalPTCorr(v);
-                                      field.onChange(
-                                        buildNoCumpleText('Presentación Final', presentacionFinalPTObs, v)
-                                      );
-                                    }}
-                                    placeholder="Corrección"
-                                  />
-                                </div>
+                                      const removedTabValue = tabValue;
+                                      const remainingCount = next.length;
+                                      const currentActive = ptActiveTab;
+
+                                      if (currentActive === removedTabValue) {
+                                        const fallbackIndex = Math.min(idx, remainingCount - 1);
+                                        const fallbackTab = fallbackIndex >= 0 ? `analysis-${fallbackIndex + 2}` : 'analysis-1';
+                                        setPtActiveTab(fallbackTab);
+                                      } else {
+                                        // Si se eliminó un tab anterior al actual, los índices se corren
+                                        const currentMatch = /^analysis-(\d+)$/.exec(currentActive);
+                                        const currentN = currentMatch ? Number(currentMatch[1]) : 1;
+                                        const removedN = idx + 2;
+                                        if (Number.isFinite(currentN) && currentN > removedN) {
+                                          setPtActiveTab(`analysis-${currentN - 1}`);
+                                        }
+                                      }
+
+                                      return next;
+                                    });
+                                  }}
+                                  aria-label={`Eliminar Análisis ${idx + 2}`}
+                                  title={`Eliminar Análisis ${idx + 2}`}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            );
+                          })}
+                        </TabsList>
+
+                        <TabsContent value="analysis-1">
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            <FormField
+                              control={form.control}
+                              name="fechaAnalisisPT"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Fecha Análisis PT</FormLabel>
+                                  <FormControl>
+                                    <DateInput {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
                               )}
-                            </div>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="observacionesPT"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Observaciones PT</FormLabel>
-                          <FormControl>
-                            <Textarea 
-                              {...field} 
-                              rows={4}
-                              maxLength={1000}
                             />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                            <FormField
+                              control={form.control}
+                              name="noMezclaPT"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>No. Mezcla PT</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="vacioPT"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Vacío INCH/HG</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} type="number" className={getVacioPTInputClass()} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="pesoNetoRealPT"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Peso Neto Real</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="pesoDrenadoRealPT"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Peso Drenado Real</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="brixPT"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>°Brix</FormLabel>
+                                  {calidadRangoActual && (
+                                    <div className="text-xs text-muted-foreground">
+                                      Rango: {calidadRangoActual.brix_min} - {calidadRangoActual.brix_max}
+                                    </div>
+                                  )}
+                                  <FormControl>
+                                    <Input type="number" {...field} className={getPtRangeInputClass('brixPT')} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="phPT"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>pH</FormLabel>
+                                  {calidadRangoActual && (
+                                    <div className="text-xs text-muted-foreground">
+                                      Rango: {calidadRangoActual.ph_min} - {calidadRangoActual.ph_max}
+                                    </div>
+                                  )}
+                                  <FormControl>
+                                    <Input type="number" {...field} className={getPtRangeInputClass('phPT')} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="acidezPT"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Acidez</FormLabel>
+                                  {calidadRangoActual && (
+                                    <div className="text-xs text-muted-foreground">
+                                      Rango: {calidadRangoActual.acidez_min} - {calidadRangoActual.acidez_max}
+                                    </div>
+                                  )}
+                                  <FormControl>
+                                    <Input type="number" {...field} className={getPtRangeInputClass('acidezPT')} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="ppmSo2PT"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>PPM-SO2</FormLabel>
+                                  {calidadRangoActual && (
+                                    <div className="text-xs text-muted-foreground">
+                                      Rango: {calidadRangoActual.ppm_so2_min} - {calidadRangoActual.ppm_so2_max}
+                                    </div>
+                                  )}
+                                  <FormControl>
+                                    <Input type="number" {...field} className={getPtRangeInputClass('ppmSo2PT')} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="consistenciaPT"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Consistencia</FormLabel>
+                                  {calidadRangoActual && (
+                                    <div className="text-xs text-muted-foreground">
+                                      Rango: {calidadRangoActual.consistencia_min} - {calidadRangoActual.consistencia_max}
+                                    </div>
+                                  )}
+                                  <FormControl>
+                                    <Input type="number" {...field} className={getPtRangeInputClass('consistenciaPT')} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="tapadoCierrePT"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Tapado y Cierre</FormLabel>
+                                  <FormControl>
+                                    <Select value={field.value} onValueChange={field.onChange}>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Seleccione..." />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="Conforme">Conforme</SelectItem>
+                                        <SelectItem value="No conforme">No conforme</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="etiquetaPT"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Etiqueta</FormLabel>
+                                  <FormControl>
+                                    <Select value={field.value} onValueChange={field.onChange}>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Seleccione..." />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="Conforme">Conforme</SelectItem>
+                                        <SelectItem value="No conforme">No conforme</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="ubicacionMuestraPT"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Ubicación Muestra</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="estadoPT"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Estado</FormLabel>
+                                  <FormControl>
+                                    <Select value={field.value} onValueChange={field.onChange}>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Seleccione estado..." />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="Rechazado">Rechazado</SelectItem>
+                                        <SelectItem value="Liberado">Liberado</SelectItem>
+                                        <SelectItem value="Retenido">Retenido</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="responsableAnalisisPT"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Responsable Análisis</FormLabel>
+                                  <FormControl>
+                                    <Input {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+
+                          <div className="mt-4 space-y-4">
+                            <FormField
+                              control={form.control}
+                              name="sensorialPT"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Sensorial (Textura, color, olor, sabor)</FormLabel>
+                                  <FormControl>
+                                    <div className="space-y-2">
+                                      <Select
+                                        value={sensorialPTModo}
+                                        onValueChange={(v) => {
+                                          const modo = (v as any) as 'cumple' | 'no_cumple' | '';
+                                          setSensorialPTModo(modo);
+                                          if (modo === 'cumple') {
+                                            field.onChange('Cumple');
+                                          } else if (modo === 'no_cumple') {
+                                            field.onChange(buildNoCumpleText('Sensorial', sensorialPTObs, sensorialPTCorr));
+                                          } else {
+                                            field.onChange('');
+                                          }
+                                        }}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Seleccione..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="cumple">Cumple</SelectItem>
+                                          <SelectItem value="no_cumple">No cumple</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+
+                                      {sensorialPTModo === 'no_cumple' && (
+                                        <div className="grid gap-2">
+                                          <Textarea
+                                            value={sensorialPTObs}
+                                            rows={3}
+                                            className="min-h-[96px]"
+                                            onChange={(e) => {
+                                              const v = e.target.value;
+                                              setSensorialPTObs(v);
+                                              field.onChange(buildNoCumpleText('Sensorial', v, sensorialPTCorr));
+                                            }}
+                                            placeholder="Observaciones"
+                                          />
+                                          <Textarea
+                                            value={sensorialPTCorr}
+                                            rows={3}
+                                            className="min-h-[96px]"
+                                            onChange={(e) => {
+                                              const v = e.target.value;
+                                              setSensorialPTCorr(v);
+                                              field.onChange(buildNoCumpleText('Sensorial', sensorialPTObs, v));
+                                            }}
+                                            placeholder="Corrección"
+                                          />
+                                        </div>
+                                      )}
+                                    </div>
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="presentacionFinalPT"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Presentación Final</FormLabel>
+                                  <FormControl>
+                                    <div className="space-y-2">
+                                      <Select
+                                        value={presentacionFinalPTModo}
+                                        onValueChange={(v) => {
+                                          const modo = (v as any) as 'cumple' | 'no_cumple' | '';
+                                          setPresentacionFinalPTModo(modo);
+                                          if (modo === 'cumple') {
+                                            field.onChange('Cumple');
+                                          } else if (modo === 'no_cumple') {
+                                            field.onChange(
+                                              buildNoCumpleText('Presentación Final', presentacionFinalPTObs, presentacionFinalPTCorr)
+                                            );
+                                          } else {
+                                            field.onChange('');
+                                          }
+                                        }}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Seleccione..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="cumple">Cumple</SelectItem>
+                                          <SelectItem value="no_cumple">No cumple</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+
+                                      {presentacionFinalPTModo === 'no_cumple' && (
+                                        <div className="grid gap-2">
+                                          <Textarea
+                                            value={presentacionFinalPTObs}
+                                            rows={3}
+                                            className="min-h-[96px]"
+                                            onChange={(e) => {
+                                              const v = e.target.value;
+                                              setPresentacionFinalPTObs(v);
+                                              field.onChange(
+                                                buildNoCumpleText('Presentación Final', v, presentacionFinalPTCorr)
+                                              );
+                                            }}
+                                            placeholder="Observaciones"
+                                          />
+                                          <Textarea
+                                            value={presentacionFinalPTCorr}
+                                            rows={3}
+                                            className="min-h-[96px]"
+                                            onChange={(e) => {
+                                              const v = e.target.value;
+                                              setPresentacionFinalPTCorr(v);
+                                              field.onChange(
+                                                buildNoCumpleText('Presentación Final', presentacionFinalPTObs, v)
+                                              );
+                                            }}
+                                            placeholder="Corrección"
+                                          />
+                                        </div>
+                                      )}
+                                    </div>
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="observacionesPT"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Observaciones PT</FormLabel>
+                                  <FormControl>
+                                    <Textarea {...field} rows={5} maxLength={3000} />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+                        </TabsContent>
+
+                        {extraPtAnalyses.map((analysis, idx) => {
+                          const tabValue = `analysis-${idx + 2}`;
+                          const setField = (key: keyof typeof analysis, value: string) => {
+                            setExtraPtAnalyses((prev) => {
+                              const next = [...prev];
+                              const current = next[idx] || emptyExtraPtAnalysis();
+                              next[idx] = { ...(current as any), [key]: value };
+                              return next;
+                            });
+                          };
+
+                          return (
+                            <TabsContent key={tabValue} value={tabValue}>
+                              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                <div className="space-y-2">
+                                  <FormLabel>Fecha Análisis PT</FormLabel>
+                                  <DateInput value={analysis.fechaAnalisisPT} onChange={(e) => setField('fechaAnalisisPT', (e.target as any).value)} />
+                                </div>
+                                <div className="space-y-2">
+                                  <FormLabel>No. Mezcla PT</FormLabel>
+                                  <Input value={analysis.noMezclaPT} onChange={(e) => setField('noMezclaPT', e.target.value)} />
+                                </div>
+                                <div className="space-y-2">
+                                  <FormLabel>Vacío INCH/HG</FormLabel>
+                                  <Input type="number" value={analysis.vacioPT} onChange={(e) => setField('vacioPT', e.target.value)} className={getVacioPTInputClass()} />
+                                </div>
+                                <div className="space-y-2">
+                                  <FormLabel>Peso Neto Real</FormLabel>
+                                  <Input value={analysis.pesoNetoRealPT} onChange={(e) => setField('pesoNetoRealPT', e.target.value)} />
+                                </div>
+                                <div className="space-y-2">
+                                  <FormLabel>Peso Drenado Real</FormLabel>
+                                  <Input value={analysis.pesoDrenadoRealPT} onChange={(e) => setField('pesoDrenadoRealPT', e.target.value)} />
+                                </div>
+                                <div className="space-y-2">
+                                  <FormLabel>°Brix</FormLabel>
+                                  {calidadRangoActual && <div className="text-xs text-muted-foreground">Rango: {calidadRangoActual.brix_min} - {calidadRangoActual.brix_max}</div>}
+                                  <Input type="number" value={analysis.brixPT} onChange={(e) => setField('brixPT', e.target.value)} className={getPtRangeInputClass('brixPT')} />
+                                </div>
+                                <div className="space-y-2">
+                                  <FormLabel>pH</FormLabel>
+                                  {calidadRangoActual && <div className="text-xs text-muted-foreground">Rango: {calidadRangoActual.ph_min} - {calidadRangoActual.ph_max}</div>}
+                                  <Input type="number" value={analysis.phPT} onChange={(e) => setField('phPT', e.target.value)} className={getPtRangeInputClass('phPT')} />
+                                </div>
+                                <div className="space-y-2">
+                                  <FormLabel>Acidez</FormLabel>
+                                  {calidadRangoActual && <div className="text-xs text-muted-foreground">Rango: {calidadRangoActual.acidez_min} - {calidadRangoActual.acidez_max}</div>}
+                                  <Input type="number" value={analysis.acidezPT} onChange={(e) => setField('acidezPT', e.target.value)} className={getPtRangeInputClass('acidezPT')} />
+                                </div>
+                                <div className="space-y-2">
+                                  <FormLabel>PPM-SO2</FormLabel>
+                                  {calidadRangoActual && <div className="text-xs text-muted-foreground">Rango: {calidadRangoActual.ppm_so2_min} - {calidadRangoActual.ppm_so2_max}</div>}
+                                  <Input type="number" value={analysis.ppmSo2PT} onChange={(e) => setField('ppmSo2PT', e.target.value)} className={getPtRangeInputClass('ppmSo2PT')} />
+                                </div>
+                                <div className="space-y-2">
+                                  <FormLabel>Consistencia</FormLabel>
+                                  {calidadRangoActual && <div className="text-xs text-muted-foreground">Rango: {calidadRangoActual.consistencia_min} - {calidadRangoActual.consistencia_max}</div>}
+                                  <Input type="number" value={analysis.consistenciaPT} onChange={(e) => setField('consistenciaPT', e.target.value)} className={getPtRangeInputClass('consistenciaPT')} />
+                                </div>
+                                <div className="space-y-2">
+                                  <FormLabel>Tapado y Cierre</FormLabel>
+                                  <Select value={analysis.tapadoCierrePT} onValueChange={(v) => setField('tapadoCierrePT', v)}>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Seleccione..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Conforme">Conforme</SelectItem>
+                                      <SelectItem value="No conforme">No conforme</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <FormLabel>Etiqueta</FormLabel>
+                                  <Select value={analysis.etiquetaPT} onValueChange={(v) => setField('etiquetaPT', v)}>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Seleccione..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Conforme">Conforme</SelectItem>
+                                      <SelectItem value="No conforme">No conforme</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <FormLabel>Ubicación Muestra</FormLabel>
+                                  <Input value={analysis.ubicacionMuestraPT} onChange={(e) => setField('ubicacionMuestraPT', e.target.value)} />
+                                </div>
+                                <div className="space-y-2">
+                                  <FormLabel>Estado</FormLabel>
+                                  <Select value={analysis.estadoPT} onValueChange={(v) => setField('estadoPT', v)}>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Seleccione estado..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Rechazado">Rechazado</SelectItem>
+                                      <SelectItem value="Liberado">Liberado</SelectItem>
+                                      <SelectItem value="Retenido">Retenido</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <FormLabel>Responsable Análisis</FormLabel>
+                                  <Input value={analysis.responsableAnalisisPT} onChange={(e) => setField('responsableAnalisisPT', e.target.value)} />
+                                </div>
+                              </div>
+
+                              <div className="mt-4 space-y-4">
+                                <div className="space-y-2">
+                                  <FormLabel>Sensorial (Textura, color, olor, sabor)</FormLabel>
+                                  <Select value={analysis.sensorialPT} onValueChange={(v) => setField('sensorialPT', v)}>
+                                    <SelectTrigger><SelectValue placeholder="Seleccione..." /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Cumple">Cumple</SelectItem>
+                                      <SelectItem value="No cumple">No cumple</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <FormLabel>Presentación Final</FormLabel>
+                                  <Select value={analysis.presentacionFinalPT} onValueChange={(v) => setField('presentacionFinalPT', v)}>
+                                    <SelectTrigger><SelectValue placeholder="Seleccione..." /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Cumple">Cumple</SelectItem>
+                                      <SelectItem value="No cumple">No cumple</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <FormLabel>Observaciones PT</FormLabel>
+                                  <Textarea value={analysis.observacionesPT} rows={5} maxLength={3000} onChange={(e) => setField('observacionesPT', e.target.value)} />
+                                </div>
+                              </div>
+                            </TabsContent>
+                          );
+                        })}
+                      </Tabs>
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
@@ -5017,6 +5468,7 @@ export function AddProductionRecordModal({
                 variant="outline"
                 onClick={() => handleModalClose(false)}
                 className="w-full sm:w-auto"
+                disabled={isSubmitting}
               >
                 Cancelar
               </Button>
@@ -5066,7 +5518,7 @@ export function AddProductionRecordModal({
                       >
                         {isSubmitting ? (
                           <>
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600 mr-2"></div>
+                            <Loader2 className="animate-spin h-4 w-4 mr-2" />
                             <span className="hidden sm:inline">Guardando...</span>
                             <span className="sm:hidden">Guardando...</span>
                           </>
@@ -5094,13 +5546,10 @@ export function AddProductionRecordModal({
                         type="submit"
                         className="w-full sm:w-auto"
                         disabled={isSubmitDisabled}
-                        onClick={() => {
-                          console.log('🖱️ Click en Guardar/Completar');
-                        }}
                       >
                         {isSubmitting ? (
                           <>
-                            <span className="animate-spin mr-2">⏳</span>
+                            <Loader2 className="animate-spin h-4 w-4 mr-2" />
                             Guardando...
                           </>
                         ) : (

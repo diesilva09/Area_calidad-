@@ -2,6 +2,17 @@
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
+export const parseYmdToLocalDate = (fecha: string): Date => {
+  const dateOnly = String(fecha || '').slice(0, 10);
+  const [y, m, d] = dateOnly.split('-').map((p) => Number(p));
+  if (!y || !m || !d) return new Date(fecha);
+  return new Date(y, m - 1, d);
+};
+
+export const isYmdDateString = (value: string): boolean => {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').slice(0, 10));
+};
+
 /**
  * Obtiene la fecha actual formateada como YYYY-MM-DD
  * @returns string - Fecha actual en formato ISO
@@ -65,7 +76,10 @@ export const esHoy = (fecha: string): boolean => {
  * @returns string - Fecha formateada en español
  */
 export const formatearFechaLarga = (fecha: string | Date): string => {
-  const dateObj = typeof fecha === 'string' ? new Date(fecha) : fecha;
+  const dateObj =
+    typeof fecha === 'string'
+      ? (isYmdDateString(fecha) ? parseYmdToLocalDate(fecha) : new Date(fecha))
+      : fecha;
   return format(dateObj, 'PPP', { locale: es });
 };
 

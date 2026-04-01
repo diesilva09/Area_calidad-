@@ -82,15 +82,18 @@ export default function EmbalajePendingPage() {
   );
 
   const isPending = (record: EmbalajeRecord): boolean => {
-    return record.presentacion === 'Pendiente' ||
-           record.nivel_inspeccion === 'Pendiente' ||
-           record.etiqueta === 'Pendiente' ||
-           record.marcacion === 'Pendiente' ||
-           record.presentacion_no_conforme === 'Pendiente' ||
-           record.cajas === 'Pendiente' ||
-           record.responsable_identificador_cajas === 'Pendiente' ||
-           record.responsable_embalaje === 'Pendiente' ||
-           record.responsable_calidad === 'Pendiente';
+    if (record.status === 'pending') return true;
+    return (
+      record.presentacion === 'Pendiente' ||
+      record.nivel_inspeccion === 'Pendiente' ||
+      record.etiqueta === 'Pendiente' ||
+      record.marcacion === 'Pendiente' ||
+      record.presentacion_no_conforme === 'Pendiente' ||
+      record.cajas === 'Pendiente' ||
+      record.responsable_identificador_cajas === 'Pendiente' ||
+      record.responsable_embalaje === 'Pendiente' ||
+      record.responsable_calidad === 'Pendiente'
+    );
   };
 
   const getPendingFields = (record: EmbalajeRecord): string[] => {
@@ -149,12 +152,6 @@ export default function EmbalajePendingPage() {
           </CardContent>
         </Card>
       )}
-
-      {/* INDICADOR DE PÁGINA DE PENDIENTES */}
-      <div className="">
-        <h1 className=""> </h1>
-        <p className=""></p>
-      </div>
 
       <div className="mb-4 sm:mb-6">
         <Button variant="outline" asChild className="w-full sm:w-auto">
@@ -268,11 +265,6 @@ export default function EmbalajePendingPage() {
             <p className="text-green-600 font-semibold text-sm sm:text-base mb-4">
               ¡Todos los registros están completos!
             </p>
-            <Button asChild className="w-full sm:w-auto">
-              <Link href="/dashboard/supervisores/embalaje-records">
-                Ver todos los registros de embalaje
-              </Link>
-            </Button>
           </CardContent>
         </Card>
       )}

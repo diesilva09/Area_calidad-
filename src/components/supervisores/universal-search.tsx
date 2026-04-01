@@ -192,7 +192,7 @@ export function UniversalSearch<T extends Record>({
         >
           {filteredRecords.map((item, index) => (
             <li
-              key={`${item.record.id}-${index}`}
+              key={`${String(item.record.id)}-${String(item.index ?? index)}`}
               className={cn(
                 "cursor-pointer px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
                 selectedIndex === index && "bg-accent text-accent-foreground"

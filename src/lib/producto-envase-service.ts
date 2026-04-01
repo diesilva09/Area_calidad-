@@ -99,7 +99,9 @@ export class ProductoEnvaseService {
   // Calcular fecha de vencimiento basada en fecha de producción y meses
   calcularFechaVencimiento(fechaProduccion: string, meses: number): string {
     try {
-      console.log('🔍 Calculando fecha vencimiento:', { fechaProduccion, meses });
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('🔍 Calculando fecha vencimiento:', { fechaProduccion, meses });
+      }
       
       let fechaCompleta: Date;
 
@@ -144,7 +146,9 @@ export class ProductoEnvaseService {
       const nuevoAnio = fechaCompleta.getFullYear();
       
       const resultado = `${nuevoAnio}-${nuevoMes}-${nuevoDia}`;
-      console.log('✅ Fecha vencimiento calculada:', resultado);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('✅ Fecha vencimiento calculada:', resultado);
+      }
       
       return resultado;
     } catch (error) {

@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Pencil, Trash2, Eye, Package, PackageOpen } from 'lucide-react';
 import type { Product, ProductCategory } from '@/lib/supervisores-data';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { useScrollRestoration } from '@/hooks/useScrollRestoration';
+import { useScrollRestoration, scrollToSelectorWithRetry } from '@/hooks/useScrollRestoration';
 import {
   Accordion,
   AccordionContent,
@@ -63,14 +63,46 @@ export function ProductList({
   const [confirmDeleteCategory, setConfirmDeleteCategory] = useState<ProductCategory | null>(null);
   const [confirmDeleteProduct, setConfirmDeleteProduct] = useState<{ product: Product; categoryId: string } | null>(null);
   const { restoreScrollPosition } = useScrollRestoration();
+  const cancelScrollRef = useRef<null | (() => void)>(null);
+  const clearHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Crear un ID único combinando categoría y producto
   const getUniqueProductId = (product: Product, category: ProductCategory) => {
     return `${category.id}_${product.id}`;
   };
 
+  const getOffsetTop = () => {
+    if (typeof window === 'undefined') return 96;
+    try {
+      const isTabletOrMobile =
+        window.matchMedia?.('(max-width: 768px)')?.matches ||
+        window.matchMedia?.('(pointer: coarse)')?.matches;
+      return isTabletOrMobile ? 132 : 96;
+    } catch {
+      return 96;
+    }
+  };
+
+  const cancelPendingScroll = useCallback(() => {
+    if (cancelScrollRef.current) {
+      cancelScrollRef.current();
+      cancelScrollRef.current = null;
+    }
+    if (clearHighlightTimeoutRef.current) {
+      clearTimeout(clearHighlightTimeoutRef.current);
+      clearHighlightTimeoutRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      cancelPendingScroll();
+    };
+  }, [cancelPendingScroll]);
+
   useEffect(() => {
     const tab = searchParams.get('tab');
+    // Solo procesar highlight si estamos en la pestaña correcta
     if (tab && tab !== type) return;
 
     // `highlight` es transitorio (se usa para enfocar/scroll). `selected` se soporta por retrocompatibilidad.
@@ -110,13 +142,25 @@ export function ProductList({
     // Enfoque temporal: seleccionar + resaltar y luego desmarcar
     handleProductSelect(prod, resolvedCategoryId, true);
 
-    // Limpiar params transitorios para no re-ejecutar el efecto
+    // Limpiar params transitorios para evitar que re-renders (p.ej. mostrar/ocultar historial)
+    // vuelvan a disparar el auto-scroll. Al regresar desde otra pantalla, el param se agrega de nuevo.
     const nextParams = new URLSearchParams(searchParams.toString());
     nextParams.delete('highlight');
     nextParams.delete('selected');
     if (!nextParams.get('tab')) nextParams.set('tab', type);
-    router.replace(`/dashboard/supervisores?${nextParams.toString()}`);
-  }, [searchParams, categories, type]);
+    setTimeout(() => {
+      router.replace(`/dashboard/supervisores?${nextParams.toString()}`, { scroll: false });
+    }, 800);
+
+    // NO limpiar highlight automáticamente para evitar recargas que cambian la pestaña
+    // El usuario puede limpiarlo manualmente o navegar a otra página
+    // Limpiar params transitorios SOLO si hay un problema de navegación
+    // const nextParams = new URLSearchParams(searchParams.toString());
+    // nextParams.delete('highlight');
+    // nextParams.delete('selected');
+    // if (!nextParams.get('tab')) nextParams.set('tab', type);
+    // router.replace(`/dashboard/supervisores?${nextParams.toString()}`);
+  }, [searchParams?.get('tab'), searchParams?.get('highlight'), searchParams?.get('selected'), categories, type, router]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -145,14 +189,16 @@ export function ProductList({
   }, [searchTerm, filteredCategories]);
 
   // Restaurar producto destacado después de que las categorías se carguen
+  // SOLO ejecutar una vez al cargar inicialmente, NO cuando cambian las categorías
   useEffect(() => {
-    if (categories.length > 0) {
+    if (categories.length > 0 && !highlightTarget) {
       const timer = setTimeout(() => {
         restoreScrollPosition();
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [categories, restoreScrollPosition]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories.length]);
 
   // Manejar búsqueda desde el componente ProductSearch
   const handleSearch = (term: string) => {
@@ -177,7 +223,9 @@ export function ProductList({
   };
 
   // Manejar selección de producto desde el buscador
-  const handleProductSelect = (product: Product, categoryId: string, autoClearSelection = false) => {
+  const handleProductSelect = useCallback((product: Product, categoryId: string, autoClearSelection = false) => {
+    cancelPendingScroll();
+
     // Limpiar resaltado anterior
     setHighlightedProductId(null);
     setSelectedProductId(product.id);
@@ -189,39 +237,30 @@ export function ProductList({
     });
 
     if (autoClearSelection) {
-      setTimeout(() => {
+      clearHighlightTimeoutRef.current = setTimeout(() => {
         setSelectedProductId(null);
       }, 3000);
     }
-    
-    // Hacer scroll al producto y resaltarlo (con reintentos por si aún no está en el DOM)
+
     const uniqueSelectorId = `${categoryId}_${product.id}`;
-    const scrollToProduct = (attempt: number) => {
-      const productElement = document.querySelector(`[data-product-id="${uniqueSelectorId}"]`);
-      if (productElement) {
-        productElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-        // Resaltar el producto
+    cancelScrollRef.current = scrollToSelectorWithRetry({
+      selector: `[data-product-id="${uniqueSelectorId}"]`,
+      maxAttempts: 30,
+      attemptDelayMs: 120,
+      offsetTop: getOffsetTop(),
+      onFound: () => {
         setHighlightedProductId(product.id);
-
-        // Remover el resaltado después de 3 segundos
-        setTimeout(() => {
+        clearHighlightTimeoutRef.current = setTimeout(() => {
           setHighlightedProductId(null);
         }, 3000);
-        return;
-      }
-
-      if (attempt < 10) {
-        setTimeout(() => scrollToProduct(attempt + 1), 150);
-      }
-    };
-
-    setTimeout(() => scrollToProduct(0), 150);
-  };
+      },
+    });
+  }, [cancelPendingScroll]);
 
   // Permitir que el componente padre solicite enfocar un producto (abrir categoría + autoscroll)
+  // SOLO ejecutar cuando highlightTarget cambia activamente, NO por otros renders
   useEffect(() => {
-    if (!highlightTarget) return;
+    if (!highlightTarget?.categoryId || !highlightTarget?.productId) return;
 
     const category = categories.find((c) => c.id === highlightTarget.categoryId);
     const product = category?.products.find((p) => p.id === highlightTarget.productId);
@@ -229,7 +268,7 @@ export function ProductList({
 
     handleProductSelect(product, category.id, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [highlightTarget?.categoryId, highlightTarget?.productId, categories]);
+  }, [highlightTarget?.categoryId, highlightTarget?.productId]);
   
   const defaultOpenValues = searchTerm
     ? filteredCategories.map((c) => c.id)
@@ -316,9 +355,7 @@ export function ProductList({
                       className="h-8 w-8" 
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (onDeleteCategory) {
-                          openDeleteCategoryConfirm(category);
-                        }
+                        openDeleteCategoryConfirm(category);
                       }}
                     >
                       <Trash2 className="h-4 w-4 text-destructive" />

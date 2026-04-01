@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, CheckCircle, Eye, Pencil, Trash2 } from 'lucide-react';
-import { SupervisorHandlers } from '../hooks/use-supervisor-data';
+import { Plus, CheckCircle, Eye, Pencil, Trash2, Repeat } from 'lucide-react';
+import { SupervisorHandlers } from '../../hooks/use-supervisor-data';
 import { LimpiezaTask } from '@/lib/limpieza-tasks-service';
 import { AddLimpiezaTaskModal } from '@/components/supervisores/add-limpieza-task-modal';
 import { ViewCronogramaTaskModal } from '@/components/supervisores/view-cronograma-task-modal';
@@ -15,6 +15,18 @@ import { es } from 'date-fns/locale';
 import { format, isSameDay } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { parseYmdToLocalDate } from '@/lib/date-utils';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { useToast } from '@/hooks/use-toast';
 
 interface LimpiezaTasksTabProps {
   tasks: LimpiezaTask[];
@@ -29,6 +41,7 @@ export function LimpiezaTasksTab({
   isJefe,
   onRefresh
 }: LimpiezaTasksTabProps) {
+  const { toast } = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<LimpiezaTask | null>(null);
   const [viewingTask, setViewingTask] = useState<LimpiezaTask | null>(null);
@@ -38,6 +51,8 @@ export function LimpiezaTasksTab({
   const [registroIdToEdit, setRegistroIdToEdit] = useState<string | null>(null);
   const [liberacionIdToEdit, setLiberacionIdToEdit] = useState<string | null>(null);
   const [registroViewOnlyMode, setRegistroViewOnlyMode] = useState(false);
+  const [taskToDelete, setTaskToDelete] = useState<LimpiezaTask | null>(null);
+  const [isDeletingTask, setIsDeletingTask] = useState(false);
   const [registrosByTaskId, setRegistrosByTaskId] = useState<Record<number, LimpiezaRegistro | null>>({});
 
   const handleCreateTask = () => {
@@ -80,7 +95,11 @@ export function LimpiezaTasksTab({
       setIsRegistroModalOpen(true);
     } catch (error) {
       console.error('Error al obtener registro por cronograma_task_id:', error);
-      alert('No se pudo obtener el registro asociado a la tarea.');
+      toast({
+        title: 'Error',
+        description: 'No se pudo cargar. Intenta de nuevo.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -95,7 +114,11 @@ export function LimpiezaTasksTab({
       setIsRegistroModalOpen(true);
     } catch (error) {
       console.error('Error al obtener registro por cronograma_task_id:', error);
-      alert('No se pudo obtener el registro asociado a la tarea.');
+      toast({
+        title: 'Error',
+        description: 'No se pudo cargar. Intenta de nuevo.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -109,15 +132,33 @@ export function LimpiezaTasksTab({
       setIsRegistroModalOpen(true);
     } catch (error) {
       console.error('Error al obtener registro por cronograma_task_id:', error);
-      alert('No se pudo obtener el registro asociado a la tarea.');
+      toast({
+        title: 'Error',
+        description: 'No se pudo cargar. Intenta de nuevo.',
+        variant: 'destructive',
+      });
     }
   };
 
-  const handleDeleteTask = async (task: LimpiezaTask) => {
+  const handleConfirmDeleteTask = async () => {
     if (!isJefe) return;
-    if (!window.confirm('¿Eliminar esta tarea del cronograma?')) return;
-    await handlers.handleDeleteLimpiezaTask(String(task.id));
-    onRefresh();
+    if (!taskToDelete) return;
+    if (isDeletingTask) return;
+
+    setIsDeletingTask(true);
+    try {
+      await handlers.handleDeleteLimpiezaTask(String(taskToDelete.id));
+      onRefresh();
+      setTaskToDelete(null);
+    } catch {
+      toast({
+        title: 'Error',
+        description: 'No se pudo eliminar. Intenta de nuevo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeletingTask(false);
+    }
   };
 
   const pendingTasks = useMemo(() => {
@@ -130,17 +171,17 @@ export function LimpiezaTasksTab({
 
   const pendingDays = useMemo(() => {
     return pendingTasks
-      .map((task) => new Date(task.fecha));
+      .map((task) => parseYmdToLocalDate(task.fecha));
   }, [pendingTasks]);
 
   const completedDays = useMemo(() => {
-    return completedTasks.map((task) => new Date(task.fecha));
+    return completedTasks.map((task) => parseYmdToLocalDate(task.fecha));
   }, [completedTasks]);
 
   const selectedDayTasks = useMemo(() => {
     if (!selectedDate) return [];
     return (tasks || [])
-      .filter((task) => isSameDay(new Date(task.fecha), selectedDate))
+      .filter((task) => isSameDay(parseYmdToLocalDate(task.fecha), selectedDate))
       .sort((a, b) => a.id - b.id);
   }, [tasks, selectedDate]);
 
@@ -156,21 +197,30 @@ export function LimpiezaTasksTab({
       const idsToLoad = uniqueTaskIds.filter((id) => !(id in registrosByTaskId));
       if (idsToLoad.length === 0) return;
 
-      const entries = await Promise.all(
-        idsToLoad.map(async (taskId) => {
-          try {
-            const registro = await limpiezaRegistrosService.getByCronogramaTaskId(taskId);
-            return [taskId, registro as LimpiezaRegistro] as const;
-          } catch {
-            return [taskId, null] as const;
-          }
-        })
-      );
+      const entries = (() => {
+        try {
+          return limpiezaRegistrosService
+            .getByCronogramaTaskIds(idsToLoad)
+            .then((rows) => {
+              const byTaskId = new Map<number, LimpiezaRegistro>();
+              for (const r of rows || []) {
+                const key = Number((r as any).cronograma_task_id ?? (r as any).cronograma_task_id);
+                if (!Number.isNaN(key)) byTaskId.set(key, r);
+              }
+              return idsToLoad.map((taskId) => [taskId, byTaskId.get(taskId) ?? null] as const);
+            })
+            .catch(() => idsToLoad.map((taskId) => [taskId, null] as const));
+        } catch {
+          return Promise.resolve(idsToLoad.map((taskId) => [taskId, null] as const));
+        }
+      })();
+
+      const resolvedEntries = await entries;
 
       if (cancelled) return;
       setRegistrosByTaskId((prev) => {
         const next = { ...prev };
-        for (const [taskId, registro] of entries) {
+        for (const [taskId, registro] of resolvedEntries) {
           next[taskId] = registro;
         }
         return next;
@@ -273,8 +323,16 @@ export function LimpiezaTasksTab({
                         <div className="flex items-center gap-3 text-left w-full">
                           <span className={`h-2.5 w-2.5 rounded-full ${getStatusDotClass(task)}`} />
                           <div className="flex flex-col min-w-0">
-                            <div className="font-medium truncate">
-                              {task.tipo_muestra}
+                            <div className="font-medium truncate flex items-center gap-2">
+                              <span className="truncate">{task.tipo_muestra}</span>
+                              {task.recurrence_template_id && task.recurrence_active && (
+                                <Badge variant="secondary" className="bg-blue-100 text-blue-800 shrink-0">
+                                  <span className="inline-flex items-center gap-1">
+                                    <Repeat className="h-3 w-3" />
+                                    Recurrente
+                                  </span>
+                                </Badge>
+                              )}
                             </div>
                             <div className="text-xs text-muted-foreground truncate">
                               {task.area}
@@ -290,17 +348,11 @@ export function LimpiezaTasksTab({
                           </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                            <div>
-                              <span className="font-medium">Producto:</span>{' '}
-                              {registrosByTaskId[task.id]?.producto || 'N/A'}
-                            </div>
-                            <div>
-                              <span className="font-medium">Lote:</span>{' '}
-                              {registrosByTaskId[task.id]?.lote || 'N/A'}
-                            </div>
+                            
+                            
                             <div className="sm:col-span-2">
                               <span className="font-medium">Fecha:</span>{' '}
-                              {new Date(task.fecha).toLocaleDateString()}
+                              {parseYmdToLocalDate(task.fecha).toLocaleDateString()}
                             </div>
                             {(registrosByTaskId[task.id]?.detalles || '').trim() && (
                               <div className="sm:col-span-2">
@@ -340,7 +392,10 @@ export function LimpiezaTasksTab({
                                   Editar
                                 </Button>
                                 <Button
-                                  onClick={() => handleDeleteTask(task)}
+                                  onClick={() => {
+                                    if (!isJefe) return;
+                                    setTaskToDelete(task);
+                                  }}
                                   variant="destructive"
                                   size="sm"
                                   className="sm:w-auto"
@@ -456,6 +511,26 @@ export function LimpiezaTasksTab({
           onViewLiberacion={(_, liberacionId) => handleEditLiberacionForTask(viewingTask, liberacionId, true)}
         />
       )}
+
+      <AlertDialog
+        open={taskToDelete != null}
+        onOpenChange={(open) => {
+          if (!open) setTaskToDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar eliminación</AlertDialogTitle>
+            <AlertDialogDescription>¿Eliminar esta tarea del cronograma?</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingTask}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction disabled={isDeletingTask} onClick={handleConfirmDeleteTask}>
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Card>
         <CardHeader>

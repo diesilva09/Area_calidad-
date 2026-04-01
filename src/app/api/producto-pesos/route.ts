@@ -9,7 +9,9 @@ export async function GET(request: NextRequest) {
     const envaseTipo = searchParams.get('envaseTipo');
     const debug = searchParams.get('debug'); // NUEVO: modo debug
     
-    console.log('⚖️ Buscando pesos:', { productoId, categoriaId, envaseTipo, debug });
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('⚖️ Buscando pesos:', { productoId, categoriaId, envaseTipo, debug });
+    }
     
     if (!productoId) {
       return NextResponse.json(
@@ -30,7 +32,9 @@ export async function GET(request: NextRequest) {
 
     // MODO DEBUG: Devolver TODOS los registros del producto
     if (debug === 'true') {
-      console.log('⚖️ DEBUG: Todos los registros del producto:', pesosConfig);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('⚖️ DEBUG: Todos los registros del producto:', pesosConfig);
+      }
       return NextResponse.json(pesosConfig);
     }
     
@@ -47,16 +51,17 @@ export async function GET(request: NextRequest) {
     });
 
     if (!match) {
-      return NextResponse.json(
-        { error: 'No se encontró configuración de pesos para este producto y envase' },
-        { status: 404 }
-      );
+      // Importante: no devolvemos 404 aquí para evitar spam de errores en consola
+      // cuando el frontend intenta múltiples envases (búsqueda exhaustiva).
+      return NextResponse.json(null, { status: 200 });
     }
 
     return NextResponse.json(match);
     
   } catch (error: any) {
-    console.error('⚖️ Error en API de pesos:', error);
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('⚖️ Error en API de pesos:', error);
+    }
     return NextResponse.json(
       { error: 'Error interno del servidor', details: error.message },
       { status: 500 }

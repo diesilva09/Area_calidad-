@@ -6,12 +6,56 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, Calendar, Package, User, Thermometer, CheckCircle, AlertCircle, Scale, Beaker, FlaskRound, TestTube, ClipboardList, Eye, Droplet, Ruler, Gauge, Factory, Box, Hash, Tag, Layers, Clock, FileText, ShieldCheck, Award, MapPin } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useState, use } from 'react';
+import { useEffect, useState, use, useCallback } from 'react';
 import { productionRecordsService } from '@/lib/supervisores-data';
 import { productService } from '@/lib/supervisores-data';
 import { getProductCategories } from '@/lib/supervisores-data';
 import { productoEnvaseService } from '@/lib/producto-envase-service';
 import { AreasEquiposService } from '@/lib/areas-equipos-config';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { AddProductionRecordModal } from '@/components/supervisores/add-production-record-modal';
+
+const PT_ANALYSES_MARKER = '__PT_ANALYSES_JSON__';
+
+type ExtraPtAnalysis = {
+  fechaAnalisisPT: string;
+  noMezclaPT: string;
+  vacioPT: string;
+  pesoNetoRealPT: string;
+  pesoDrenadoRealPT: string;
+  brixPT: string;
+  phPT: string;
+  acidezPT: string;
+  ppmSo2PT: string;
+  consistenciaPT: string;
+  tapadoCierrePT: string;
+  etiquetaPT: string;
+  ubicacionMuestraPT: string;
+  estadoPT: string;
+  responsableAnalisisPT: string;
+  sensorialPT: string;
+  presentacionFinalPT: string;
+  observacionesPT: string;
+};
+
+const splitPtObservaciones = (raw: unknown): { base: string; extras: ExtraPtAnalysis[] } => {
+  const s = String(raw ?? '').trim();
+  if (!s) return { base: '', extras: [] };
+  const idx = s.indexOf(PT_ANALYSES_MARKER);
+  if (idx === -1) return { base: s, extras: [] };
+
+  const base = String(s.slice(0, idx)).trim();
+  const after = String(s.slice(idx + PT_ANALYSES_MARKER.length)).trim();
+  try {
+    const parsed = JSON.parse(after);
+    const extras = Array.isArray(parsed) ? (parsed as ExtraPtAnalysis[]) : [];
+    return { base, extras };
+  } catch {
+    return { base: s, extras: [] };
+  }
+};
+
 // Tipo para los registros de producción (coincidente con la base de datos)
 interface ProductionRecord {
   id: string;
@@ -81,9 +125,8 @@ interface ProductionRecord {
   responsable_analisis_pt: string;
   created_at: string;
   created_by?: string;
+  status?: string;
 }
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 
 export default function ProductionRecordDetailPage({
   params,
@@ -97,12 +140,41 @@ export default function ProductionRecordDetailPage({
   const [record, setRecord] = useState<ProductionRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [equiposNombres, setEquiposNombres] = useState<Record<string, string>>({});
   const [calidadRangoActual, setCalidadRangoActual] = useState<any>(null);
   const [temperaturaRangoActual, setTemperaturaRangoActual] = useState<{ min: number | null; max: number | null } | null>(null);
   const [envaseTipoTexto, setEnvaseTipoTexto] = useState<string | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const returnTo = searchParams?.get('returnTo') || '/dashboard/supervisores/records';
+
+  // Parse PT analyses when record changes
+  const { base: ptObsBase, extras: ptExtras } = splitPtObservaciones(record?.observaciones_pt);
+
+  // Función para determinar si el registro está pendiente
+  const isRegistroPendiente = () => {
+    const status = String((record as any)?.status ?? '').toLowerCase().trim();
+    // Si el estado es 'completed', no está pendiente
+    if (status === 'completed') return false;
+
+    // Verificar si el análisis PT principal está en estado pendiente
+    const estadoPt = String(record?.estado_pt || '').toLowerCase().trim();
+    if (estadoPt === 'pendiente') return true;
+
+    // También verificar en análisis extra si hay alguno pendiente
+    return ptExtras.some(extra => {
+      const estadoExtra = String(extra.estadoPT || '').toLowerCase().trim();
+      return estadoExtra === 'pendiente';
+    });
+  };
+
+  const completarRegistro = () => {
+    if (!record?.id) return;
+    // Abrir el modal de edición para completar el registro
+    setIsEditModalOpen(true);
+  };
 
   const cargarNombresEquipos = async (equipoId: string) => {
     if (!equipoId || equiposNombres[equipoId]) return;
@@ -143,7 +215,7 @@ export default function ProductionRecordDetailPage({
     }
   };
 
-  const loadRecord = async () => {
+  const loadRecord = useCallback(async () => {
     try {
       const records = await productionRecordsService.getAll();
       const foundRecord = records.find((r: ProductionRecord) => r.id === resolvedParams.id);
@@ -279,7 +351,7 @@ export default function ProductionRecordDetailPage({
     } finally {
       setLoading(false);
     }
-  };
+  }, [resolvedParams.id]);
 
   useEffect(() => {
     if (!user || (user.role !== 'jefe' && user.role !== 'tecnico')) {
@@ -816,7 +888,7 @@ export default function ProductionRecordDetailPage({
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+    <div className="min-h-screen bg-white p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <Button variant="ghost" asChild className="mb-4 hover:bg-gray-100 transition-colors">
@@ -842,10 +914,25 @@ export default function ProductionRecordDetailPage({
                 <Hash className="mr-1 h-3 w-3" />
                 Lote: {record.lote}
               </Badge>
+              {isRegistroPendiente() && (
+                <Button
+                  onClick={completarRegistro}
+                  disabled={isCompleting}
+                  className="bg-orange-600 hover:bg-orange-700 text-white"
+                >
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  {isCompleting ? 'Completando...' : 'Completar'}
+                </Button>
+              )}
             </div>
           </div>
         </div>
 
+        {actionError && (
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              {actionError}
+            </div>
+          )}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Información Principal */}
           <div className="lg:col-span-1 space-y-6">
@@ -1355,7 +1442,7 @@ export default function ProductionRecordDetailPage({
                     <FileText className="h-3 w-3" /> Observaciones PT
                   </label>
                   <p className="mt-1 text-sm bg-gray-50 p-3 rounded-lg border border-gray-200 whitespace-pre-wrap break-words shadow-sm">
-                    {String(record.observaciones_pt || '').trim() ? record.observaciones_pt : 'N/A'}
+                    {String(ptObsBase || '').trim() ? ptObsBase : 'N/A'}
                   </p>
                 </div>
 
@@ -1367,9 +1454,218 @@ export default function ProductionRecordDetailPage({
                 </div>
               </CardContent>
             </Card>
+
+            {/* Análisis PT Adicionales */}
+            {ptExtras.length > 0 && (
+              <div className="space-y-6">
+                {ptExtras.map((extra, idx) => (
+                  <Card key={idx} className="shadow-md border-gray-200">
+                    <CardHeader className="bg-gradient-to-r from-indigo-50 to-blue-50 border-b border-gray-200">
+                      <CardTitle className="flex items-center text-lg font-semibold text-gray-800">
+                        <FlaskRound className="mr-2 h-5 w-5 text-indigo-600" />
+                        Análisis de Producto Terminado (PT) - Muestra {idx + 2}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4 p-5">
+                      {/* Fecha */}
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Fecha Análisis PT
+                        </label>
+                        <p className="mt-1 text-sm font-medium text-gray-800">
+                          {extra.fechaAnalisisPT || 'N/A'}
+                        </p>
+                      </div>
+
+                      {/* Fila 1: No. Mezcla, Vacío, °Brix, pH */}
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                            <Hash className="h-3 w-3" /> No. Mezcla
+                          </label>
+                          <p className="mt-1 text-lg font-semibold text-gray-800">
+                            {extra.noMezclaPT || 'N/A'}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                            <Gauge className="h-3 w-3" /> Vacío
+                          </label>
+                          <p className={rangeClass(extra.vacioPT, calidadRangoActual?.vacios?.min, calidadRangoActual?.vacios?.max)}>
+                            {extra.vacioPT || 'N/A'}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                            <Ruler className="h-3 w-3" /> °Brix
+                          </label>
+                          <p className={rangeClass(extra.brixPT, calidadRangoActual?.brix_min, calidadRangoActual?.brix_max)}>
+                            {extra.brixPT || 'N/A'}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                            <TestTube className="h-3 w-3" /> pH
+                          </label>
+                          <p className={rangeClass(extra.phPT, calidadRangoActual?.ph_min, calidadRangoActual?.ph_max)}>
+                            {extra.phPT || 'N/A'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Fila 2: Acidez, PPM-SO2, Peso Neto Real PT, Peso Drenado Real PT */}
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                            <Droplet className="h-3 w-3" /> Acidez
+                          </label>
+                          <p className={rangeClass(extra.acidezPT, calidadRangoActual?.acidez_min, calidadRangoActual?.acidez_max)}>
+                            {extra.acidezPT || 'N/A'}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                            <Beaker className="h-3 w-3" /> PPM-SO2
+                          </label>
+                          <p className={rangeClass(extra.ppmSo2PT, calidadRangoActual?.ppm_so2_min, calidadRangoActual?.ppm_so2_max)}>
+                            {extra.ppmSo2PT || 'N/A'}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                            <Scale className="h-3 w-3" /> Peso Neto Real PT
+                          </label>
+                          <p className="text-lg font-semibold text-gray-800">
+                            {extra.pesoNetoRealPT || 'N/A'}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                            <Scale className="h-3 w-3" /> Peso Drenado Real PT
+                          </label>
+                          <p className="text-lg font-semibold text-gray-800">
+                            {extra.pesoDrenadoRealPT || 'N/A'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Fila 3: Consistencia, Tapado/Cierre, Etiqueta, Estado */}
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                            <Gauge className="h-3 w-3" /> Consistencia
+                          </label>
+                          <p className={rangeClass(
+                            extra.consistenciaPT,
+                            calidadRangoActual?.consistencia_min,
+                            calidadRangoActual?.consistencia_max
+                          )}>
+                            {extra.consistenciaPT || 'N/A'}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                            <Package className="h-3 w-3" /> Tapado/Cierre
+                          </label>
+                          <p className={`mt-1 text-sm font-semibold ${
+                            String(extra.tapadoCierrePT || '').toLowerCase() === 'conforme'
+                              ? 'text-green-600'
+                              : 'text-red-600'
+                          }`}>
+                            {extra.tapadoCierrePT || 'N/A'}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                            <Tag className="h-3 w-3" /> Etiqueta
+                          </label>
+                          <p className={`mt-1 text-sm font-semibold ${
+                            String(extra.etiquetaPT || '').toLowerCase() === 'conforme'
+                              ? 'text-green-600'
+                              : 'text-red-600'
+                          }`}>
+                            {extra.etiquetaPT || 'N/A'}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                            <CheckCircle className="h-3 w-3" /> Estado
+                          </label>
+                          <p className={`mt-1 text-sm font-semibold ${
+                            String(extra.estadoPT || '').toLowerCase() === 'liberado'
+                              ? 'text-green-600'
+                              : 'text-red-600'
+                          }`}>
+                            {extra.estadoPT || 'N/A'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Fila 4: Ubicación Muestra */}
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                          <MapPin className="h-3 w-3" /> Ubicación Muestra
+                        </label>
+                        <p className="mt-1 text-sm whitespace-pre-wrap break-words">
+                          {extra.ubicacionMuestraPT || 'N/A'}
+                        </p>
+                      </div>
+
+                      {/* Sensorial, Presentación Final, Observaciones, Responsable */}
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                          <Eye className="h-3 w-3" /> Sensorial
+                        </label>
+                        <CumpleField label="" rawValue={extra.sensorialPT} />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                          <Award className="h-3 w-3" /> Presentación Final
+                        </label>
+                        <CumpleField label="" rawValue={extra.presentacionFinalPT} />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                          <FileText className="h-3 w-3" /> Observaciones PT
+                        </label>
+                        <p className="mt-1 text-sm bg-gray-50 p-3 rounded-lg border border-gray-200 whitespace-pre-wrap break-words shadow-sm">
+                          {String(extra.observacionesPT || '').trim() || 'N/A'}
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                          <User className="h-3 w-3" /> Responsable Análisis PT
+                        </label>
+                        <p className="whitespace-pre-wrap break-words mt-1 font-medium text-gray-800">
+                          {extra.responsableAnalisisPT || 'N/A'}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Modal de edición para completar registro */}
+      {isEditModalOpen && record && (
+        <AddProductionRecordModal
+          isOpen={isEditModalOpen}
+          onOpenChange={setIsEditModalOpen}
+          productName={record.producto_nombre || record.producto}
+          productId={record.producto}
+          editingRecord={record}
+          onSuccessfulSubmit={() => {
+            setIsEditModalOpen(false);
+            loadRecord();
+          }}
+        />
+      )}
     </div>
   );
 }

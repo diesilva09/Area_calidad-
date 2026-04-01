@@ -12,17 +12,28 @@ export async function GET(request: NextRequest) {
     // Obtener todos los registros de embalaje
     const allRecords = await getEmbalajeRecords();
     
-    // Filtrar registros que tienen campos con valor "Pendiente"
+    // Preferir status explícito cuando exista.
+    // Fallback: filtrar registros que tienen campos con valor "Pendiente" (legado).
     const pendingRecords = allRecords.filter((record: EmbalajeRecord) => {
-      return record.presentacion === 'Pendiente' ||
-             record.nivel_inspeccion === 'Pendiente' ||
-             record.etiqueta === 'Pendiente' ||
-             record.marcacion === 'Pendiente' ||
-             record.presentacion_no_conforme === 'Pendiente' ||
-             record.cajas === 'Pendiente' ||
-             record.responsable_identificador_cajas === 'Pendiente' ||
-             record.responsable_embalaje === 'Pendiente' ||
-             record.responsable_calidad === 'Pendiente';
+      const status = (record as any)?.status as string | undefined;
+      if (status === 'pending') return true;
+
+      const hasLegacyPendingFields =
+        record.presentacion === 'Pendiente' ||
+        record.nivel_inspeccion === 'Pendiente' ||
+        record.etiqueta === 'Pendiente' ||
+        record.marcacion === 'Pendiente' ||
+        record.presentacion_no_conforme === 'Pendiente' ||
+        record.cajas === 'Pendiente' ||
+        record.responsable_identificador_cajas === 'Pendiente' ||
+        record.responsable_embalaje === 'Pendiente' ||
+        record.responsable_calidad === 'Pendiente';
+
+      // Nota: si existe una migración/backfill que dejó status='completed' en registros
+      // que aún tienen campos "Pendiente" (legado), igual deben aparecer como pendientes.
+      if (status === 'completed') return hasLegacyPendingFields;
+
+      return hasLegacyPendingFields;
     });
     
     console.log(`📋 Registros pendientes encontrados: ${pendingRecords.length}`);

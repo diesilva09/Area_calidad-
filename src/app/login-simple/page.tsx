@@ -29,44 +29,50 @@ function LoginContent() {
       // Si viene con un parámetro de rol, mostrar el login aunque esté autenticado
       // para permitir cambiar de rol o iniciar sesión con diferentes credenciales
       if (role) {
-        console.log('🔍 Usuario autenticado pero viene con rol, mostrando login para permitir cambio de rol');
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(' Usuario autenticado pero viene con rol, mostrando login para permitir cambio de rol');
+        }
         return;
       }
       
-      console.log('🔍 Usuario ya autenticado sin rol, redirigiendo al dashboard...');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(' Usuario ya autenticado sin rol, redirigiendo al dashboard...');
+      }
       router.push('/dashboard');
     }
   }, [isAuthenticated, loading, router, role]);
 
-  // Debug: mostrar qué rol estamos recibiendo
-  console.log('🔍 Debug - Rol recibido:', role);
-  console.log('🔍 Debug - Estado de autenticación:', { isAuthenticated, loading });
-  console.log('🔍 Debug - URL completa:', typeof window !== 'undefined' ? window.location.href : 'N/A');
-  console.log('🔍 Debug - searchParams:', searchParams.toString());
+  
 
   // Si no hay rol, usar 'jefe' como rol por defecto
   const effectiveRole = role || 'jefe';
 
-  const roleTitle = effectiveRole === 'jefe' ? 'Jefe de Calidad' : 'Técnico de Calidad';
+  const roleTitle = effectiveRole === 'jefe' ? 'Jefe de Calidad' : 'Supervisor de Calidad';
   const roleDescription = effectiveRole === 'jefe' 
     ? 'Acceso completo al sistema de gestión de calidad'
-    : 'Acceso a funciones de técnico de calidad';
+    : 'Acceso a funciones de supervisor de calidad';
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      console.log('🔍 Intentando login con:', { email, passwordLength: password?.length || 0 });
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(' Intentando login con:', { email, passwordLength: password?.length || 0 });
+      }
       
       // Usar el AuthContext para el login
       const result = await login(email, password);
       
       if (result.success) {
-        console.log('✅ Login exitoso:', result.message);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(' Login exitoso:', result.message);
+        }
         // El AuthContext ya maneja la redirección
       } else {
-        console.error('❌ Error en login:', result.message);
+        if (process.env.NODE_ENV !== 'production') {
+          console.error(' Error en login:', result.message);
+        }
         toast({
           title: 'Error de inicio de sesión',
           description: result.message || 'Error en el inicio de sesión',
@@ -74,7 +80,9 @@ function LoginContent() {
         });
       }
     } catch (error) {
-      console.error('❌ Error de conexión:', error);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error(' Error de conexión:', error);
+      }
       toast({
         title: 'Error de conexión',
         description: 'Error de conexión al servidor',
@@ -120,7 +128,7 @@ function LoginContent() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="correo@ejemplo.com"
+                  placeholder=""
                   value={email}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                   required
@@ -134,7 +142,7 @@ function LoginContent() {
                   <Input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="Ingrese su contraseña"
+                    placeholder=""
                     value={password}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
                     required
@@ -184,6 +192,30 @@ function LoginContent() {
 }
 
 export default function LoginPage() {
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const styleId = 'login-simple-inline-styles';
+    const existing = document.getElementById(styleId);
+    if (existing) return;
+
+    const styleSheet = document.createElement('style');
+    styleSheet.id = styleId;
+    styleSheet.textContent = styles;
+    document.head.appendChild(styleSheet);
+
+    return () => {
+      try {
+        const current = document.getElementById(styleId);
+        if (current?.parentNode) {
+          current.parentNode.removeChild(current);
+        }
+      } catch {
+        // noop
+      }
+    };
+  }, []);
+
   return (
     <Suspense fallback={
       <div className="flex min-h-screen items-center justify-center bg-white">
@@ -266,9 +298,3 @@ const styles = `
     animation: scaleIn 0.5s ease-out;
   }
 `;
-
-if (typeof document !== 'undefined') {
-  const styleSheet = document.createElement('style');
-  styleSheet.textContent = styles;
-  document.head.appendChild(styleSheet);
-}

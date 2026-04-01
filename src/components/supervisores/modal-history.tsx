@@ -103,7 +103,10 @@ export function ModalHistory({ modalType, isOpen, onClose }: ModalHistoryProps) 
               ) : (
                 <div className="space-y-4 p-4">
                   {history.map((item, index) => (
-                    <div key={item.id} className="border rounded-lg p-4 space-y-3">
+                    <div
+                      key={`${String(item.id)}-${String(item.version)}-${String(item.createdAt)}`}
+                      className="border rounded-lg p-4 space-y-3"
+                    >
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
                           <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
@@ -144,7 +147,10 @@ export function ModalHistory({ modalType, isOpen, onClose }: ModalHistoryProps) 
                           <h4 className="font-semibold text-gray-700 mb-2">Cambios realizados:</h4>
                           <ul className="space-y-1 text-sm text-gray-600">
                             {item.changes.map((change, changeIndex) => (
-                              <li key={changeIndex} className="flex items-start gap-2">
+                              <li
+                                key={`${String(item.id)}-${String(item.version)}-${changeIndex}-${String(change)}`}
+                                className="flex items-start gap-2"
+                              >
                                 <span className="text-blue-600">•</span>
                                 <span>{change}</span>
                               </li>

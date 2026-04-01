@@ -35,7 +35,7 @@ export default function Home() {
           <Button asChild variant="outline" className="w-full h-12 sm:h-14 md:h-16 text-sm sm:text-base md:text-lg hover:scale-105 transition-transform duration-300">
             <Link href="/login-simple?role=tecnico">
               <Wrench className="mr-2 h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6" />
-              <span className="text-xs sm:text-sm md:text-base">Técnico de Calidad</span>
+              <span className="text-xs sm:text-sm md:text-base">Supervisor de Calidad</span>
             </Link>
           </Button>
         </div>

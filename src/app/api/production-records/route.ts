@@ -414,6 +414,9 @@ export async function POST(request: NextRequest) {
       })(),
       novedades_proceso: body.novedadesProceso || null,
       observaciones_acciones_correctivas: body.observacionesAccionesCorrectivas || null,
+      observaciones_analisis_pruebas: body.observacionesAnalisisPruebasTexto || null,
+      observaciones_peso_drenado: body.observacionesPesoDrenadoTexto || null,
+      observaciones_peso_neto: body.observacionesPesoNetoTexto || null,
       supervisor_calidad: (() => {
         const value = handleField(body.supervisorCalidad, 'supervisor_calidad', false);
         if (isPending && (value === null || value === undefined || value === '')) {
@@ -754,6 +757,9 @@ export async function PUT(request: NextRequest) {
       pruebasVacio: 'pruebas_vacio',
       novedadesProceso: 'novedades_proceso',
       observacionesAccionesCorrectivas: 'observaciones_acciones_correctivas',
+      observacionesAnalisisPruebas: 'observaciones_analisis_pruebas',
+      observacionesPesoDrenado: 'observaciones_peso_drenado',
+      observacionesPesoNeto: 'observaciones_peso_neto',
       supervisorCalidad: 'supervisor_calidad',
       responsableProduccion: 'responsable_produccion',
 

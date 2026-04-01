@@ -21,12 +21,27 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { getFechaActual, getMesActual } from '@/lib/date-utils';
 import { limpiezaTasksService, type LimpiezaTask } from '@/lib/limpieza-tasks-service';
 import { useToast } from '@/hooks/use-toast';
+
+const toYmd = (raw: unknown): string => {
+  if (!raw) return '';
+  if (typeof raw === 'string') {
+    const dateOnly = raw.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return dateOnly;
+    const parsed = new Date(raw);
+    return isNaN(parsed.getTime()) ? '' : parsed.toISOString().slice(0, 10);
+  }
+  if (raw instanceof Date) {
+    return raw.toISOString().slice(0, 10);
+  }
+  return '';
+};
 
 const limpiezaTaskSchema = z.object({
   area: z.string().min(1, 'Campo requerido'),
@@ -35,6 +50,16 @@ const limpiezaTaskSchema = z.object({
   fecha: z.string().min(1, 'Campo requerido'),
   mes_corte: z.string().min(1, 'Campo requerido'),
 });
+
+type RecurrenceFormState = {
+  enabled: boolean;
+  frequency_type: 'daily' | 'weekly' | 'monthly' | 'custom';
+  frequency_unit: 'day' | 'week' | 'month';
+  frequency_interval: number;
+  start_date: string;
+  end_date: string;
+  timezone: string;
+};
 
 type AddLimpiezaTaskModalProps = {
   isOpen: boolean;
@@ -56,23 +81,46 @@ export function AddLimpiezaTaskModal({
   const [isOtroTipoMuestra, setIsOtroTipoMuestra] = React.useState(false);
   const [otroTipoMuestraText, setOtroTipoMuestraText] = React.useState('');
 
+  const [recurrence, setRecurrence] = React.useState<RecurrenceFormState>({
+    enabled: Boolean(initialTask?.recurrence_template_id),
+    frequency_type: (initialTask?.recurrence_frequency_type ?? 'monthly') as any,
+    frequency_unit: (initialTask?.recurrence_frequency_unit ?? 'day') as any,
+    frequency_interval: Number(initialTask?.recurrence_frequency_interval ?? 1),
+    start_date: (toYmd(initialTask?.recurrence_start_date ?? initialTask?.fecha) || getFechaActual()) as any,
+    end_date: (toYmd(initialTask?.recurrence_end_date) || '') as any,
+    timezone: (initialTask?.recurrence_timezone ?? 'America/Bogota') as any,
+  });
+
   const form = useForm<z.infer<typeof limpiezaTaskSchema>>({
     resolver: zodResolver(limpiezaTaskSchema),
     defaultValues: {
       area: initialTask?.area || '',
       tipo_muestra: initialTask?.tipo_muestra || '',
       detalles: initialTask?.detalles || '',
-      fecha: initialTask?.fecha || getFechaActual(),
+      fecha: toYmd(initialTask?.fecha) || getFechaActual(),
       mes_corte: getMesActual(),
     },
   });
 
   React.useEffect(() => {
     if (initialTask && isOpen) {
-      form.setValue('area', initialTask.area);
-      form.setValue('tipo_muestra', initialTask.tipo_muestra);
-      form.setValue('detalles', initialTask.detalles || '');
-      form.setValue('fecha', initialTask.fecha);
+      form.reset({
+        area: initialTask.area,
+        tipo_muestra: initialTask.tipo_muestra,
+        detalles: initialTask.detalles || '',
+        fecha: toYmd(initialTask.fecha) || getFechaActual(),
+        mes_corte: (initialTask.mes_corte ?? getMesActual()) as any,
+      });
+
+      setRecurrence({
+        enabled: Boolean(initialTask?.recurrence_template_id),
+        frequency_type: (initialTask?.recurrence_frequency_type ?? 'monthly') as any,
+        frequency_unit: (initialTask?.recurrence_frequency_unit ?? 'day') as any,
+        frequency_interval: Number(initialTask?.recurrence_frequency_interval ?? 1),
+        start_date: (toYmd(initialTask?.recurrence_start_date ?? initialTask?.fecha) || getFechaActual()) as any,
+        end_date: (toYmd(initialTask?.recurrence_end_date) || '') as any,
+        timezone: (initialTask?.recurrence_timezone ?? 'America/Bogota') as any,
+      });
       
       // Verificar si el área inicial es "Otro"
       const areasPredefinidas = [
@@ -119,10 +167,28 @@ export function AddLimpiezaTaskModal({
 
   React.useEffect(() => {
     if (isOpen) {
-      form.setValue('fecha', getFechaActual());
-      form.setValue('mes_corte', getMesActual());
+      if (!initialTask) {
+        form.reset({
+          area: '',
+          tipo_muestra: '',
+          detalles: '',
+          fecha: getFechaActual(),
+          mes_corte: getMesActual(),
+        });
+
+        setRecurrence((prev) => ({
+          ...prev,
+          enabled: false,
+          frequency_type: 'monthly',
+          frequency_unit: 'day',
+          frequency_interval: 1,
+          start_date: getFechaActual(),
+          end_date: '',
+          timezone: 'America/Bogota',
+        }));
+      }
     }
-  }, [isOpen, form]);
+  }, [isOpen, form, initialTask]);
 
   // Manejar cambio en el select de área
   const handleAreaChange = (value: string) => {
@@ -160,8 +226,6 @@ export function AddLimpiezaTaskModal({
 
   async function onSubmit(values: z.infer<typeof limpiezaTaskSchema>) {
     setIsLoading(true);
-    console.log('📋 Enviando tarea de limpieza:', values);
-    
     try {
       // Validar campos requeridos
       const missingFields: string[] = [];
@@ -181,20 +245,38 @@ export function AddLimpiezaTaskModal({
       
       if (initialTask) {
         // Modo edición
-        console.log('🔄 Actualizando tarea:', initialTask.id);
-        await limpiezaTasksService.update(initialTask.id, values);
+        await limpiezaTasksService.update(initialTask.id, {
+          ...values,
+          recurrence: {
+            enabled: recurrence.enabled,
+            frequency_type: recurrence.frequency_type,
+            frequency_unit: recurrence.frequency_unit,
+            frequency_interval: recurrence.frequency_interval,
+            start_date: recurrence.start_date,
+            end_date: recurrence.end_date || null,
+            timezone: recurrence.timezone,
+          },
+        } as any);
         toast({
           title: "Tarea Actualizada",
           description: "La tarea de limpieza ha sido actualizada exitosamente",
         });
       } else {
         // Modo creación
-        console.log('✨ Creando nueva tarea de limpieza');
         const taskData = {
           ...values,
           status: 'pending' as const,
           created_by: 'supervisor', // Esto debería venir del contexto de autenticación
           detalles: values.detalles ?? null,
+          recurrence: {
+            enabled: recurrence.enabled,
+            frequency_type: recurrence.frequency_type,
+            frequency_unit: recurrence.frequency_unit,
+            frequency_interval: recurrence.frequency_interval,
+            start_date: recurrence.start_date,
+            end_date: recurrence.end_date || null,
+            timezone: recurrence.timezone,
+          },
         };
         
         await limpiezaTasksService.create(taskData);
@@ -307,6 +389,119 @@ export function AddLimpiezaTaskModal({
                     </FormItem>
                   )}
                 />
+              )}
+            </div>
+
+            <div className="rounded-md border p-4 space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="text-sm font-medium">¿Tarea recurrente?</div>
+                  <div className="text-xs text-muted-foreground">
+                    Si activas esta opción, el sistema generará automáticamente nuevas tareas según la frecuencia.
+                  </div>
+                </div>
+                <Switch
+                  checked={recurrence.enabled}
+                  onCheckedChange={(checked) =>
+                    setRecurrence((prev) => ({
+                      ...prev,
+                      enabled: Boolean(checked),
+                      start_date: prev.start_date || form.getValues('fecha') || getFechaActual(),
+                    }))
+                  }
+                />
+              </div>
+
+              {recurrence.enabled && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Tipo de frecuencia</div>
+                    <Select
+                      value={recurrence.frequency_type}
+                      onValueChange={(v) =>
+                        setRecurrence((prev) => ({
+                          ...prev,
+                          frequency_type: v as any,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="daily">Diario</SelectItem>
+                        <SelectItem value="weekly">Semanal</SelectItem>
+                        <SelectItem value="monthly">Mensual</SelectItem>
+                        <SelectItem value="custom">Personalizado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Intervalo</div>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={String(recurrence.frequency_interval || 1)}
+                      onChange={(e) =>
+                        setRecurrence((prev) => ({
+                          ...prev,
+                          frequency_interval: Math.max(1, Number(e.target.value || 1)),
+                        }))
+                      }
+                    />
+                  </div>
+
+                  {recurrence.frequency_type === 'custom' && (
+                    <div className="space-y-2 sm:col-span-2">
+                      <div className="text-sm font-medium">Unidad</div>
+                      <Select
+                        value={recurrence.frequency_unit}
+                        onValueChange={(v) =>
+                          setRecurrence((prev) => ({
+                            ...prev,
+                            frequency_unit: v as any,
+                          }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccione..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="day">Día(s)</SelectItem>
+                          <SelectItem value="week">Semana(s)</SelectItem>
+                          <SelectItem value="month">Mes(es)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Fecha de inicio</div>
+                    <Input
+                      type="date"
+                      value={recurrence.start_date}
+                      onChange={(e) => setRecurrence((prev) => ({ ...prev, start_date: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Fecha de fin (opcional)</div>
+                    <Input
+                      type="date"
+                      value={recurrence.end_date}
+                      onChange={(e) => setRecurrence((prev) => ({ ...prev, end_date: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="space-y-2 sm:col-span-2">
+                    <div className="text-sm font-medium">Zona horaria</div>
+                    <Input
+                      value={recurrence.timezone}
+                      onChange={(e) => setRecurrence((prev) => ({ ...prev, timezone: e.target.value }))}
+                    />
+                  </div>
+                </div>
               )}
             </div>
 

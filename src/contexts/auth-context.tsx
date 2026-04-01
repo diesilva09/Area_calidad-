@@ -33,6 +33,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  const isDev = process.env.NODE_ENV !== 'production';
+
   // Verificar sesión al cargar
   useEffect(() => {
     checkAuth();
@@ -40,22 +42,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkAuth = async () => {
     try {
-      console.log('🔍 Verificando autenticación...');
+      if (isDev) {
+        console.log('🔍 Verificando autenticación...');
+      }
       const response = await fetch('/api/auth/me', {
         credentials: 'include'
       });
 
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ Usuario autenticado:', data.user);
+        if (isDev) {
+          console.log('✅ Usuario autenticado:', data.user);
+        }
         setUser(data.user);
       } else {
-        console.log('❌ Sesión no válida o expirada');
+        if (isDev) {
+          console.log('❌ Sesión no válida o expirada');
+        }
         setUser(null);
         // NO redirigir aquí - dejar que las páginas individuales manejen la redirección
       }
     } catch (error) {
-      console.error('Error verificando autenticación:', error);
+      if (isDev) {
+        console.error('Error verificando autenticación:', error);
+      }
       setUser(null);
       // NO redirigir aquí - dejar que las páginas individuales manejen la redirección
     } finally {
@@ -65,16 +75,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string): Promise<{ success: boolean; message: string }> => {
     try {
-      console.log('🔍 Frontend Login: Iniciando login con:', { email, passwordLength: password?.length || 0 });
+      if (isDev) {
+        console.log('🔍 Frontend Login: Iniciando login con:', { email, passwordLength: password?.length || 0 });
+      }
       
       // Validar que email y password no sean undefined
       if (!email || !password) {
-        console.log('❌ Frontend Login: Email o password undefined');
+        if (isDev) {
+          console.log('❌ Frontend Login: Email o password undefined');
+        }
         return { success: false, message: 'Email y contraseña son requeridos' };
       }
       
       const requestBody = JSON.stringify({ email, password });
-      console.log('📋 Frontend Login: Body a enviar:', requestBody);
+      if (isDev) {
+        console.log('📋 Frontend Login: Body a enviar:', requestBody);
+      }
       
       const response = await fetch('/api/auth/login', {
         method: 'POST',
@@ -85,11 +101,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         credentials: 'include'
       });
 
-      console.log('📊 Frontend Login: Response status:', response.status);
-      console.log('📊 Frontend Login: Response ok:', response.ok);
+      if (isDev) {
+        console.log('📊 Frontend Login: Response status:', response.status);
+        console.log('📊 Frontend Login: Response ok:', response.ok);
+      }
 
       const data = await response.json();
-      console.log('📋 Frontend Login: Response data:', data);
+      if (isDev) {
+        console.log('📋 Frontend Login: Response data:', data);
+      }
 
       if (response.ok) {
         // Si requiere verificación, redirigir a página de espera
@@ -106,14 +126,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: false, message: data.error || 'Error en el inicio de sesión' };
       }
     } catch (error) {
-      console.error('❌ Frontend Login: Error en login:', error);
+      if (isDev) {
+        console.error('❌ Frontend Login: Error en login:', error);
+      }
       return { success: false, message: 'Error de conexión' };
     }
   };
 
   const logout = async (): Promise<void> => {
     try {
-      console.log('🔴 Iniciando proceso de logout...');
+      if (isDev) {
+        console.log('🔴 Iniciando proceso de logout...');
+      }
       
       // Llamar al API de logout para limpiar la cookie en el servidor
       const response = await fetch('/api/auth/logout', {
@@ -122,22 +146,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       
       if (response.ok) {
-        console.log('🔴 Sesión cerrada en backend');
+        if (isDev) {
+          console.log('🔴 Sesión cerrada en backend');
+        }
       } else {
-        console.error('🔴 Error cerrando sesión en backend:', response.statusText);
+        if (isDev) {
+          console.error('🔴 Error cerrando sesión en backend:', response.statusText);
+        }
       }
     } catch (error) {
-      console.error('Error en logout:', error);
+      if (isDev) {
+        console.error('Error en logout:', error);
+      }
     } finally {
       // Primero limpiar el estado del usuario
-      console.log('🔴 Limpiando estado de usuario...');
+      if (isDev) {
+        console.log('🔴 Limpiando estado de usuario...');
+      }
       setUser(null);
       
       // Pequeña espera para asegurar que el estado se limpie completamente
       await new Promise(resolve => setTimeout(resolve, 100));
       
       // Luego redirigir a la página de selección de roles
-      console.log('🔴 Redirigiendo a página de selección de roles...');
+      if (isDev) {
+        console.log('🔴 Redirigiendo a página de selección de roles...');
+      }
       router.push('/');
     }
   };
