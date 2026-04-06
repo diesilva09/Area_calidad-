@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useToast } from '@/hooks/use-toast';
+import { getUserDisplayName } from '@/lib/user-display-utils';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
@@ -12,9 +14,9 @@ interface ViewLimpiezaRecordModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   record: any | null;
-}
+};
 
-export function ViewLimpiezaRecordModal({ isOpen, onOpenChange, record }: ViewLimpiezaRecordModalProps) {
+export default function ViewLimpiezaRecordModal({ isOpen, onOpenChange, record }: ViewLimpiezaRecordModalProps) {
   const [equiposNombres, setEquiposNombres] = useState<Record<string, string>>({});
 
   // Función para cargar nombres de equipos
@@ -374,7 +376,7 @@ export function ViewLimpiezaRecordModal({ isOpen, onOpenChange, record }: ViewLi
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-700">Creado por</p>
-                  <p className="text-lg font-semibold">{record.created_by || 'Sistema'}</p>
+                  <p className="text-lg font-semibold">{getUserDisplayName(record.created_by)}</p>
                 </div>
               </div>
             </CardContent>

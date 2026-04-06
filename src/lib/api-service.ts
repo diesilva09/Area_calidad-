@@ -98,6 +98,12 @@ export const categoriesAPI = {
   // Obtener todas las categorías
   async getAll(): Promise<any[]> {
     const response = await fetch('/api/categories');
+    
+    // Si el usuario no está autenticado, retornar array vacío
+    if (response.status === 401) {
+      return [];
+    }
+    
     if (!response.ok) throw new Error('Error al obtener categorías');
     return response.json();
   },
@@ -105,6 +111,12 @@ export const categoriesAPI = {
   // Obtener categorías por tipo
   async getByType(type: 'produccion' | 'embalaje'): Promise<any[]> {
     const response = await fetch(`/api/categories?type=${type}`);
+    
+    // Si el usuario no está autenticado, retornar array vacío
+    if (response.status === 401) {
+      return [];
+    }
+    
     if (!response.ok) throw new Error('Error al obtener categorías por tipo');
     return response.json();
   },
@@ -283,20 +295,37 @@ export const productionRecordsAPI = {
   create: async (record: any) => {
     console.log('🚀 ENVIANDO PETICIÓN POST con datos:', JSON.stringify(record, null, 2));
 
+    // Obtener token de localStorage como fallback
+    const token = localStorage.getItem('auth-token');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    
+    // Agregar token en Authorization header si existe
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+      console.log('🔐 Usando token desde localStorage como fallback');
+    }
+
     const controller = new AbortController();
     const timeoutMs = 30000;
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     let response: Response;
     try {
+      console.log('🚀 API Service - Enviando petición POST a /api/production-records');
+      console.log('🚀 API Service - Headers:', headers);
+      console.log('🚀 API Service - Body:', JSON.stringify(record, null, 2));
+      
       response = await fetch('/api/production-records', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: headers,
         body: JSON.stringify(record),
+        credentials: 'include', // Importante: incluir cookies de autenticación
         signal: controller.signal,
       });
+      
+      console.log('🚀 API Service - Respuesta recibida:', response.status, response.statusText);
     } catch (error) {
       if ((error as any)?.name === 'AbortError') {
         throw new Error('Tiempo de espera agotado al guardar el registro (POST /api/production-records)');
@@ -316,6 +345,18 @@ export const productionRecordsAPI = {
   },
 
   update: async (id: string, record: any) => {
+    // Obtener token de localStorage como fallback
+    const token = localStorage.getItem('auth-token');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    
+    // Agregar token en Authorization header si existe
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+      console.log('🔐 Usando token desde localStorage como fallback en update');
+    }
+
     const controller = new AbortController();
     const timeoutMs = 30000;
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -324,10 +365,9 @@ export const productionRecordsAPI = {
     try {
       response = await fetch('/api/production-records', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: headers,
         body: JSON.stringify({ id, ...record }),
+        credentials: 'include', // Importante: incluir cookies de autenticación
         signal: controller.signal,
       });
     } catch (error) {

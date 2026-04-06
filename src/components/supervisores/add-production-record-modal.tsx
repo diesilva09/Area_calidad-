@@ -54,6 +54,7 @@ import { getFechaActual, getMesActual } from '@/lib/date-utils';
 import { ChevronDown, Loader2, Plus, X } from 'lucide-react'; // Añadido para spinner
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useAuth } from '@/contexts/auth-context';
 
 const ProductCharts = dynamic(
   () => import('./product-charts').then((m) => m.ProductCharts),
@@ -346,6 +347,7 @@ export function AddProductionRecordModal({
   editingRecord,
   onOpenEmbalajeModal,
 }: AddProductionRecordModalProps) {
+  const { user } = useAuth();
   const [debugMode, setDebugMode] = React.useState(false);
   const [loteValidation, setLoteValidation] = React.useState<{
     isValid: boolean;
@@ -2597,7 +2599,8 @@ const createAutomaticLimpiezaRecord = async (
     producto?: string;
     productoNombre?: string;
   },
-  savedRecordId: string | null
+  savedRecordId: string | null,
+  isCreatingProductionRecord: boolean = false // Indica si se está creando un registro de producción nuevo
 ) => {
   // Formatear fecha
   let fechaFormateada = values.fechaProduccion;
@@ -2617,34 +2620,55 @@ const createAutomaticLimpiezaRecord = async (
   // Si ya hay una promesa en curso para esta clave, la retornamos sin hacer nada más
   const existingPromise = limpiezaCreationPromises.current.get(key);
   if (existingPromise) {
+    console.log('⚠️ Ya existe una creación de registro de limpieza en curso para esta clave:', key);
     return existingPromise;
   }
 
   // Creamos una nueva promesa
   const promise = (async () => {
     try {
-      // 1. Verificar si ya existe un registro de limpieza
-      const existingLimpiezaRegistros = await limpiezaRegistrosService.getByDate(fechaFormateada);
-      const duplicateLimpieza = existingLimpiezaRegistros.find((r) => {
-        if (r.origin !== 'produccion') return false;
-        if (savedRecordId && r.generated_from_production_record_id) {
-          return String(r.generated_from_production_record_id) === String(savedRecordId);
+      // 1. Verificar si ya existe un registro de limpieza vinculado a este registro de producción
+      if (savedRecordId) {
+        const allLimpiezaRegistros = await limpiezaRegistrosService.getAll();
+        const duplicateLimpieza = allLimpiezaRegistros.find((r) => {
+          if (r.origin !== 'produccion') return false;
+          // Verificar vinculación directa por ID de producción
+          if (r.generated_from_production_record_id) {
+            return String(r.generated_from_production_record_id) === String(savedRecordId);
+          }
+          return false;
+        });
+
+        if (duplicateLimpieza) {
+          console.log('✅ Ya existe un registro de limpieza vinculado a este registro de producción:', duplicateLimpieza.id);
+          return;
         }
-        const loteMatch = (r.lote || '') === (values.lote || '');
-        const productoMatch = (r.producto || '') === (values.producto || '');
-        return loteMatch && productoMatch;
-      });
+      }
 
-      if (duplicateLimpieza) return;
+      // 2. Verificación adicional por lote + fecha (solo si no hay savedRecordId)
+      if (!savedRecordId && values.lote) {
+        const allLimpiezaRegistros = await limpiezaRegistrosService.getAll();
+        const duplicateByLote = allLimpiezaRegistros.find((r) => {
+          if (r.origin !== 'produccion') return false;
+          const sameLote = (r.lote || '') === (values.lote || '');
+          const sameDate = String(r.fecha).startsWith(fechaFormateada);
+          return sameLote && sameDate;
+        });
 
-      // 2. Obtener nombre del equipo (opcional)
+        if (duplicateByLote) {
+          console.log('✅ Ya existe un registro de limpieza para este lote y fecha:', duplicateByLote.id);
+          return;
+        }
+      }
+
+      // 3. Obtener nombre del equipo (opcional)
       let nombreEquipo = values.equipo;
       try {
         const equipo = await AreasEquiposService.getEquipoPorId(values.equipo);
         if (equipo && equipo.nombre) nombreEquipo = equipo.nombre;
       } catch {}
 
-      // 3. Crear el registro de limpieza
+      // 4. Crear el registro de limpieza
       const limpiezaRegistroPayload = {
         fecha: fechaFormateada,
         mes_corte: values.mesCorte,
@@ -2652,12 +2676,13 @@ const createAutomaticLimpiezaRecord = async (
         producto: values.productoNombre || values.producto || null,
         origin: 'produccion' as const,
         generated_from_production_record_id: savedRecordId,
-        created_by: 'Sistema Automático',
+        created_by: '(Generado automáticamente)',
       };
 
-      await limpiezaRegistrosService.create(limpiezaRegistroPayload);
+      const created = await limpiezaRegistrosService.create(limpiezaRegistroPayload);
+      console.log('✅ Registro de limpieza creado exitosamente:', created.id);
     } catch (error) {
-      console.error('Error al crear registro de limpieza:', error);
+      console.error('❌ Error al crear registro de limpieza:', error);
     } finally {
       // Una vez terminada (éxito o error), eliminamos la promesa del mapa
       limpiezaCreationPromises.current.delete(key);
@@ -2885,22 +2910,24 @@ const createAutomaticLimpiezaRecord = async (
       let savedRecord: any;
       if (editingRecord?.id) {
         savedRecord = await productionRecordsService.update(editingRecord.id, completeValues);
+        // NO crear registro de limpieza automático al editar un registro existente
       } else {
         savedRecord = await productionRecordsService.create(completeValues);
+        // Solo crear registro de limpieza automático al crear un registro de producción nuevo
+        await createAutomaticLimpiezaRecord(
+          {
+            fechaProduccion: updatedMainFormValues.fechaProduccion,
+            mesCorte: updatedMainFormValues.mesCorte,
+            equipo: updatedMainFormValues.equipo,
+            responsableProduccion: updatedMainFormValues.responsableProduccion,
+            lote: updatedMainFormValues.lote,
+            producto: updatedMainFormValues.producto,
+            productoNombre: productName,
+          },
+          savedRecord?.id ?? null,
+          true
+        );
       }
-
-      await createAutomaticLimpiezaRecord(
-        {
-          fechaProduccion: updatedMainFormValues.fechaProduccion,
-          mesCorte: updatedMainFormValues.mesCorte,
-          equipo: updatedMainFormValues.equipo,
-          responsableProduccion: updatedMainFormValues.responsableProduccion,
-          lote: updatedMainFormValues.lote,
-          producto: updatedMainFormValues.producto,
-          productoNombre: productName,
-        },
-        savedRecord?.id ?? null
-      );
 
       toast({
         title: 'Guardado como pendiente',
@@ -3067,7 +3094,10 @@ const createAutomaticLimpiezaRecord = async (
       delete valuesToSave.hasAnalisisPT;
 
       valuesToSave.observacionesPT = mergePtObservaciones(String(values.observacionesPT ?? ''), extraPtAnalyses);
-
+      
+      // NOTA: created_by y updated_by se asignan en el backend basado en el usuario autenticado
+      // Esto asegura consistencia y seguridad en la auditoría
+      
       let savedRecord: any;
       if (editingRecord?.id) {
         const updatedValues = {
@@ -3095,30 +3125,22 @@ const createAutomaticLimpiezaRecord = async (
         });
       }
 
-      // Convertir fecha de producción al formato YYYY-MM-DD que espera la base de datos
-      let fechaFormateada = values.fechaProduccion;
-      if (values.fechaProduccion.includes('/')) {
-        const partes = values.fechaProduccion.split('/');
-        if (partes.length === 3) {
-          const dia = partes[0].padStart(2, '0');
-          const mes = partes[1].padStart(2, '0');
-          const año = partes[2].length === 2 ? '20' + partes[2] : partes[2];
-          fechaFormateada = `${año}-${mes}-${dia}`;
-        }
+      // Solo crear registro de limpieza automático al crear un registro de producción nuevo
+      if (!editingRecord?.id) {
+        await createAutomaticLimpiezaRecord(
+          {
+            fechaProduccion: values.fechaProduccion,
+            mesCorte: values.mesCorte,
+            equipo: values.equipo,
+            responsableProduccion: values.responsableProduccion,
+            lote: values.lote,
+            producto: values.producto,
+            productoNombre: productName,
+          },
+          savedRecord?.id ?? null,
+          true
+        );
       }
-
-      await createAutomaticLimpiezaRecord(
-        {
-          fechaProduccion: values.fechaProduccion,
-          mesCorte: values.mesCorte,
-          equipo: values.equipo,
-          responsableProduccion: values.responsableProduccion,
-          lote: values.lote,
-          producto: values.producto,
-          productoNombre: productName,
-        },
-        savedRecord?.id ?? null
-      );
       
       
       // Crear automáticamente registro de embalaje
@@ -3331,7 +3353,7 @@ const createAutomaticLimpiezaRecord = async (
                                 </SelectTrigger>
                                 <SelectContent className="max-h-60 overflow-y-auto">
                                   {envasesDisponibles.map((envase) => (
-                                    <SelectItem key={envase.id} value={envase.id} className="py-2">
+                                    <SelectItem key={`envase-${envase.id}-${envase.tipo}`} value={envase.id} className="py-2">
                                       <div className="flex items-center justify-between w-full">
                                         <span className="font-medium">{envase.tipo}</span>
                                         <span className="text-sm text-muted-foreground ml-2">
@@ -3425,7 +3447,7 @@ const createAutomaticLimpiezaRecord = async (
                                 </SelectTrigger>
                                 <SelectContent>
                                   {areasDisponibles.map((area) => (
-                                    <SelectItem key={area.id} value={area.id}>
+                                    <SelectItem key={`area-${area.id}-${area.nombre}`} value={area.id}>
                                       {area.nombre}
                                     </SelectItem>
                                   ))}
@@ -3526,7 +3548,7 @@ const createAutomaticLimpiezaRecord = async (
                                 <SelectContent className="max-h-60 overflow-y-auto">
                                   <div className="max-h-60 overflow-y-auto">
                                     {equiposDisponibles.map((equipo) => (
-                                      <SelectItem key={equipo.id} value={equipo.id}>
+                                      <SelectItem key={`equipo-${equipo.id}-${equipo.nombre}`} value={equipo.id}>
                                         {equipo.nombre}
                                       </SelectItem>
                                     ))}
@@ -4726,7 +4748,7 @@ const createAutomaticLimpiezaRecord = async (
                             <div className="grid grid-cols-5 gap-2">
                               {[0, 1, 2, 3, 4].map((index) => (
                                 <Input
-                                  key={index}
+                                  key={`pruebas-vacio-${index}`}
                                   id={`pruebasVacio-${index}`}
                                   type="text"
                                   value={pruebasVacioValues[index]}

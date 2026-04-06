@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { authService } from '@/lib/auth-service';
+
+// Función para obtener usuario autenticado
+async function getAuthedUser(request: NextRequest) {
+  const token = request.cookies.get('auth-token')?.value;
+  if (!token) return null;
+  return authService.validateSession(token);
+}
 
 type LimpiezaRegistroStatus = 'pending' | 'completed';
 
@@ -162,7 +170,21 @@ export async function GET(request: NextRequest) {
 
     const registrosRes = await pool.query<LimpiezaRegistroRow>('SELECT * FROM limpieza_registros ORDER BY created_at DESC');
 
-    return NextResponse.json(registrosRes.rows);
+    // Incluir liberaciones para cada registro para permitir búsqueda en frontend
+    const registrosWithLiberaciones = await Promise.all(
+      registrosRes.rows.map(async (registro) => {
+        const liberacionesRes = await pool.query<LimpiezaLiberacionRow>(
+          'SELECT * FROM limpieza_liberaciones WHERE registro_id = $1 ORDER BY created_at ASC',
+          [registro.id]
+        );
+        return {
+          ...registro,
+          liberaciones: liberacionesRes.rows,
+        };
+      })
+    );
+
+    return NextResponse.json(registrosWithLiberaciones);
   } catch (error) {
     console.error('Error al obtener registros de limpieza:', error);
     return NextResponse.json({ error: 'Error al obtener registros de limpieza' }, { status: 500 });
@@ -173,6 +195,10 @@ export async function POST(request: NextRequest) {
   const client = await pool.connect();
   try {
     const body = await request.json();
+
+    // Obtener usuario autenticado
+    const user = await getAuthedUser(request);
+    const userName = user?.name || user?.email || 'Usuario desconocido';
 
     const {
       fecha,
@@ -258,7 +284,7 @@ export async function POST(request: NextRequest) {
             originFinal,
             generated_from_production_record_id ?? generatedFromProductionRecordId ?? null,
             cronogramaTaskIdFinal,
-            created_by ?? createdBy ?? null,
+            userName,
           ]
         );
 
@@ -304,7 +330,7 @@ export async function POST(request: NextRequest) {
               originFinal,
               generatedFromProductionIdFinal,
               cronogramaTaskIdFinal,
-              created_by ?? createdBy ?? null,
+              userName,
             ]
           );
 
@@ -335,7 +361,7 @@ export async function POST(request: NextRequest) {
             originFinal,
             generatedFromProductionIdFinal,
             cronogramaTaskIdFinal,
-            created_by ?? createdBy ?? null,
+            userName,
           ]
         );
 
@@ -463,6 +489,10 @@ export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
 
+    // Obtener usuario autenticado
+    const user = await getAuthedUser(request);
+    const userName = user?.name || user?.email || 'Usuario desconocido';
+
     const {
       id,
       fecha,
@@ -474,6 +504,12 @@ export async function PUT(request: NextRequest) {
       updated_by,
       updatedBy,
     } = body ?? {};
+
+    console.log('📥 PUT /api/limpieza-registros - Body recibido:', body);
+    console.log('  id:', id);
+    console.log('  fecha:', fecha);
+    console.log('  mes_corte:', mes_corte);
+    console.log('  detalles:', detalles);
 
     if (!id) {
       return NextResponse.json({ error: 'id es requerido' }, { status: 400 });
@@ -521,7 +557,11 @@ export async function PUT(request: NextRequest) {
     }
     if (updated_by !== undefined || updatedBy !== undefined) {
       updates.push(`updated_by = $${idx++}`);
-      values.push(updated_by ?? updatedBy ?? null);
+      values.push(updated_by ?? updatedBy ?? userName);
+    } else {
+      // Siempre actualizar updated_by con el usuario actual
+      updates.push(`updated_by = $${idx++}`);
+      values.push(userName);
     }
 
     if (updates.length === 0) {
@@ -538,9 +578,10 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Registro no encontrado' }, { status: 404 });
     }
 
+    console.log('✅ Registro actualizado exitosamente:', result.rows[0]);
     return NextResponse.json(result.rows[0]);
   } catch (error) {
-    console.error('Error al actualizar registro de limpieza:', error);
+    console.error('❌ Error al actualizar registro de limpieza:', error);
     return NextResponse.json({ error: 'Error al actualizar registro de limpieza' }, { status: 500 });
   }
 }

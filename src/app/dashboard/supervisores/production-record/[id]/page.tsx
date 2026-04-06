@@ -15,6 +15,9 @@ import { AreasEquiposService } from '@/lib/areas-equipos-config';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { AddProductionRecordModal } from '@/components/supervisores/add-production-record-modal';
+import { getUserDisplayName } from '@/lib/user-display-utils';
+import { AuditedField } from '@/components/audited-field';
+import { FieldHistoryPanel } from '@/components/field-history-panel';
 
 const PT_ANALYSES_MARKER = '__PT_ANALYSES_JSON__';
 
@@ -125,6 +128,7 @@ interface ProductionRecord {
   responsable_analisis_pt: string;
   created_at: string;
   created_by?: string;
+  updated_by?: string;
   status?: string;
 }
 
@@ -147,6 +151,7 @@ export default function ProductionRecordDetailPage({
   const [temperaturaRangoActual, setTemperaturaRangoActual] = useState<{ min: number | null; max: number | null } | null>(null);
   const [envaseTipoTexto, setEnvaseTipoTexto] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isHistoryPanelOpen, setIsHistoryPanelOpen] = useState(false);
 
   const returnTo = searchParams?.get('returnTo') || '/dashboard/supervisores/records';
 
@@ -405,6 +410,21 @@ export default function ProductionRecordDetailPage({
         day: '2-digit',
         month: '2-digit',
         year: 'numeric'
+      });
+    } catch {
+      return dateString;
+    }
+  };
+
+  const formatDateTime = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
       });
     } catch {
       return dateString;
@@ -914,6 +934,14 @@ export default function ProductionRecordDetailPage({
                 <Hash className="mr-1 h-3 w-3" />
                 Lote: {record.lote}
               </Badge>
+              <Button
+                variant="outline"
+                onClick={() => setIsHistoryPanelOpen(true)}
+                className="flex items-center gap-2 text-blue-600 border-blue-200 hover:bg-blue-50"
+              >
+                <Clock className="h-4 w-4" />
+                Ver Historial
+              </Button>
               {isRegistroPendiente() && (
                 <Button
                   onClick={completarRegistro}
@@ -957,12 +985,13 @@ export default function ProductionRecordDetailPage({
                     </label>
                     <p className="text-sm text-gray-700">{envaseTipoTexto ? formatEnvase(envaseTipoTexto) : (record.envase ? formatEnvase(record.envase) : 'No especificado')}</p>
                   </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                      <Hash className="h-3 w-3" /> Lote
-                    </label>
-                    <p className="text-base font-mono">{record.lote}</p>
-                  </div>
+                  <AuditedField
+                    label="Lote"
+                    value={record.lote}
+                    fieldName="lote"
+                    recordId={record.id}
+                    tableName="production_records"
+                  />
                   <div>
                     <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                       <Layers className="h-3 w-3" /> Tamaño Lote
@@ -1014,6 +1043,39 @@ export default function ProductionRecordDetailPage({
                 <div>
                   <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Mes de Corte</label>
                   <p className="text-sm text-gray-700 mt-1">{record.mescorte}</p>
+                </div>
+                {/* Auditoría */}
+                <div className="border-t pt-3 mt-3 space-y-2">
+                  <div className="flex items-center text-xs text-gray-500">
+                    <User className="mr-1 h-3 w-3" />
+                    <span className="font-medium">Creado por:</span>
+                    <span className="ml-1 text-gray-700">
+                      {getUserDisplayName(record.created_by)}
+                    </span>
+                    <span className="ml-2 text-gray-400">
+                      {formatDateTime(record.created_at)}
+                    </span>
+                  </div>
+                  {record.updated_by && (
+                    <div className="flex items-center text-xs text-gray-500">
+                      <User className="mr-1 h-3 w-3" />
+                      <span className="font-medium">Editado última vez por:</span>
+                      <span className="ml-1 text-gray-700">{getUserDisplayName(record.updated_by)}</span>
+                      <span className="ml-2 text-gray-400">
+                        {formatDateTime(record.updated_at)}
+                      </span>
+                    </div>
+                  )}
+                  {record.last_opened_at && (
+                    <div className="flex items-center text-xs text-gray-500">
+                      <Eye className="mr-1 h-3 w-3" />
+                      <span className="font-medium">Abierto última vez por:</span>
+                      <span className="ml-1 text-gray-700">Usuario actual</span>
+                      <span className="ml-2 text-gray-400">
+                        {formatDateTime(record.last_opened_at)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -1256,43 +1318,43 @@ export default function ProductionRecordDetailPage({
                     />
                   </div>
                 </div>
+                <AuditedField
+                  label="Responsable Análisis PT"
+                  value={record.responsable_analisis_pt}
+                  fieldName="responsable_analisis_pt"
+                  recordId={record.id}
+                  tableName="production_records"
+                />
+              </CardContent>
+            </Card>
+
+            {/* Información de Auditoría */}
+            <Card className="shadow-md border-gray-200">
+              <CardHeader className="bg-gradient-to-r from-orange-50 to-red-50 border-b border-gray-200">
+                <CardTitle className="flex items-center text-lg font-semibold text-gray-800">
+                  <Clock className="mr-2 h-5 w-5 text-orange-600" />
+                  Información de Auditoría
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 p-5">
+                <AuditedField
+                  label="Creado por"
+                  value={record.created_by}
+                  fieldName="created_by"
+                  recordId={record.id}
+                  tableName="production_records"
+                />
+                <AuditedField
+                  label="Editado por última vez"
+                  value={record.updated_by}
+                  fieldName="updated_by"
+                  recordId={record.id}
+                  tableName="production_records"
+                />
                 <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                    <User className="h-3 w-3" /> Supervisor de Calidad
-                  </label>
-                  <p className="mt-1 text-sm font-medium text-gray-800">{record.supervisor_calidad}</p>
+                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha de Creación</label>
+                  <p className="mt-1 text-sm font-medium text-gray-800">{formatDateTime(record.created_at)}</p>
                 </div>
-                {(() => {
-                  const parsed = parseNovCorrPorSeccion(record.novedades_proceso, record.observaciones_acciones_correctivas);
-                  const novedades = String(parsed.vacio.novedades || '').trim();
-                  const correcciones = String(parsed.vacio.correcciones || '').trim();
-                  return (
-                    (novedades || correcciones) && (
-                      <div className="space-y-4">
-                        {novedades && (
-                          <div>
-                            <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                              <AlertCircle className="h-3 w-3 text-amber-600" /> Novedades (Pruebas de Vacío)
-                            </label>
-                            <p className="mt-1 text-sm bg-amber-50 border border-amber-200 p-3 rounded-lg whitespace-pre-wrap break-words shadow-sm">
-                              {novedades}
-                            </p>
-                          </div>
-                        )}
-                        {correcciones && (
-                          <div>
-                            <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                              <FileText className="h-3 w-3" /> Correcciones (Pruebas de Vacío)
-                            </label>
-                            <p className="mt-1 text-sm bg-blue-50 border border-blue-200 p-3 rounded-lg whitespace-pre-wrap break-words shadow-sm">
-                              {correcciones}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  );
-                })()}
               </CardContent>
             </Card>
 
@@ -1438,12 +1500,14 @@ export default function ProductionRecordDetailPage({
                 </div>
 
                 <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                    <FileText className="h-3 w-3" /> Observaciones PT
-                  </label>
-                  <p className="mt-1 text-sm bg-gray-50 p-3 rounded-lg border border-gray-200 whitespace-pre-wrap break-words shadow-sm">
-                    {String(ptObsBase || '').trim() ? ptObsBase : 'N/A'}
-                  </p>
+                  <AuditedField
+                    label="Observaciones Generales"
+                    value={record.observaciones}
+                    fieldName="observaciones"
+                    recordId={record.id}
+                    tableName="production_records"
+                    className="w-full"
+                  />
                 </div>
 
                 <div>
@@ -1666,6 +1730,15 @@ export default function ProductionRecordDetailPage({
           }}
         />
       )}
+
+      {/* Panel de historial de auditoría */}
+      <FieldHistoryPanel
+        isOpen={isHistoryPanelOpen}
+        onClose={() => setIsHistoryPanelOpen(false)}
+        tableName="production_records"
+        recordId={record.id}
+        recordTitle={`${record.producto_nombre || record.producto} - ${record.lote}`}
+      />
     </div>
   );
 }

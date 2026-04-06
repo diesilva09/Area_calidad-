@@ -520,17 +520,15 @@ export function ProduccionTab({
               }}
               className="w-full sm:w-auto"
             >
-              {isDailyHistoryOpen ? (
-                <div className="flex items-center">
-                  <ChevronUp className="h-4 w-4 mr-2" />
-                  Ocultar
-                </div>
-              ) : (
-                <div className="flex items-center">
-                  <ChevronDown className="h-4 w-4 mr-2" />
-                  Mostrar
-                </div>
-              )}
+              <div className="flex items-center">
+                <ChevronUp 
+                  className={`h-4 w-4 mr-2 transition-transform ${isDailyHistoryOpen ? 'rotate-0' : 'rotate-180 opacity-0'}`} 
+                />
+                <ChevronDown 
+                  className={`h-4 w-4 mr-2 absolute transition-transform ${!isDailyHistoryOpen ? 'rotate-0' : 'rotate-180 opacity-0'}`} 
+                />
+                {isDailyHistoryOpen ? 'Ocultar' : 'Mostrar'}
+              </div>
             </Button>
             <Button
               type="button"

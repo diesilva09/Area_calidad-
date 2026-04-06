@@ -28,7 +28,7 @@ import * as z from 'zod';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { getFechaActual, getMesActual, getHoraActual } from '@/lib/date-utils';
-import { Calendar, Clock } from 'lucide-react';
+import { Calendar, Clock, Factory } from 'lucide-react';
 import { limpiezaTasksService, type LimpiezaTask } from '@/lib/limpieza-tasks-service';
 import {
   limpiezaLiberacionesService,
@@ -983,42 +983,42 @@ export function AddLimpiezaRecordModal({
         : fecha;
 
       const tomas = (data.liberaciones ?? []).map((lib) => ({
-        hora: lib.hora ?? getHoraActual(),
-        linea: lib.linea ?? '',
+        hora: lib?.hora || getHoraActual(),
+        linea: lib?.linea || '',
         // Guardar el valor original en '*Otro' para poder re-hidratar OTRO si no existe en el Select
-        lineaOtro: lib.linea ?? '',
-        superficie: lib.superficie ?? '',
+        lineaOtro: lib?.linea || '',
+        superficie: lib?.superficie || '',
         // Guardar el valor original en '*Otro' para poder re-hidratar OTRO si no existe en el Select
-        superficieOtro: lib.superficie ?? '',
-        estadoFiltro: lib.estado_filtro != null ? String(lib.estado_filtro) : 'NA',
-        novedadesFiltro: lib.novedades_filtro ?? '',
-        correccionesFiltro: lib.correcciones_filtro ?? '',
-        presenciaElementosExtranos: lib.presencia_elementos_extranos ?? '',
-        detalleElementosExtranos: lib.detalle_elementos_extranos ?? '',
-        resultadosAtpRi: lib.resultados_atp_ri ?? '',
-        resultadosAtpAc: lib.resultados_atp_ac ?? '',
-        resultadosAtpRf: lib.resultados_atp_rf ?? '',
-        loteHisopoAtp: lib.lote_hisopo_atp ?? '',
-        observacionAtp: lib.observacion_atp ?? '',
-        equipoAtp: (lib as any).equipo_atp ?? '',
-        parteAtp: (lib as any).parte_atp ?? '',
+        superficieOtro: lib?.superficie || '',
+        estadoFiltro: lib?.estado_filtro != null ? String(lib.estado_filtro) : 'NA',
+        novedadesFiltro: lib?.novedades_filtro || '',
+        correccionesFiltro: lib?.correcciones_filtro || '',
+        presenciaElementosExtranos: lib?.presencia_elementos_extranos || '',
+        detalleElementosExtranos: lib?.detalle_elementos_extranos || '',
+        resultadosAtpRi: lib?.resultados_atp_ri || '',
+        resultadosAtpAc: lib?.resultados_atp_ac || '',
+        resultadosAtpRf: lib?.resultados_atp_rf || '',
+        loteHisopoAtp: lib?.lote_hisopo_atp || '',
+        observacionAtp: lib?.observacion_atp || '',
+        equipoAtp: (lib as any)?.equipo_atp || '',
+        parteAtp: (lib as any)?.parte_atp || '',
         parteAtpOtro: '',
-        deteccionAlergenosRi: lib.deteccion_alergenos_ri ?? '',
-        deteccionAlergenosAc: lib.deteccion_alergenos_ac ?? '',
-        deteccionAlergenosRf: lib.deteccion_alergenos_rf ?? '',
-        loteHisopoAlergenos: lib.lote_hisopo_alergenos ?? '',
-        observacionAlergenos: lib.observacion_alergenos ?? '',
-        equipoAlergenos: (lib as any).equipo_alergenos ?? '',
-        parteAlergenos: (lib as any).parte_alergenos ?? '',
+        deteccionAlergenosRi: lib?.deteccion_alergenos_ri || '',
+        deteccionAlergenosAc: lib?.deteccion_alergenos_ac || '',
+        deteccionAlergenosRf: lib?.deteccion_alergenos_rf || '',
+        loteHisopoAlergenos: lib?.lote_hisopo_alergenos || '',
+        observacionAlergenos: lib?.observacion_alergenos || '',
+        equipoAlergenos: (lib as any)?.equipo_alergenos || '',
+        parteAlergenos: (lib as any)?.parte_alergenos || '',
         parteAlergenosOtro: '',
-        detergente: lib.detergente ?? '',
-        desinfectante: lib.desinfectante ?? '',
-        verificacionVisual: lib.verificacion_visual != null ? String(lib.verificacion_visual) : '',
-        observacionVisual: lib.observacion_visual ?? '',
+        detergente: lib?.detergente || '',
+        desinfectante: lib?.desinfectante || '',
+        verificacionVisual: lib?.verificacion_visual != null ? String(lib.verificacion_visual) : '',
+        observacionVisual: lib?.observacion_visual || '',
         // Responsables por cada toma/liberación
-        verificadoPor: lib.verificado_por ?? '',
-        responsableProduccion: lib.responsable_produccion ?? '',
-        responsableMantenimiento: lib.responsable_mantenimiento ?? '',
+        verificadoPor: lib?.verificado_por || '',
+        responsableProduccion: lib?.responsable_produccion || '',
+        responsableMantenimiento: lib?.responsable_mantenimiento || '',
       }));
 
       const idsByIndex: Record<number, string | null> = {};
@@ -1048,7 +1048,7 @@ export function AddLimpiezaRecordModal({
         ? (data.liberaciones ?? []).findIndex((l) => l.id === liberacionIdToEdit)
         : 0;
       const safeSelectedIdx = selectedIdx >= 0 ? selectedIdx : 0;
-      const selectedLiberacion = (data.liberaciones ?? [])[safeSelectedIdx];
+      const selectedLiberacion = (data.liberaciones ?? [])[safeSelectedIdx] || null;
 
       // Debug: Log de valores cargados desde BD
       console.log('📥 loadRegistroToEdit - Valores cargados desde BD:');
@@ -1068,17 +1068,51 @@ export function AddLimpiezaRecordModal({
       setMostrarCampoOtroSuperficiePorToma({});
 
       form.reset({
-        fecha: fechaAsForm,
-        mesCorte: data.mes_corte ?? '',
-        detalles: data.detalles ?? '',
-        lote: data.lote ?? '',
-        producto: data.producto ?? '',
-        tipoVerificacion: selectedLiberacion?.tipo_verificacion ?? '',
+        fecha: fechaAsForm || '',
+        mesCorte: data.mes_corte || '',
+        detalles: data.detalles || '',
+        lote: data.lote || '',
+        producto: data.producto || '',
+        tipoVerificacion: selectedLiberacion?.tipo_verificacion || '',
         tipoVerificacionOtro: '',
-        verificadoPor: selectedLiberacion?.verificado_por ?? '',
-        responsableProduccion: selectedLiberacion?.responsable_produccion ?? '',
-        responsableMantenimiento: selectedLiberacion?.responsable_mantenimiento ?? '',
-        tomas,
+        verificadoPor: selectedLiberacion?.verificado_por || '',
+        responsableProduccion: selectedLiberacion?.responsable_produccion || '',
+        responsableMantenimiento: selectedLiberacion?.responsable_mantenimiento || '',
+        tomas: tomas.length > 0 ? tomas : [{
+          hora: getHoraActual(),
+          linea: '',
+          lineaOtro: '',
+          superficie: '',
+          superficieOtro: '',
+          estadoFiltro: '',
+          novedadesFiltro: '',
+          correccionesFiltro: '',
+          presenciaElementosExtranos: '',
+          detalleElementosExtranos: '',
+          resultadosAtpRi: '',
+          resultadosAtpAc: '',
+          resultadosAtpRf: '',
+          loteHisopoAtp: '',
+          observacionAtp: '',
+          equipoAtp: '',
+          parteAtp: '',
+          parteAtpOtro: '',
+          deteccionAlergenosRi: '',
+          deteccionAlergenosAc: '',
+          deteccionAlergenosRf: '',
+          loteHisopoAlergenos: '',
+          observacionAlergenos: '',
+          equipoAlergenos: '',
+          parteAlergenos: '',
+          parteAlergenosOtro: '',
+          detergente: '',
+          desinfectante: '',
+          verificacionVisual: '',
+          observacionVisual: '',
+          verificadoPor: '',
+          responsableProduccion: '',
+          responsableMantenimiento: '',
+        }],
       });
 
       // IMPORTANTE: asegurar que el fieldArray se hidrate correctamente.
@@ -1086,17 +1120,51 @@ export function AddLimpiezaRecordModal({
       tomasFieldArray.replace(tomas as any);
 
       pendingForm.reset({
-        fecha: fechaAsForm,
-        mesCorte: data.mes_corte ?? '',
-        detalles: data.detalles ?? '',
-        lote: data.lote ?? '',
-        producto: data.producto ?? '',
-        tipoVerificacion: selectedLiberacion?.tipo_verificacion ?? '',
-        verificadoPor: selectedLiberacion?.verificado_por ?? '',
+        fecha: fechaAsForm || '',
+        mesCorte: data.mes_corte || '',
+        detalles: data.detalles || '',
+        lote: data.lote || '',
+        producto: data.producto || '',
+        tipoVerificacion: selectedLiberacion?.tipo_verificacion || '',
+        verificadoPor: selectedLiberacion?.verificado_por || '',
         tipoVerificacionOtro: '',
-        responsableProduccion: selectedLiberacion?.responsable_produccion ?? '',
-        responsableMantenimiento: selectedLiberacion?.responsable_mantenimiento ?? '',
-        tomas,
+        responsableProduccion: selectedLiberacion?.responsable_produccion || '',
+        responsableMantenimiento: selectedLiberacion?.responsable_mantenimiento || '',
+        tomas: tomas.length > 0 ? tomas : [{
+          hora: getHoraActual(),
+          linea: '',
+          lineaOtro: '',
+          superficie: '',
+          superficieOtro: '',
+          estadoFiltro: '',
+          novedadesFiltro: '',
+          correccionesFiltro: '',
+          presenciaElementosExtranos: '',
+          detalleElementosExtranos: '',
+          resultadosAtpRi: '',
+          resultadosAtpAc: '',
+          resultadosAtpRf: '',
+          loteHisopoAtp: '',
+          observacionAtp: '',
+          equipoAtp: '',
+          parteAtp: '',
+          parteAtpOtro: '',
+          deteccionAlergenosRi: '',
+          deteccionAlergenosAc: '',
+          deteccionAlergenosRf: '',
+          loteHisopoAlergenos: '',
+          observacionAlergenos: '',
+          equipoAlergenos: '',
+          parteAlergenos: '',
+          parteAlergenosOtro: '',
+          detergente: '',
+          desinfectante: '',
+          verificacionVisual: '',
+          observacionVisual: '',
+          verificadoPor: '',
+          responsableProduccion: '',
+          responsableMantenimiento: '',
+        }],
       });
 
       // Hidratar OTRO para tipo de verificación si viene un valor custom desde DB
@@ -2650,6 +2718,10 @@ export function AddLimpiezaRecordModal({
                           {tomasFieldArray.fields.map((toma, index) => {
                             const status = getLiberacionStatus(index);
                             const hora = String(form.getValues(`tomas.${index}.hora` as const) || '').trim();
+                            const tipoVerificacion = String(form.getValues(`tipoVerificacion` as const) || '').trim();
+                            const linea = String(form.getValues(`tomas.${index}.linea` as const) || '').trim();
+                            const lineaOtro = String(form.getValues(`tomas.${index}.lineaOtro` as const) || '').trim();
+                            const equipoDisplay = linea === 'OTRO' ? lineaOtro : linea;
                             const statusClass =
                               status === 'completed'
                                 ? 'border-green-300 bg-green-50 text-green-800 hover:bg-green-100'
@@ -2660,7 +2732,7 @@ export function AddLimpiezaRecordModal({
                                 key={toma.id}
                                 type="button"
                                 variant="outline"
-                                className={`justify-between ${statusClass}`}
+                                className={`justify-start items-start h-auto py-2 px-3 ${statusClass}`}
                                 disabled={effectiveViewOnlyMode}
                                 onClick={() => {
                                   const horaActual = String(
@@ -2673,8 +2745,23 @@ export function AddLimpiezaRecordModal({
                                   setRegistroSubView('detalle');
                                 }}
                               >
-                                <span>Liberación {index + 1}</span>
-                                <span className="text-xs font-medium tabular-nums">{hora || '--:--'}</span>
+                                <div className="flex flex-col items-start gap-1 w-full">
+                                  <div className="flex items-center justify-between w-full gap-2">
+                                    <span className="text-sm font-semibold">Liberación {index + 1}</span>
+                                    <span className="text-xs font-medium tabular-nums text-gray-600">{hora || '--:--'}</span>
+                                  </div>
+                                  {tipoVerificacion && (
+                                    <div className="text-xs text-gray-600 truncate w-full">
+                                      {tipoVerificacion}
+                                    </div>
+                                  )}
+                                  {equipoDisplay && (
+                                    <div className="text-xs text-gray-500 truncate w-full flex items-center gap-1">
+                                      <Factory className="h-3 w-3" />
+                                      {equipoDisplay}
+                                    </div>
+                                  )}
+                                </div>
                               </Button>
                             );
                           })}
@@ -2724,7 +2811,7 @@ export function AddLimpiezaRecordModal({
                                     disabled={effectiveViewOnlyMode}
                                     className="pl-9"
                                     name={field.name}
-                                    value={field.value}
+                                    value={field.value || ''}
                                     onChange={field.onChange}
                                     onBlur={field.onBlur}
                                   />
@@ -2746,7 +2833,7 @@ export function AddLimpiezaRecordModal({
                                       form.setValue('tipoVerificacionOtro', '');
                                     }
                                   }}
-                                  value={field.value}
+                                  value={field.value || ''}
                                 >
                                   <FormControl>
                                     <SelectTrigger>
@@ -2790,7 +2877,7 @@ export function AddLimpiezaRecordModal({
                                       return { ...prev, [tomaActivaIndex]: false };
                                     });
                                   }}
-                                  value={field.value}
+                                  value={field.value || ''}
                                 >
                                   <FormControl>
                                     <SelectTrigger>
@@ -2799,7 +2886,7 @@ export function AddLimpiezaRecordModal({
                                   </FormControl>
                                   <SelectContent>
                                     {equipos.map((equipo) => (
-                                      <SelectItem key={equipo.id} value={equipo.nombre}>
+                                      <SelectItem key={`equipo-${equipo.id}-${equipo.nombre}`} value={equipo.nombre}>
                                         {equipo.nombre}
                                       </SelectItem>
                                     ))}
@@ -2814,7 +2901,7 @@ export function AddLimpiezaRecordModal({
                               <FormField control={form.control} name={`tomas.${tomaActivaIndex}.lineaOtro`} render={({ field }) => (
                                 <FormItem>
                                   <FormLabel>Especificar Equipo/Área</FormLabel>
-                                  <Input disabled={effectiveViewOnlyMode} placeholder="Escriba el nombre del equipo..." {...field} />
+                                  <Input disabled={effectiveViewOnlyMode} placeholder="Escriba el nombre del equipo..." {...field} value={field.value || ''} />
                                   <FormMessage />
                                 </FormItem>
                               )} />
@@ -2836,7 +2923,7 @@ export function AddLimpiezaRecordModal({
                                       return { ...prev, [tomaActivaIndex]: newValue };
                                     });
                                   }}
-                                  value={field.value}
+                                  value={field.value || ''}
                                 >
                                   <FormControl>
                                     <SelectTrigger>
@@ -2846,7 +2933,7 @@ export function AddLimpiezaRecordModal({
                                   <SelectContent>
                                     <SelectItem value="Todas las superficies cumplen">Todas las superficies cumplen</SelectItem>
                                     {(partesPorToma[tomaActivaIndex] || []).map((parte) => (
-                                      <SelectItem key={parte.id} value={parte.nombre}>
+                                      <SelectItem key={`parte-${parte.id}-${parte.nombre}`} value={parte.nombre}>
                                         {parte.nombre}
                                       </SelectItem>
                                     ))}
@@ -2861,7 +2948,7 @@ export function AddLimpiezaRecordModal({
                               <FormField control={form.control} name={`tomas.${tomaActivaIndex}.superficieOtro`} render={({ field }) => (
                                 <FormItem>
                                   <FormLabel>Especificar Superficie</FormLabel>
-                                  <Input disabled={effectiveViewOnlyMode} placeholder="Escriba el nombre de la superficie..." {...field} />
+                                  <Input disabled={effectiveViewOnlyMode} placeholder="Escriba el nombre de la superficie..." {...field} value={field.value || ''} />
                                   <FormMessage />
                                 </FormItem>
                               )} />
@@ -2893,7 +2980,7 @@ export function AddLimpiezaRecordModal({
                                     form.setValue(`tomas.${tomaActivaIndex}.correccionesFiltro`, '');
                                   }
                                 }}
-                                value={field.value}
+                                value={field.value || ''}
                               >
                                 <FormControl>
                                   <SelectTrigger>
@@ -2916,7 +3003,7 @@ export function AddLimpiezaRecordModal({
                                 <FormItem>
                                   <FormLabel>Novedades</FormLabel>
                                   <FormControl>
-                                    <Textarea disabled={effectiveViewOnlyMode} placeholder="Describa las novedades..." className="min-h-[120px]" {...field} />
+                                    <Textarea disabled={effectiveViewOnlyMode} placeholder="Describa las novedades..." className="min-h-[120px]" {...field} value={field.value || ''} />
                                   </FormControl>
                                   <FormMessage />
                                 </FormItem>
@@ -2925,7 +3012,7 @@ export function AddLimpiezaRecordModal({
                                 <FormItem>
                                   <FormLabel>Correcciones</FormLabel>
                                   <FormControl>
-                                    <Textarea disabled={effectiveViewOnlyMode} placeholder="Describa las correcciones..." className="min-h-[120px]" {...field} />
+                                    <Textarea disabled={effectiveViewOnlyMode} placeholder="Describa las correcciones..." className="min-h-[120px]" {...field} value={field.value || ''} />
                                   </FormControl>
                                   <FormMessage />
                                 </FormItem>
@@ -2936,7 +3023,7 @@ export function AddLimpiezaRecordModal({
                           <FormField control={form.control} name={`tomas.${tomaActivaIndex}.presenciaElementosExtranos`} render={({ field }) => (
                             <FormItem>
                               <FormLabel>Presencia de Elementos Extraños</FormLabel>
-                              <Select disabled={effectiveViewOnlyMode} onValueChange={field.onChange} value={field.value}>
+                              <Select disabled={effectiveViewOnlyMode} onValueChange={field.onChange} value={field.value || ''}>
                                 <FormControl>
                                   <SelectTrigger>
                                     <SelectValue placeholder="Seleccione..." />
@@ -2956,7 +3043,7 @@ export function AddLimpiezaRecordModal({
                               <FormItem>
                                 <FormLabel>Detalles de Elementos Extraños</FormLabel>
                                 <FormControl>
-                                  <Textarea disabled={effectiveViewOnlyMode} placeholder="Detalle de elementos extraños..." {...field} />
+                                  <Textarea disabled={effectiveViewOnlyMode} placeholder="Detalle de elementos extraños..." {...field} value={field.value || ''} />
                                 </FormControl>
                                 <FormMessage />
                               </FormItem>
@@ -2984,7 +3071,7 @@ export function AddLimpiezaRecordModal({
                                       list="equipos-catalog"
                                       placeholder={isLoadingEquipos ? 'Cargando equipos...' : ''}
                                       name={field.name}
-                                      value={field.value}
+                                      value={field.value || ''}
                                       onBlur={field.onBlur}
                                       ref={field.ref}
                                       onChange={(e) => {
@@ -3017,7 +3104,7 @@ export function AddLimpiezaRecordModal({
                                           form.setValue(`tomas.${tomaActivaIndex}.parteAtpOtro`, '');
                                         }
                                       }}
-                                      value={field.value}
+                                      value={field.value || ''}
                                     >
                                       <FormControl>
                                         <SelectTrigger>
@@ -3028,7 +3115,7 @@ export function AddLimpiezaRecordModal({
                                         {getPartesDeEquipoPorNombre(
                                           form.getValues(`tomas.${tomaActivaIndex}.equipoAtp` as const) as any
                                         ).map((parte) => (
-                                          <SelectItem key={parte.id} value={parte.nombre}>
+                                          <SelectItem key={`parte-atp-${parte.id}-${parte.nombre}`} value={parte.nombre}>
                                             {parte.nombre}
                                           </SelectItem>
                                         ))}
@@ -3049,7 +3136,7 @@ export function AddLimpiezaRecordModal({
                                   <FormItem>
                                     <FormLabel>Especificar Parte (ATP)</FormLabel>
                                     <FormControl>
-                                      <Input disabled={effectiveViewOnlyMode} placeholder="Escriba la parte..." {...field} />
+                                      <Input disabled={effectiveViewOnlyMode} placeholder="Escriba la parte..." {...field} value={field.value || ''} />
                                     </FormControl>
                                     <FormMessage />
                                   </FormItem>
@@ -3057,18 +3144,18 @@ export function AddLimpiezaRecordModal({
                               />
                             )}
                             <FormField control={form.control} name={`tomas.${tomaActivaIndex}.resultadosAtpRi`} render={({ field }) => (
-                              <FormItem><FormLabel>Resultado URL (ATP) </FormLabel><FormControl><Input disabled={effectiveViewOnlyMode} type="url" {...field} /></FormControl><FormMessage /></FormItem>
+                              <FormItem><FormLabel>Resultado URL (ATP) </FormLabel><FormControl><Input disabled={effectiveViewOnlyMode} type="url" {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>
                             )} />
                             <FormField control={form.control} name={`tomas.${tomaActivaIndex}.resultadosAtpAc`} render={({ field }) => (
-                              <FormItem><FormLabel>Resultado (ATP) </FormLabel><FormControl><Input disabled={effectiveViewOnlyMode} {...field} /></FormControl><FormMessage /></FormItem>
+                              <FormItem><FormLabel>Resultado (ATP) </FormLabel><FormControl><Input disabled={effectiveViewOnlyMode} {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>
                             )} />
-                            
+
                           </div>
                           <FormField control={form.control} name={`tomas.${tomaActivaIndex}.loteHisopoAtp`} render={({ field }) => (
-                            <FormItem><FormLabel>Lote del hisopo (ATP)</FormLabel><FormControl><Input disabled={effectiveViewOnlyMode} {...field} /></FormControl><FormMessage /></FormItem>
+                            <FormItem><FormLabel>Lote del hisopo (ATP)</FormLabel><FormControl><Input disabled={effectiveViewOnlyMode} {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>
                           )} />
                           <FormField control={form.control} name={`tomas.${tomaActivaIndex}.observacionAtp`} render={({ field }) => (
-                            <FormItem><FormLabel>Observaciones (ATP)</FormLabel><FormControl><Textarea disabled={effectiveViewOnlyMode} {...field} /></FormControl><FormMessage /></FormItem>
+                            <FormItem><FormLabel>Observaciones (ATP)</FormLabel><FormControl><Textarea disabled={effectiveViewOnlyMode} {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>
                           )} />
                         </div>
 
@@ -3087,7 +3174,7 @@ export function AddLimpiezaRecordModal({
                                       list="equipos-catalog"
                                       placeholder={isLoadingEquipos ? 'Cargando equipos...' : ''}
                                       name={field.name}
-                                      value={field.value}
+                                      value={field.value || ''}
                                       onBlur={field.onBlur}
                                       ref={field.ref}
                                       onChange={(e) => {
@@ -3120,7 +3207,7 @@ export function AddLimpiezaRecordModal({
                                           form.setValue(`tomas.${tomaActivaIndex}.parteAlergenosOtro`, '');
                                         }
                                       }}
-                                      value={field.value}
+                                      value={field.value || ''}
                                     >
                                       <FormControl>
                                         <SelectTrigger>
@@ -3131,7 +3218,7 @@ export function AddLimpiezaRecordModal({
                                         {getPartesDeEquipoPorNombre(
                                           form.getValues(`tomas.${tomaActivaIndex}.equipoAlergenos` as const) as any
                                         ).map((parte) => (
-                                          <SelectItem key={parte.id} value={parte.nombre}>
+                                          <SelectItem key={`parte-alergenos-${parte.id}-${parte.nombre}`} value={parte.nombre}>
                                             {parte.nombre}
                                           </SelectItem>
                                         ))}
@@ -3152,7 +3239,7 @@ export function AddLimpiezaRecordModal({
                                   <FormItem>
                                     <FormLabel>Especificar Parte (Alérgenos)</FormLabel>
                                     <FormControl>
-                                      <Input disabled={effectiveViewOnlyMode} placeholder="Escriba la parte..." {...field} />
+                                      <Input disabled={effectiveViewOnlyMode} placeholder="Escriba la parte..." {...field} value={field.value || ''} />
                                     </FormControl>
                                     <FormMessage />
                                   </FormItem>
@@ -3169,7 +3256,7 @@ export function AddLimpiezaRecordModal({
                                 <FormItem className="lg:col-span-2">
                                   <FormLabel>Motivo</FormLabel>
                                   <FormControl>
-                                    <Textarea disabled={effectiveViewOnlyMode} rows={3} {...field} />
+                                    <Textarea disabled={effectiveViewOnlyMode} rows={3} {...field} value={field.value || ''} />
                                   </FormControl>
                                   <FormMessage />
                                 </FormItem>
@@ -3182,7 +3269,7 @@ export function AddLimpiezaRecordModal({
                               render={({ field }) => (
                                 <FormItem>
                                   <FormLabel>Resultado</FormLabel>
-                                  <Select disabled={effectiveViewOnlyMode} onValueChange={field.onChange} value={field.value}>
+                                  <Select disabled={effectiveViewOnlyMode} onValueChange={field.onChange} value={field.value || ''}>
                                     <FormControl>
                                       <SelectTrigger>
                                         <SelectValue placeholder="Seleccione..." />
@@ -3234,7 +3321,7 @@ export function AddLimpiezaRecordModal({
                           <FormField control={form.control} name={`tomas.${tomaActivaIndex}.verificacionVisual`} render={({ field }) => (
                             <FormItem>
                               <FormLabel>Verificación Visual</FormLabel>
-                              <Select disabled={effectiveViewOnlyMode} onValueChange={field.onChange} value={field.value}>
+                              <Select disabled={effectiveViewOnlyMode} onValueChange={field.onChange} value={field.value || ''}>
                                 <FormControl>
                                   <SelectTrigger>
                                     <SelectValue placeholder="Seleccione verificación visual" />
@@ -3251,7 +3338,7 @@ export function AddLimpiezaRecordModal({
                           )} />
                           {form.watch(`tomas.${tomaActivaIndex}.verificacionVisual`) === '0' && (
                             <FormField control={form.control} name={`tomas.${tomaActivaIndex}.observacionVisual`} render={({ field }) => (
-                              <FormItem><FormLabel>Observación de Verificación Visual</FormLabel><FormControl><Textarea disabled={effectiveViewOnlyMode} {...field} /></FormControl><FormMessage /></FormItem>
+                              <FormItem><FormLabel>Observación de Verificación Visual</FormLabel><FormControl><Textarea disabled={effectiveViewOnlyMode} {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>
                             )} />
                           )}
                         </div>

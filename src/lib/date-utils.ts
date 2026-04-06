@@ -10,7 +10,7 @@ export const parseYmdToLocalDate = (fecha: string): Date => {
 };
 
 export const isYmdDateString = (value: string): boolean => {
-  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').slice(0, 10));
+  return /^\d{4}-\d{2}-\d{2}/.test(String(value || ''));
 };
 
 /**
@@ -90,6 +90,7 @@ export const formatearFechaLarga = (fecha: string | Date): string => {
  */
 export const getNombreMes = (mes: number): string => {
   const fecha = new Date();
+  fecha.setDate(1); // Evita el desbordamiento si hoy es día 31 y el mes destino es más corto
   fecha.setMonth(mes - 1); // Los meses en JavaScript son 0-11
   return format(fecha, 'MMMM', { locale: es });
 };

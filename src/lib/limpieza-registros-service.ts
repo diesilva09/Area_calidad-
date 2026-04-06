@@ -61,11 +61,20 @@ export type LimpiezaRegistroWithLiberaciones = LimpiezaRegistro & {
   liberaciones: LimpiezaLiberacion[];
 };
 
+// Type for API response that includes liberaciones
+export type LimpiezaRegistroAPI = LimpiezaRegistroWithLiberaciones;
+
 class LimpiezaRegistrosService {
   private baseUrl = '/api/limpieza-registros';
 
-  async getAll(): Promise<LimpiezaRegistro[]> {
+  async getAll(): Promise<LimpiezaRegistroAPI[]> {
     const res = await fetch(this.baseUrl);
+    
+    // Si el usuario no está autenticado, retornar array vacío
+    if (res.status === 401) {
+      return [];
+    }
+    
     if (!res.ok) throw new Error('Error al obtener registros de limpieza');
     return await res.json();
   }

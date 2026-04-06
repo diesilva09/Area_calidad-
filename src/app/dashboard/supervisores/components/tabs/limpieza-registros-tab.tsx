@@ -26,14 +26,21 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { AddLimpiezaRecordModal } from '@/components/supervisores/add-limpieza-record-modal';
+import { EditLimpiezaRegistroModal } from '@/components/supervisores/edit-limpieza-registro-modal';
 import { ViewLimpiezaRegistroModal } from '@/components/supervisores/view-limpieza-registro-modal';
 import { ViewCronogramaTaskModal } from '@/components/supervisores/view-cronograma-task-modal';
-import { limpiezaRegistrosService, type LimpiezaRegistro } from '@/lib/limpieza-registros-service';
+import { limpiezaRegistrosService, type LimpiezaRegistro, type LimpiezaRegistroAPI } from '@/lib/limpieza-registros-service';
 import { AddLimpiezaTaskModal } from '@/components/supervisores/add-limpieza-task-modal';
 import { limpiezaTasksService, type LimpiezaTask } from '@/lib/limpieza-tasks-service';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { CalendarIcon } from 'lucide-react';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
 interface LimpiezaRegistrosTabProps {
-  registros: LimpiezaRegistro[];
+  registros: LimpiezaRegistroAPI[];
   isJefe: boolean;
   onRefresh: () => void;
 }
@@ -52,8 +59,11 @@ export function LimpiezaRegistrosTab({
   const [viewingRegistroId, setViewingRegistroId] = useState<string | null>(null);
   const [editingCronogramaTask, setEditingCronogramaTask] = useState<LimpiezaTask | null>(null);
   const [viewingCronogramaTask, setViewingCronogramaTask] = useState<LimpiezaTask | null>(null);
+  const [editingRegistroPrincipal, setEditingRegistroPrincipal] = useState<LimpiezaRegistro | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'completed' | 'cronograma'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [fechaInicio, setFechaInicio] = useState<Date | undefined>(undefined);
+  const [fechaFin, setFechaFin] = useState<Date | undefined>(undefined);
 
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -68,6 +78,42 @@ export function LimpiezaRegistrosTab({
       onRefresh();
     });
   }, [onRefresh]);
+
+  // Funciones para filtros rápidos de fecha
+  const handleFiltroHoy = () => {
+    const hoy = new Date();
+    setFechaInicio(hoy);
+    setFechaFin(hoy);
+  };
+
+  const handleFiltroUltimos7Dias = () => {
+    const fin = new Date();
+    const inicio = new Date();
+    inicio.setDate(inicio.getDate() - 7);
+    setFechaInicio(inicio);
+    setFechaFin(fin);
+  };
+
+  const handleFiltroEsteMes = () => {
+    const ahora = new Date();
+    const inicio = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+    const fin = new Date(ahora.getFullYear(), ahora.getMonth() + 1, 0);
+    setFechaInicio(inicio);
+    setFechaFin(fin);
+  };
+
+  const handleFiltroMesAnterior = () => {
+    const ahora = new Date();
+    const inicio = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1);
+    const fin = new Date(ahora.getFullYear(), ahora.getMonth(), 0);
+    setFechaInicio(inicio);
+    setFechaFin(fin);
+  };
+
+  const handleLimpiarFechas = () => {
+    setFechaInicio(undefined);
+    setFechaFin(undefined);
+  };
 
   const filteredRegistros = useMemo(() => {
     const q = String(searchTerm || '').trim().toLowerCase();
@@ -84,13 +130,45 @@ export function LimpiezaRegistrosTab({
         (statusFilter === 'cronograma' && isCronogramaRegistro);
 
       if (!statusMatch) return false;
+
+      // Filtro por rango de fechas
+      if (fechaInicio || fechaFin) {
+        const registroFecha = new Date(registro.fecha);
+        registroFecha.setHours(0, 0, 0, 0);
+
+        if (fechaInicio) {
+          const inicio = new Date(fechaInicio);
+          inicio.setHours(0, 0, 0, 0);
+          if (registroFecha < inicio) return false;
+        }
+
+        if (fechaFin) {
+          const fin = new Date(fechaFin);
+          fin.setHours(23, 59, 59, 999);
+          if (registroFecha > fin) return false;
+        }
+      }
+
       if (!q) return true;
 
+      // Buscar en lote y producto
       const lote = String(registro.lote || '').toLowerCase();
       const producto = String(registro.producto || '').toLowerCase();
-      return lote.includes(q) || producto.includes(q);
+
+      // Buscar en liberaciones (responsable y verificado por)
+      const liberaciones = registro.liberaciones || [];
+      const responsableMatch = liberaciones.some((lib) => {
+        const responsableProduccion = String(lib.responsable_produccion || '').toLowerCase();
+        const responsableMantenimiento = String(lib.responsable_mantenimiento || '').toLowerCase();
+        const verificadoPor = String(lib.verificado_por || '').toLowerCase();
+        return responsableProduccion.includes(q) ||
+               responsableMantenimiento.includes(q) ||
+               verificadoPor.includes(q);
+      });
+
+      return lote.includes(q) || producto.includes(q) || responsableMatch;
     });
-  }, [registros, searchTerm, statusFilter]);
+  }, [registros, searchTerm, statusFilter, fechaInicio, fechaFin]);
 
   const getOriginBadge = (registro: LimpiezaRegistro) => {
     const isCronogramaRegistro =
@@ -126,11 +204,8 @@ export function LimpiezaRegistrosTab({
         });
       return;
     }
-    // Usar el mismo modal que para crear, pasando el registroId para editar
-    setEditingRegistro(null);
-    setEditingRegistroIdForLiberacion(registro.id);
-    setEditingLiberacionId(null);
-    setIsModalOpen(true);
+    // Editar registro principal (fecha, mes_corte, detalles)
+    setEditingRegistroPrincipal(registro);
   };
 
   const handleViewRegistro = (registro: LimpiezaRegistro) => {
@@ -302,35 +377,169 @@ export function LimpiezaRegistrosTab({
       </div>
 
       {/* ── Filters ───────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <div className="w-full sm:w-48 shrink-0">
-          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
-            <SelectTrigger className="h-9 text-sm">
-              <SelectValue placeholder="Filtrar por estado" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              <SelectItem value="pending">Pendientes</SelectItem>
-              <SelectItem value="completed">Completados</SelectItem>
-              <SelectItem value="cronograma">Cronograma</SelectItem>
-            </SelectContent>
-          </Select>
+      <div className="space-y-3">
+        {/* Fila 1: Estado y Búsqueda */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="w-full sm:w-48 shrink-0">
+            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
+              <SelectTrigger className="h-9 text-sm">
+                <SelectValue placeholder="Filtrar por estado" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="pending">Pendientes</SelectItem>
+                <SelectItem value="completed">Completados</SelectItem>
+                <SelectItem value="cronograma">Cronograma</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex-1">
+            <Input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por lote, producto, responsable o verificado por…"
+              className="h-9 text-sm"
+            />
+          </div>
         </div>
 
-        <div className="flex-1">
-          <Input
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por lote o producto…"
-            className="h-9 text-sm"
-          />
+        {/* Fila 2: Filtros de fecha */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-700 pt-2">
+            <CalendarIcon className="h-4 w-4" />
+            <span>Periodo:</span>
+          </div>
+
+          {/* Fecha inicio */}
+          <div className="relative w-full sm:w-auto">
+            <Popover modal>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-full sm:w-[200px] justify-start text-left font-normal h-9",
+                    !fechaInicio && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {fechaInicio ? format(fechaInicio, "dd/MM/yyyy", { locale: es }) : "Desde"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-fit p-0"
+                align="start"
+                sideOffset={8}
+                avoidCollisions
+                collisionPadding={16}
+              >
+                <Calendar
+                  mode="single"
+                  selected={fechaInicio}
+                  onSelect={setFechaInicio}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          {/* Separador visual */}
+          <div className="flex items-center justify-center w-8 h-9 text-gray-300">
+            <span className="text-lg font-light">→</span>
+          </div>
+
+          {/* Fecha fin */}
+          <div className="relative w-full sm:w-auto">
+            <Popover modal>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-full sm:w-[200px] justify-start text-left font-normal h-9",
+                    !fechaFin && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {fechaFin ? format(fechaFin, "dd/MM/yyyy", { locale: es }) : "Hasta"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-fit p-0"
+                align="start"
+                sideOffset={8}
+                avoidCollisions
+                collisionPadding={16}
+              >
+                <Calendar
+                  mode="single"
+                  selected={fechaFin}
+                  onSelect={setFechaFin}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          {/* Botón limpiar fechas */}
+          {(fechaInicio || fechaFin) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLimpiarFechas}
+              className="h-9 px-3 text-red-600 hover:text-red-700 hover:bg-red-50"
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1" />
+              Limpiar
+            </Button>
+          )}
+        </div>
+
+        {/* Filtros rápidos */}
+        <div className="flex flex-wrap gap-2 pt-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleFiltroHoy}
+            className="h-7 text-xs"
+          >
+            Hoy
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleFiltroUltimos7Dias}
+            className="h-7 text-xs"
+          >
+            Últimos 7 días
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleFiltroEsteMes}
+            className="h-7 text-xs"
+          >
+            Este mes
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleFiltroMesAnterior}
+            className="h-7 text-xs"
+          >
+            Mes anterior
+          </Button>
         </div>
       </div>
 
       {/* ── Results count ─────────────────────────────────────────── */}
-      {(searchTerm || statusFilter !== 'all') && (
+      {(searchTerm || statusFilter !== 'all' || fechaInicio || fechaFin) && (
         <p className="text-xs text-gray-500 -mt-1">
           {filteredRegistros.length} {filteredRegistros.length === 1 ? 'resultado' : 'resultados'} encontrados
+          {(fechaInicio || fechaFin) && (
+            <span className="ml-1 font-medium text-gray-600">
+              en el rango {fechaInicio ? format(fechaInicio, "dd/MM/yyyy", { locale: es }) : '...'} - {fechaFin ? format(fechaFin, "dd/MM/yyyy", { locale: es }) : '...'}
+            </span>
+          )}
         </p>
       )}
 
@@ -500,6 +709,18 @@ export function LimpiezaRegistrosTab({
           liberacionIdToEdit={editingLiberacionId}
           viewOnlyMode={isViewOnlyModal}
           onSuccessfulSubmit={refreshNonBlocking}
+        />
+      )}
+
+      {editingRegistroPrincipal && (
+        <EditLimpiezaRegistroModal
+          isOpen={true}
+          onOpenChange={(open) => { if (!open) setEditingRegistroPrincipal(null); }}
+          registro={editingRegistroPrincipal}
+          onSaved={() => {
+            refreshNonBlocking();
+            setEditingRegistroPrincipal(null);
+          }}
         />
       )}
 

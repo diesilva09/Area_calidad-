@@ -8,6 +8,8 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import { useToast } from '@/hooks/use-toast';
+import { getUserDisplayName } from '@/lib/user-display-utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -132,7 +134,7 @@ export function ViewLimpiezaTaskModal({
                     <User className="h-5 w-5 text-blue-600 mt-0.5" />
                     <div>
                       <h4 className="font-medium">Creado por</h4>
-                      <p className="text-gray-600">{task.created_by}</p>
+                      <p className="text-gray-600">{getUserDisplayName(task.created_by)}</p>
                     </div>
                   </div>
                 </CardContent>

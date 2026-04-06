@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Plus, Calendar, Package, Search, BarChart3, FileDown } from 'lucide-react';
+import { ArrowLeft, Plus, Calendar, Package, Search, BarChart3, FileDown, User, Clock } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,7 @@ import { UniversalSearch } from '@/components/supervisores/universal-search';
 import { AreasEquiposService } from '@/lib/areas-equipos-config';
 import { useAuth } from '@/contexts/auth-context';
 import { useScrollRestoration, scrollToSelectorWithRetry } from '@/hooks/useScrollRestoration';
+import { getUserDisplayName } from '@/lib/user-display-utils';
 
 const AddProductionRecordModal = dynamic(
   () => import('@/components/supervisores/add-production-record-modal').then(m => m.AddProductionRecordModal),
@@ -95,6 +96,7 @@ interface ProductionRecord {
   status?: 'pending' | 'completed';
   created_at: string;
   created_by?: string;
+  updated_by?: string;
 }
 
 export default function ProductProductionRecordsPage({ params }: { params: Promise<{ id: string }> }) {
@@ -102,7 +104,6 @@ export default function ProductProductionRecordsPage({ params }: { params: Promi
   const resolvedParams = use(params);
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const { id } = useParams();
   const searchParams = useSearchParams();
   const { toast } = useToast();
   const { saveScrollPosition } = useScrollRestoration();
@@ -511,7 +512,7 @@ export default function ProductProductionRecordsPage({ params }: { params: Promi
             href={`/dashboard/supervisores?tab=produccion&highlight=${encodeURIComponent(`${category.id}_${product.id}`)}`}
             onClick={(e) => {
               if (category && product) {
-                const productIdStr = Array.isArray(id) ? id[0] : id;
+                const productIdStr = Array.isArray(resolvedParams.id) ? resolvedParams.id[0] : resolvedParams.id;
                 const uniqueId = `${category.id}_${product.id}`;
                 saveScrollPosition(uniqueId);
               }
@@ -745,6 +746,26 @@ export default function ProductProductionRecordsPage({ params }: { params: Promi
                         </>
                       )}
                     </div>
+
+                    {/* Información de Auditoría */}
+                    {(record.created_by || record.updated_by) && (
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <div className="text-xs text-gray-500 space-y-1">
+                          {record.created_by && (
+                            <div className="flex items-center gap-1">
+                              <User className="h-3 w-3" />
+                              <span>Creado por: {getUserDisplayName(record.created_by)}</span>
+                            </div>
+                          )}
+                          {record.updated_by && (
+                            <div className="flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              <span>Editado última vez por: {getUserDisplayName(record.updated_by)}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>

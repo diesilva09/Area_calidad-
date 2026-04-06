@@ -1,21 +1,21 @@
 import { startTransition, useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  getProductCategories, 
-  categoryService, 
-  productService, 
-  type Product, 
-  type ProductCategory 
+import {
+  getProductCategories,
+  categoryService,
+  productService,
+  type Product,
+  type ProductCategory
 } from '@/lib/supervisores-data';
 import { embalajeRecordsService, type EmbalajeRecord } from '@/lib/embalaje-records-service';
 import { limpiezaTasksService, type LimpiezaTask } from '@/lib/limpieza-tasks-service';
-import { limpiezaRegistrosService, type LimpiezaRegistro } from '@/lib/limpieza-registros-service';
+import { limpiezaRegistrosService, type LimpiezaRegistro, type LimpiezaRegistroAPI } from '@/lib/limpieza-registros-service';
 
 export interface SupervisorData {
   categories: ProductCategory[];
   embalajeRecords: EmbalajeRecord[];
   limpiezaTasks: LimpiezaTask[];
-  limpiezaRegistros: LimpiezaRegistro[];
+  limpiezaRegistros: LimpiezaRegistroAPI[];
   equiposNombres: Record<string, string>;
 }
 

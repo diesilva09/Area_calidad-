@@ -50,7 +50,19 @@ export default function NotificationBell() {
     setLoading(true);
     try {
       const res = await fetch('/api/notifications?limit=30', { credentials: 'include' });
-      if (!res.ok) throw new Error(await res.text());
+      
+      // Si retorna 401, el usuario no está autenticado - es normal, solo ignorar silenciosamente
+      if (res.status === 401) {
+        setItems([]);
+        setUnreadCount(0);
+        return;
+      }
+      
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => 'Error desconocido');
+        throw new Error(errorText);
+      }
+      
       const data = (await res.json()) as NotificationsResponse;
       setItems(Array.isArray(data?.items) ? data.items : []);
       setUnreadCount(Number(data?.unread_count ?? 0));
@@ -71,7 +83,17 @@ export default function NotificationBell() {
         credentials: 'include',
         body: JSON.stringify({ notificationId }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      
+      if (res.status === 401) {
+        // Usuario no autenticado, ignorar silenciosamente
+        return;
+      }
+      
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => 'Error desconocido');
+        throw new Error(errorText);
+      }
+      
       await load();
     } catch (e) {
       console.error('Error marcando notificación como leída:', e);
@@ -115,7 +137,17 @@ export default function NotificationBell() {
       }
 
       const keyRes = await fetch('/api/push/vapid-public-key', { credentials: 'include' });
-      if (!keyRes.ok) throw new Error(await keyRes.text());
+      
+      if (keyRes.status === 401) {
+        setPushStatus('disabled');
+        return;
+      }
+      
+      if (!keyRes.ok) {
+        const errorText = await keyRes.text().catch(() => 'Error desconocido');
+        throw new Error(errorText);
+      }
+      
       const { publicKey } = await keyRes.json();
       if (!publicKey) throw new Error('VAPID public key no configurada');
 
@@ -138,7 +170,16 @@ export default function NotificationBell() {
         body: JSON.stringify(payload),
       });
 
-      if (!saveRes.ok) throw new Error(await saveRes.text());
+      if (saveRes.status === 401) {
+        setPushStatus('disabled');
+        return;
+      }
+
+      if (!saveRes.ok) {
+        const errorText = await saveRes.text().catch(() => 'Error desconocido');
+        throw new Error(errorText);
+      }
+      
       setPushStatus('enabled');
     } catch (e) {
       console.error('Error habilitando Web Push:', e);
@@ -151,7 +192,16 @@ export default function NotificationBell() {
   const sendTestPush = async () => {
     try {
       const res = await fetch('/api/push/test', { method: 'POST', credentials: 'include' });
-      if (!res.ok) throw new Error(await res.text());
+      
+      if (res.status === 401) {
+        // Usuario no autenticado, ignorar silenciosamente
+        return;
+      }
+      
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => 'Error desconocido');
+        throw new Error(errorText);
+      }
     } catch (e) {
       console.error('Error enviando push de prueba:', e);
     }

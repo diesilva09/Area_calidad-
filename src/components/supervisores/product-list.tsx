@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
-import { Pencil, Trash2, Eye, Package, PackageOpen } from 'lucide-react';
+import { Pencil, Trash2, Eye, Package, PackageOpen, User, Clock } from 'lucide-react';
 import type { Product, ProductCategory } from '@/lib/supervisores-data';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, use } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowLeft, Plus, Calendar, Package, Search, Filter, FileDown } from 'lucide-react';
+import { ArrowLeft, Plus, Calendar, Package, Search, Filter, FileDown, User, Clock } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
@@ -24,12 +24,14 @@ import { EmbalajeAnalysis } from '@/components/supervisores/embalaje-analysis';
 import { BarChart3 } from 'lucide-react';
 import { scrollToSelectorWithRetry } from '@/hooks/useScrollRestoration';
 import { useToast } from '@/hooks/use-toast';
+import { getUserDisplayName } from '@/lib/user-display-utils';
 
-export default function ProductEmbalajePage() {
-  const params = useParams();
+export default function ProductEmbalajeRecordsPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+  const resolvedParams = use(params);
+  const productId = resolvedParams.id;
   const [product, setProduct] = useState<Product | null>(null);
   const [category, setCategory] = useState<ProductCategory | null>(null);
   const [records, setRecords] = useState<EmbalajeRecord[]>([]);
@@ -47,7 +49,6 @@ export default function ProductEmbalajePage() {
     const loadData = async () => {
       try {
         const categories = await getProductCategories();
-        const productId = params.id as string;
         
         let foundProduct: Product | null = null;
         let foundCategory: ProductCategory | null = null;
@@ -113,7 +114,7 @@ export default function ProductEmbalajePage() {
     };
 
     loadData();
-  }, [params.id]);
+  }, [productId]);
 
   // Resaltar y hacer scroll a un registro cuando se regresa desde Detalles
   useEffect(() => {
@@ -309,7 +310,7 @@ export default function ProductEmbalajePage() {
           <CardHeader>
             <CardTitle className="text-red-600">Producto no encontrado</CardTitle>
             <CardDescription>
-              El producto con ID <strong>"{params.id}"</strong> no existe o ha sido eliminado.
+              El producto con ID <strong>"{productId}"</strong> no existe o ha sido eliminado.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -408,7 +409,7 @@ export default function ProductEmbalajePage() {
           {filteredRecords.map((record) => (
             <Link
               key={record.id}
-              href={`/dashboard/supervisores/embalaje-record/${record.id}?returnTo=${encodeURIComponent(`/dashboard/supervisores/product/${params.id}/embalaje?highlightRecord=${record.id}`)}`}
+              href={`/dashboard/supervisores/embalaje-record/${record.id}?returnTo=${encodeURIComponent(`/dashboard/supervisores/product/${productId}/embalaje?highlightRecord=${record.id}`)}`}
               className="block transition-transform hover:scale-[1.02]"
             >
               <Card
@@ -471,16 +472,24 @@ export default function ProductEmbalajePage() {
                       </div>
                     </div>
                   )}
-                  <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-200">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-7 px-2 text-gray-600 hover:text-gray-900"
-                      onClick={(e) => exportRecord(e, record)}
-                    >
-                      <FileDown className="h-3 w-3 mr-1" />Exportar
-                    </Button>
-                  </div>
+                  {(record.created_by || record.updated_by) && (
+                    <div className="mt-auto pt-2 border-t border-gray-200">
+                      <div className="text-xs text-gray-500 space-y-1">
+                        {record.created_by && (
+                          <div className="flex items-center gap-1">
+                            <User className="h-3 w-3" />
+                            <span>Creado por: {getUserDisplayName(record.created_by)}</span>
+                          </div>
+                        )}
+                        {record.updated_by && (
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            <span>Editado última vez por: {record.updated_by === '(Generado automáticamente)' ? '(Generado automáticamente)' : getUserDisplayName(record.updated_by)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 mt-1 text-xs text-gray-500">
                     <div className="flex items-center gap-1 min-w-0">
                       <span className="font-medium flex-shrink-0">Resp:</span>
@@ -490,10 +499,21 @@ export default function ProductEmbalajePage() {
                       <span className="truncate">{new Date(record.created_at).toLocaleDateString('es-ES')}</span>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
+                  <div className="flex justify-end mt-2">
+                    <Button
+                      onClick={(e) => exportRecord(e, record)}
+                      variant="outline"
+                      size="sm"
+                      className="text-xs"
+                    >
+                      <FileDown className="h-3 w-3 mr-1" />
+                      Exportar
+                    </Button>
+                  </div>
+              </CardContent>
+            </Card>
+          </Link>
+        ))}
         </div>
       ) : (
         <Card className="text-center py-12">

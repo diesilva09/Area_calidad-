@@ -464,7 +464,7 @@ export default function MateriaPrimaPage() {
               const isNA = (Array.isArray(record.na) ? record.na : Array(14).fill(false))[index];
               
               return (
-                <div key={index} className={`w-10 h-10 rounded-lg border-2 flex items-center justify-center text-sm font-bold transition-all transform hover:scale-105 ${
+                <div key={`materia-prima-${(record as any).date || 'unknown'}-${index}`} className={`w-10 h-10 rounded-lg border-2 flex items-center justify-center text-sm font-bold transition-all transform hover:scale-105 ${
                   isC 
                     ? 'bg-gradient-to-br from-green-500 to-green-600 border-green-700 text-white shadow-md' 
                     : isNC

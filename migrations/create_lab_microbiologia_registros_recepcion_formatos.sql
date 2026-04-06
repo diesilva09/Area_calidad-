@@ -24,3 +24,4 @@ CREATE INDEX IF NOT EXISTS idx_rrformatos_codigo_version
 
 CREATE INDEX IF NOT EXISTS idx_rrformatos_created_at
     ON lab_microbiologia.registros_recepcion_formatos(created_at DESC);
+

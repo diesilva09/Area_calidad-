@@ -7,6 +7,15 @@ import {
 } from '@/lib/server-db';
 import pool from '@/lib/db';
 import { sendPushToAll } from '@/lib/push-service';
+import AuditService from '@/lib/audit-service';
+import { authService } from '@/lib/auth-service';
+
+// Función para obtener usuario autenticado
+async function getAuthedUser(request: NextRequest) {
+  const token = request.cookies.get('auth-token')?.value;
+  if (!token) return null;
+  return authService.validateSession(token);
+}
 
 // GET - Obtener todos los registros de embalaje
 export async function GET(request: NextRequest) {
@@ -53,6 +62,10 @@ export async function POST(request: NextRequest) {
     console.log('📝 Datos recibidos en API:', body);
     console.log('🔍 DEBUG: Tipo de body.fecha:', typeof body.fecha, body.fecha);
 
+    // Obtener usuario autenticado
+    const user = await getAuthedUser(request);
+    const userName = user?.name || user?.email || 'Usuario desconocido';
+
     const status = (body?.status ?? 'completed') as 'pending' | 'completed';
     
     // Validar campos requeridos
@@ -87,8 +100,8 @@ export async function POST(request: NextRequest) {
     const recordData = {
       ...body,
       fecha: new Date(body.fecha), // Convertir string a Date
-      created_by: 'system',
-      updated_by: 'system',
+      created_by: userName,
+      updated_by: body.updated_by || null,
       status,
     };
     
@@ -96,6 +109,17 @@ export async function POST(request: NextRequest) {
     console.log('🔍 DEBUG: Tipo de recordData.fecha:', typeof recordData.fecha);
 
     const newRecord = await createEmbalajeRecord(recordData);
+    
+    // Registrar auditoría detallada de campos creados
+    await AuditService.logChanges(
+      'embalaje_records',
+      newRecord.id,
+      {},
+      recordData,
+      recordData.created_by || 'Usuario desconocido',
+      body.userEmail,
+      'CREATE'
+    );
 
     console.log('✅ Registro de embalaje creado exitosamente en API:', newRecord.id);
     

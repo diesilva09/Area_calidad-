@@ -53,6 +53,12 @@ export const embalajeRecordsAPI = {
   // Obtener todos los registros de embalaje
   async getAll(): Promise<EmbalajeRecord[]> {
     const response = await fetch('/api/embalaje-records');
+    
+    // Si el usuario no está autenticado, retornar array vacío
+    if (response.status === 401) {
+      return [];
+    }
+    
     if (!response.ok) throw new Error('Error al obtener registros de embalaje');
     return response.json();
   },

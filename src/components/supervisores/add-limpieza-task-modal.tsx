@@ -46,9 +46,9 @@ const toYmd = (raw: unknown): string => {
 const limpiezaTaskSchema = z.object({
   area: z.string().min(1, 'Campo requerido'),
   tipo_muestra: z.string().min(1, 'Campo requerido'),
-  detalles: z.string().nullish(), // Changed from optional() to nullish()
+  detalles: z.string().nullish(),
   fecha: z.string().min(1, 'Campo requerido'),
-  mes_corte: z.string().min(1, 'Campo requerido'),
+  mes_corte: z.string().nullish(),
 });
 
 type RecurrenceFormState = {
@@ -94,22 +94,25 @@ export function AddLimpiezaTaskModal({
   const form = useForm<z.infer<typeof limpiezaTaskSchema>>({
     resolver: zodResolver(limpiezaTaskSchema),
     defaultValues: {
-      area: initialTask?.area || '',
-      tipo_muestra: initialTask?.tipo_muestra || '',
-      detalles: initialTask?.detalles || '',
-      fecha: toYmd(initialTask?.fecha) || getFechaActual(),
+      area: '',
+      tipo_muestra: '',
+      detalles: '',
+      fecha: getFechaActual(),
       mes_corte: getMesActual(),
     },
   });
 
   React.useEffect(() => {
-    if (initialTask && isOpen) {
+    if (isOpen && initialTask) {
+      console.log('📋 Cargando tarea para edición:', initialTask);
+      console.log('  mes_corte:', initialTask.mes_corte);
+
       form.reset({
-        area: initialTask.area,
-        tipo_muestra: initialTask.tipo_muestra,
-        detalles: initialTask.detalles || '',
+        area: initialTask.area || '',
+        tipo_muestra: initialTask.tipo_muestra || '',
+        detalles: initialTask.detalles ?? '',
         fecha: toYmd(initialTask.fecha) || getFechaActual(),
-        mes_corte: (initialTask.mes_corte ?? getMesActual()) as any,
+        mes_corte: initialTask.mes_corte || getMesActual(),
       });
 
       setRecurrence({
@@ -121,7 +124,7 @@ export function AddLimpiezaTaskModal({
         end_date: (toYmd(initialTask?.recurrence_end_date) || '') as any,
         timezone: (initialTask?.recurrence_timezone ?? 'America/Bogota') as any,
       });
-      
+
       // Verificar si el área inicial es "Otro"
       const areasPredefinidas = [
         'PREPARACIÓN DE SALSAS',
@@ -151,7 +154,7 @@ export function AddLimpiezaTaskModal({
         'FLAUTA Y BAJANTE',
         'SUPERFICIES ATP',
       ];
-      
+
       if (!areasPredefinidas.includes(initialTask.area)) {
         setIsOtroArea(true);
         setOtroAreaText(initialTask.area);
@@ -163,32 +166,36 @@ export function AddLimpiezaTaskModal({
         setOtroTipoMuestraText(initialTask.tipo_muestra);
       }
     }
-  }, [initialTask, isOpen, form]);
+  }, [initialTask, isOpen]);
 
   React.useEffect(() => {
-    if (isOpen) {
-      if (!initialTask) {
-        form.reset({
-          area: '',
-          tipo_muestra: '',
-          detalles: '',
-          fecha: getFechaActual(),
-          mes_corte: getMesActual(),
-        });
+    // Solo resetear para nuevo registro cuando no hay tarea inicial
+    if (isOpen && !initialTask) {
+      form.reset({
+        area: '',
+        tipo_muestra: '',
+        detalles: '',
+        fecha: getFechaActual(),
+        mes_corte: getMesActual(),
+      });
 
-        setRecurrence((prev) => ({
-          ...prev,
-          enabled: false,
-          frequency_type: 'monthly',
-          frequency_unit: 'day',
-          frequency_interval: 1,
-          start_date: getFechaActual(),
-          end_date: '',
-          timezone: 'America/Bogota',
-        }));
-      }
+      setRecurrence((prev) => ({
+        ...prev,
+        enabled: false,
+        frequency_type: 'monthly',
+        frequency_unit: 'day',
+        frequency_interval: 1,
+        start_date: getFechaActual(),
+        end_date: '',
+        timezone: 'America/Bogota',
+      }));
+
+      setIsOtroArea(false);
+      setOtroAreaText('');
+      setIsOtroTipoMuestra(false);
+      setOtroTipoMuestraText('');
     }
-  }, [isOpen, form, initialTask]);
+  }, [isOpen, initialTask]);
 
   // Manejar cambio en el select de área
   const handleAreaChange = (value: string) => {
@@ -245,6 +252,10 @@ export function AddLimpiezaTaskModal({
       
       if (initialTask) {
         // Modo edición
+        console.log('📤 Actualizando tarea:', initialTask.id);
+        console.log('  Valores del formulario:', values);
+        console.log('  mes_corte enviado:', values.mes_corte);
+
         await limpiezaTasksService.update(initialTask.id, {
           ...values,
           recurrence: {
@@ -257,6 +268,7 @@ export function AddLimpiezaTaskModal({
             timezone: recurrence.timezone,
           },
         } as any);
+        console.log('✅ Tarea actualizada exitosamente');
         toast({
           title: "Tarea Actualizada",
           description: "La tarea de limpieza ha sido actualizada exitosamente",

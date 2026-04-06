@@ -15,6 +15,47 @@ import {
   type EmbalajeRecord
 } from '@/lib/server-db';
 import { getFechaActual } from '@/lib/date-utils';
+import AuditService from '@/lib/audit-service';
+import { authService } from '@/lib/auth-service';
+import { fieldAuditService } from '@/lib/field-audit-service.server';
+import { detectFieldChanges } from '@/lib/audit-utils';
+
+// Función para obtener usuario autenticado
+async function getAuthedUser(request: NextRequest) {
+  console.log('🔍 getAuthedUser - Iniciando búsqueda de token...');
+  
+  // Primero intentar obtener token de cookie
+  let token = request.cookies.get('auth-token')?.value;
+  console.log('🍪 getAuthedUser - Token desde cookie:', !!token);
+  
+  // Si no hay cookie, intentar obtener del Authorization header
+  if (!token) {
+    const authHeader = request.headers.get('authorization');
+    console.log('🔐 getAuthedUser - Authorization header:', authHeader);
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7); // Remover 'Bearer ' prefix
+      console.log('🔐 Backend: Token obtenido desde Authorization header (fallback):', !!token);
+    }
+  } else {
+    console.log('🔐 Backend: Token obtenido desde cookie');
+  }
+  
+  if (!token) {
+    console.log('❌ Backend: No se encontró token de autenticación');
+    return null;
+  }
+  
+  console.log('🔑 getAuthedUser - Token encontrado, validando sesión...');
+  const user = await authService.validateSession(token);
+  console.log('👤 getAuthedUser - Resultado de validateSession:', user ? {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role
+  } : 'NULL');
+  
+  return user;
+}
 
 // GET - Obtener todos los registros de producción o un registro específico por ID
 export async function GET(request: NextRequest) {
@@ -188,6 +229,22 @@ export async function POST(request: NextRequest) {
       }
     };
     
+    // Obtener usuario autenticado
+    const user = await getAuthedUser(request);
+    const userName = user?.name || user?.email || 'Usuario desconocido';
+    
+    // Debug: Log del usuario autenticado
+    console.log('🔍 Debug POST - Usuario autenticado:', {
+      user: user ? {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role
+      } : null,
+      userName: userName,
+      hasToken: !!request.cookies.get('auth-token')?.value
+    });
+
     const recordData: any = {
       ...(body.fechaProduccion !== undefined ? { fechaproduccion: formatDateForDB(body.fechaProduccion) } : {}),
       ...(body.fechaVencimiento !== undefined ? { fechavencimiento: formatDateForDB(body.fechaVencimiento) } : {}),
@@ -221,6 +278,12 @@ export async function POST(request: NextRequest) {
         return value;
       })(),
       observaciones: body.observaciones || null,
+      created_by: (() => {
+        console.log('🔍 POST - Asignando created_by. userName:', userName);
+        console.log('🔍 POST - Tipo de userName:', typeof userName);
+        console.log('🔍 POST - Valor de userName:', JSON.stringify(userName));
+        return userName;
+      })(),
       tempam1: (() => {
         const value = handleField(body.tempAM1, 'tempam1', false);
         // Forzar 'Pendiente' si el resultado es null (para cumplir NOT NULL)
@@ -544,100 +607,92 @@ export async function POST(request: NextRequest) {
         return value;
       })(),
       observaciones_pt: body.observacionesPT || null,
-      created_by: body.createdBy || 'system',
-      updated_by: body.updatedBy || 'system',
+      created_by: userName,
+      updated_by: userName,
       status: body.status || 'completed'
     };
     
     console.log('📦 Datos convertidos para BD:', JSON.stringify(recordData, null, 2));
-    
+
     console.log('💾 Llamando a createProductionRecord...');
+
+    // Crear el registro de producción
     const newRecord = await createProductionRecord(recordData);
-    console.log('✅ Registro de producción creado exitosamente:', JSON.stringify(newRecord, null, 2));
+    console.log('✅ Registro de producción creado exitosamente:', newRecord.id);
 
-    // 🔄 Crear automáticamente un registro de embalaje pendiente
-    console.log('🔄 Creando registro de embalaje pendiente...');
-    console.log('📊 Datos del registro de producción:', {
-      fecha: newRecord.fechaproduccion,
-      mescorte: newRecord.mescorte,
-      producto: newRecord.producto,
-      lote: newRecord.lote,
-      tamano_lote: newRecord.tamano_lote
+    // Función para formatear fechas a Date objects
+    const parseDateOnlyToDate = (raw: any): Date => {
+      const fallback = getFechaActual(); // YYYY-MM-DD
+
+      const asDateOnly = (() => {
+        if (!raw) return fallback;
+        if (typeof raw === 'string') {
+          const dateOnly = raw.slice(0, 10);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return dateOnly;
+          const parsed = new Date(raw);
+          if (isNaN(parsed.getTime())) return fallback;
+          return parsed.toISOString().slice(0, 10);
+        }
+        if (raw instanceof Date) return raw.toISOString().slice(0, 10);
+        return fallback;
+      })();
+
+      const [y, m, d] = asDateOnly.split('-').map(Number);
+      // Date local (sin Z) para evitar cambio de día por zona horaria
+      return new Date(y, m - 1, d);
+    };
+
+    // Para evitar desfases por zona horaria al leer la fecha desde DB,
+    // usamos prioritariamente la fecha que envía el frontend.
+    const fechaProduccionInput =
+      typeof body?.fechaProduccion === 'string' && body.fechaProduccion.trim()
+        ? body.fechaProduccion.trim()
+        : null;
+
+    // Calcular presentación automática basada en el peso neto declarado
+    const presentacionAuto = recordData.peso_neto_declarado
+      ? `${recordData.peso_neto_declarado}g`
+      : 'Pendiente';
+
+    const embalajeData = {
+      fecha: parseDateOnlyToDate(fechaProduccionInput || recordData.fechaproduccion), // Igual a Producción
+      mescorte: recordData.mescorte, // Mismo mes de corte
+      producto: recordData.producto, // Mismo producto
+      presentacion: presentacionAuto, // Autocompletar si hay peso neto
+      lote: recordData.lote, // Mismo lote
+      tamano_lote: 'Pendiente',
+      nivel_inspeccion: 'Pendiente',
+      cajas_revisadas: '0',
+      total_unidades_revisadas: '0',
+      total_unidades_revisadas_real: '0',
+      unidades_faltantes: '0',
+      porcentaje_faltantes: '0',
+      etiqueta: 'Pendiente',
+      porcentaje_etiqueta_no_conforme: '0',
+      marcacion: 'Pendiente',
+      porcentaje_marcacion_no_conforme: '0',
+      presentacion_no_conforme: 'Pendiente',
+      porcentaje_presentacion_no_conforme: '0',
+      cajas: 'Pendiente',
+      porcentaje_cajas_no_conformes: '0',
+      responsable_identificador_cajas: 'Pendiente',
+      responsable_embalaje: 'Pendiente',
+      responsable_calidad: 'Pendiente',
+      unidades_no_conformes: '0',
+      porcentaje_incumplimiento: '0',
+      created_by: '(Generado automáticamente)',
+      updated_by: '(Generado automáticamente)'
+    };
+
+    console.log('📦 Datos del registro de embalaje pendiente:', {
+      fecha: embalajeData.fecha,
+      mescorte: embalajeData.mescorte,
+      producto: embalajeData.producto,
+      lote: embalajeData.lote,
+      tamano_lote: embalajeData.tamano_lote
     });
-    
+
     try {
-      const pesoNetoDeclarado = (newRecord as any).peso_neto_declarado;
-      const presentacionAuto =
-        pesoNetoDeclarado && pesoNetoDeclarado !== 'Pendiente' && pesoNetoDeclarado !== '0'
-          ? String(pesoNetoDeclarado)
-          : null;
-
-      const parseDateOnlyToDate = (raw: any): Date => {
-        const fallback = getFechaActual(); // YYYY-MM-DD
-
-        const asDateOnly = (() => {
-          if (!raw) return fallback;
-          if (typeof raw === 'string') {
-            const dateOnly = raw.slice(0, 10);
-            if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return dateOnly;
-            const parsed = new Date(raw);
-            if (isNaN(parsed.getTime())) return fallback;
-            return parsed.toISOString().slice(0, 10);
-          }
-          if (raw instanceof Date) return raw.toISOString().slice(0, 10);
-          return fallback;
-        })();
-
-        const [y, m, d] = asDateOnly.split('-').map(Number);
-        // Date local (sin Z) para evitar cambio de día por zona horaria
-        return new Date(y, m - 1, d);
-      };
-
-      // Para evitar desfases por zona horaria al leer la fecha desde DB,
-      // usamos prioritariamente la fecha que envía el frontend.
-      const fechaProduccionInput =
-        typeof body?.fechaProduccion === 'string' && body.fechaProduccion.trim()
-          ? body.fechaProduccion.trim()
-          : null;
-
-      const embalajeData = {
-        fecha: parseDateOnlyToDate(fechaProduccionInput || newRecord.fechaproduccion), // Igual a Producción
-        mescorte: newRecord.mescorte, // Mismo mes de corte
-        producto: newRecord.producto, // Mismo producto
-        presentacion: presentacionAuto || 'Pendiente', // Autocompletar si hay peso neto
-        lote: newRecord.lote, // Mismo lote
-        tamano_lote: 'Pendiente',
-        nivel_inspeccion: 'Pendiente',
-        cajas_revisadas: '0',
-        total_unidades_revisadas: '0',
-        total_unidades_revisadas_real: '0',
-        unidades_faltantes: '0',
-        porcentaje_faltantes: '0',
-        etiqueta: 'Pendiente',
-        porcentaje_etiqueta_no_conforme: '0',
-        marcacion: 'Pendiente',
-        porcentaje_marcacion_no_conforme: '0',
-        presentacion_no_conforme: 'Pendiente',
-        porcentaje_presentacion_no_conforme: '0',
-        cajas: 'Pendiente',
-        porcentaje_cajas_no_conformes: '0',
-        responsable_identificador_cajas: 'Pendiente',
-        responsable_embalaje: 'Pendiente',
-        responsable_calidad: 'Pendiente',
-        unidades_no_conformes: '0',
-        porcentaje_incumplimiento: '0',
-        created_by: 'system_auto', // Marcar como creado automáticamente
-        updated_by: 'system_auto'
-      };
-
-      console.log('📦 Datos del registro de embalaje pendiente:', {
-        fecha: embalajeData.fecha,
-        mescorte: embalajeData.mescorte,
-        producto: embalajeData.producto,
-        lote: embalajeData.lote,
-        tamano_lote: embalajeData.tamano_lote
-      });
-
       const newEmbalajeRecord = await createEmbalajeRecord(embalajeData);
       console.log('✅ Registro de embalaje pendiente creado exitosamente:', JSON.stringify(newEmbalajeRecord, null, 2));
 
@@ -647,7 +702,6 @@ export async function POST(request: NextRequest) {
         embalajeRecord: newEmbalajeRecord,
         message: 'Registro de producción y embalaje pendiente creados exitosamente'
       }, { status: 201 });
-
     } catch (embalajeError) {
       console.error('❌ Error al crear registro de embalaje pendiente:', embalajeError);
       // Si falla la creación del registro de embalaje, aún retornamos el registro de producción
@@ -678,6 +732,10 @@ export async function PUT(request: NextRequest) {
     
     const body = await request.json();
     const { id, ...updateData } = body;
+    
+    // Obtener usuario autenticado
+    const user = await getAuthedUser(request);
+    const userName = user?.name || user?.email || 'Usuario desconocido';
     
     if (!id) {
       return NextResponse.json(
@@ -820,6 +878,9 @@ export async function PUT(request: NextRequest) {
       }
     });
     
+    // Agregar usuario que actualiza el registro
+    convertedData.updated_by = userName;
+    
     console.log('🔄 Datos convertidos para actualización:', convertedData);
 
     let updatedRecord: any;
@@ -859,6 +920,39 @@ export async function PUT(request: NextRequest) {
         { error: 'Registro no encontrado' },
         { status: 404 }
       );
+    }
+
+    // 🔍 AUDITORÍA: Detectar y registrar cambios
+    try {
+      console.log('🔍 AUDITORÍA - Detectando cambios en el registro...');
+      
+      // Detectar cambios entre el registro original y el actualizado
+      const changes = detectFieldChanges(existingRecord, updateData);
+      
+      if (changes.length > 0) {
+        console.log(`📝 AUDITORÍA - Se detectaron ${changes.length} cambios:`, changes);
+        
+        // Registrar cada cambio en la tabla de auditoría
+        await fieldAuditService.logMultipleChanges(
+          'production_records',
+          id,
+          changes,
+          userName,
+          {
+            userRole: user?.role,
+            userEmail: user?.email || undefined,
+            sessionId: request.cookies.get('auth-token')?.value || undefined,
+            ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || undefined
+          }
+        );
+        
+        console.log('✅ AUDITORÍA - Cambios registrados exitosamente');
+      } else {
+        console.log('ℹ️ AUDITORÍA - No se detectaron cambios en el registro');
+      }
+    } catch (auditError) {
+      console.error('❌ AUDITORÍA - Error al registrar cambios:', auditError);
+      // No fallamos la actualización si la auditoría falla
     }
     
     return NextResponse.json(updatedRecord);

@@ -757,7 +757,7 @@ export function ProductionAnalysis({ isOpen, onOpenChange, productId }: Producti
                     <SelectContent>
                       <SelectItem value="sin_seleccionar">Seleccionar envase...</SelectItem>
                       {envasesDisponibles.map((envase) => (
-                        <SelectItem key={envase.id} value={envase.tipo}>
+                        <SelectItem key={`envase-${envase.id}-${envase.tipo}`} value={envase.tipo}>
                            {envase.tipo}
                         </SelectItem>
                       ))}

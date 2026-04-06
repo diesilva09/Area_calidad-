@@ -26,6 +26,12 @@ class LimpiezaTasksService {
   async getAll(): Promise<LimpiezaTask[]> {
     try {
       const response = await fetch(this.baseUrl);
+      
+      // Si el usuario no está autenticado, retornar array vacío
+      if (response.status === 401) {
+        return [];
+      }
+      
       if (!response.ok) throw new Error('Error al obtener las labores de limpieza');
       return await response.json();
     } catch (error) {

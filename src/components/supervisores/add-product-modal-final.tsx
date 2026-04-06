@@ -472,7 +472,7 @@ export function AddEditProductModalEnhanced({
                         </FormControl>
                         <SelectContent>
                           {categories.map((category) => (
-                            <SelectItem key={category.id} value={category.id}>
+                            <SelectItem key={`category-${category.id}-${category.name}`} value={category.id}>
                               {category.name}
                             </SelectItem>
                           ))}

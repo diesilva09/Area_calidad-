@@ -30,7 +30,12 @@ export function EditLimpiezaRegistroModal({
 
   React.useEffect(() => {
     if (isOpen && registro) {
-      setFecha(String(registro.fecha || '').slice(0, 10));
+      // Convertir fecha al formato YYYY-MM-DD para el input date
+      const fechaStr = String(registro.fecha || '');
+      const fechaParaInput = fechaStr.includes('-')
+        ? fechaStr.slice(0, 10)
+        : fechaStr;
+      setFecha(fechaParaInput);
       setMesCorte(registro.mes_corte || '');
       setDetalles(registro.detalles || '');
     }
@@ -40,14 +45,26 @@ export function EditLimpiezaRegistroModal({
     if (!registro) return;
     setIsSaving(true);
     try {
+      console.log('📤 Actualizando registro principal:', registro.id);
+      console.log('  fecha:', fecha);
+      console.log('  mes_corte:', mesCorte);
+      console.log('  detalles:', detalles);
+
       await limpiezaRegistrosService.update(registro.id, {
         fecha,
         mes_corte: mesCorte || null,
         detalles: detalles || null,
       });
+
+      console.log('✅ Registro actualizado exitosamente');
+      toast({
+        title: 'Registro actualizado',
+        description: 'El registro de limpieza ha sido actualizado exitosamente.',
+      });
       onSaved?.();
       onOpenChange(false);
     } catch (err) {
+      console.error('❌ Error al actualizar registro:', err);
       toast({
         title: 'Error al guardar',
         description: err instanceof Error ? err.message : 'No se pudo actualizar el registro.',
@@ -80,7 +97,7 @@ export function EditLimpiezaRegistroModal({
             </div>
 
             <div className="space-y-2">
-              <Label>Detalles</Label>
+              <Label>Detalles de limpieza</Label>
               <Textarea value={detalles} onChange={(e) => setDetalles(e.target.value)} />
             </div>
           </div>
@@ -91,7 +108,7 @@ export function EditLimpiezaRegistroModal({
             Cancelar
           </Button>
           <Button type="button" onClick={handleSave} disabled={!registro || isSaving}>
-            Guardar
+            {isSaving ? 'Actualizando...' : 'Actualizar'}
           </Button>
         </DialogFooter>
       </DialogContent>

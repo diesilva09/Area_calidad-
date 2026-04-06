@@ -1,4 +1,5 @@
 import './globals.css'
+import '@/lib/react-dom-patch' // Aplicar patch para React DOM
 import { AuthProvider } from '@/contexts/auth-context'
 import AuthLayoutClient from '@/components/auth-layout-client'
 import { Toaster } from '@/components/ui/toaster'

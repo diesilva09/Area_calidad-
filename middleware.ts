@@ -18,7 +18,7 @@ const protectedRoutes = [
 const publicRoutes = [
   '/',
   '/login-simple',
-  '/api/auth',
+  '/api/auth/', // Permitir todas las rutas bajo /api/auth/
   '/api/auth/login',
   '/api/auth/register',
   '/api/auth/logout',

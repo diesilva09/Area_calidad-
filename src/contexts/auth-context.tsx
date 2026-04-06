@@ -106,7 +106,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('📊 Frontend Login: Response ok:', response.ok);
       }
 
-      const data = await response.json();
+      // Verificar si la respuesta es JSON antes de parsear
+      const contentType = response.headers.get('content-type');
+      console.log('🔍 Frontend Login: Content-Type:', contentType);
+      console.log('🔍 Frontend Login: Response status:', response.status);
+      console.log('🔍 Frontend Login: Response ok:', response.ok);
+      
+      let data;
+      
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+        console.log('✅ Frontend Login: JSON parseado correctamente');
+      } else {
+        // Si no es JSON, obtener el texto del error
+        const text = await response.text();
+        console.log('❌ Frontend Login: Respuesta no es JSON. Content-Type:', contentType);
+        console.log('❌ Frontend Login: Texto recibido:', text.substring(0, 500) + (text.length > 500 ? '...' : ''));
+        if (isDev) {
+          console.log('❌ Frontend Login: Respuesta no es JSON:', text);
+        }
+        return { success: false, message: 'Error en el servidor: respuesta no válida' };
+      }
+      
       if (isDev) {
         console.log('📋 Frontend Login: Response data:', data);
       }
@@ -119,6 +140,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         
         setUser(data.user);
+        
+        // Guardar token en localStorage como fallback
+        if (data.token) {
+          localStorage.setItem('auth-token', data.token);
+          if (isDev) {
+            console.log('💾 Token guardado en localStorage como fallback');
+          }
+        }
+        
         // Redirigir al dashboard después del login exitoso
         router.push('/dashboard');
         return { success: true, message: data.message };

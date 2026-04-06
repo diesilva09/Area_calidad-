@@ -41,6 +41,7 @@ import { embalajeRecordsService, type EmbalajeRecord } from '@/lib/embalaje-reco
 import { ProductoPesosService } from '@/lib/producto-pesos-service';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/auth-context';
 
 export const embalajeFormSchema = z.object({
   fecha: z.string().min(1, 'Campo requerido'),
@@ -120,6 +121,7 @@ export function AddEmbalajeRecordModal({
   recordToEdit = null as EmbalajeRecord | null,
   onSuccessfulEdit,
 }: AddEmbalajeRecordModalProps) {
+  const { user } = useAuth();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [inspeccionTimeout, setInspeccionTimeout] = React.useState<NodeJS.Timeout | null>(null);
@@ -1022,6 +1024,59 @@ export function AddEmbalajeRecordModal({
     }
   }
 
+  async function onSubmit(values: z.infer<typeof embalajeFormSchema>) {
+    try {
+      setIsSubmitting(true);
+      
+      // Obtener nombre del usuario actual
+      const userName = user?.name || user?.email || 'Usuario desconocido';
+      
+      const transformedValues = transformFormValues(values);
+      const transformedPayload = toSnakeCasePayload(transformedValues);
+      
+      if (editMode && recordToEdit) {
+        // Modo edición: actualizar registro existente
+        const updateData = {
+          ...transformedPayload,
+          status: 'completed',
+          updated_by: userName,
+        };
+        
+        await embalajeRecordsService.update(recordToEdit.id, updateData);
+        
+        toast({
+          title: "Registro actualizado",
+          description: "El registro de embalaje ha sido actualizado exitosamente.",
+        });
+        
+        onSuccessfulEdit?.();
+      } else {
+        // Modo creación: nuevo registro
+        if (onSuccessfulSubmit) {
+          onSuccessfulSubmit({
+            ...transformedValues,
+            status: 'completed',
+            created_by: userName,
+            updated_by: userName,
+          });
+        }
+      }
+      
+      onOpenChange(false);
+      form.reset();
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: editMode 
+          ? "No se pudo actualizar el registro de embalaje."
+          : "No se pudo crear el registro de embalaje.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl">
@@ -1691,7 +1746,7 @@ export function AddEmbalajeRecordModal({
                               </div>
                               <div className="space-y-2">
                                 {responsablesIdentificadorCajas.map((value, idx) => (
-                                  <div key={idx} className="flex items-center gap-2">
+                                  <div key={`responsable-identificador-${idx}-${value}`} className="flex items-center gap-2">
                                     <FormControl>
                                       <Input
                                         value={value}
@@ -1757,7 +1812,7 @@ export function AddEmbalajeRecordModal({
                               </div>
                               <div className="space-y-2">
                                 {responsablesEmbalaje.map((value, idx) => (
-                                  <div key={idx} className="flex items-center gap-2">
+                                  <div key={`responsable-embalaje-${idx}-${value}`} className="flex items-center gap-2">
                                     <FormControl>
                                       <Input
                                         value={value}

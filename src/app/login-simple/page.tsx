@@ -196,22 +196,36 @@ export default function LoginPage() {
     if (typeof document === 'undefined') return;
 
     const styleId = 'login-simple-inline-styles';
+    let styleSheet: HTMLStyleElement | null = null;
+
+    // Verificar si ya existe
     const existing = document.getElementById(styleId);
     if (existing) return;
 
-    const styleSheet = document.createElement('style');
-    styleSheet.id = styleId;
-    styleSheet.textContent = styles;
-    document.head.appendChild(styleSheet);
+    // Crear y añadir el style sheet
+    try {
+      styleSheet = document.createElement('style');
+      styleSheet.id = styleId;
+      styleSheet.textContent = styles;
+      document.head.appendChild(styleSheet);
+    } catch (error) {
+      console.warn('No se pudo crear el style sheet:', error);
+    }
 
     return () => {
       try {
-        const current = document.getElementById(styleId);
-        if (current?.parentNode) {
-          current.parentNode.removeChild(current);
+        if (styleSheet && styleSheet.parentNode) {
+          styleSheet.parentNode.removeChild(styleSheet);
+        } else {
+          // Fallback: buscar por ID
+          const current = document.getElementById(styleId);
+          if (current && current.parentNode) {
+            current.parentNode.removeChild(current);
+          }
         }
-      } catch {
-        // noop
+      } catch (error) {
+        // Ignorar errores en cleanup
+        console.warn('Error al remover style sheet:', error);
       }
     };
   }, []);

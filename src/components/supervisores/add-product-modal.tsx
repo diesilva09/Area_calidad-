@@ -731,7 +731,7 @@ export function AddEditProductModal({
                         </FormControl>
                         <SelectContent>
                           {categories.map((category) => (
-                            <SelectItem key={category.id} value={category.id}>
+                            <SelectItem key={`category-${category.id}-${category.name}`} value={category.id}>
                               {category.name}
                             </SelectItem>
                           ))}
@@ -817,7 +817,7 @@ export function AddEditProductModal({
                       </CardHeader>
                       <CardContent className="space-y-4">
                         {pesosDrenadosConfigList.map((config, index) => (
-                          <div key={index} className="border rounded-lg p-4 space-y-3">
+                          <div key={`pesos-drenados-${config.envase_tipo || index}-${index}`} className="border rounded-lg p-4 space-y-3">
                             <div className="flex items-center justify-between">
                               <h4 className="font-medium">Configuración #{index + 1}</h4>
                               <Button
@@ -913,7 +913,7 @@ export function AddEditProductModal({
                       </CardHeader>
                       <CardContent className="space-y-4">
                         {pesoNetoConfigList.map((config, index) => (
-                          <div key={index} className="border rounded-lg p-4 space-y-3">
+                          <div key={`peso-neto-${config.envase_tipo || index}-${index}`} className="border rounded-lg p-4 space-y-3">
                             <div className="flex items-center justify-between">
                               <h4 className="font-medium">Configuración #{index + 1}</h4>
                               <Button
@@ -961,7 +961,7 @@ export function AddEditProductModal({
                       </CardHeader>
                       <CardContent className="space-y-4">
                         {temperaturasConfigList.map((config, index) => (
-                          <div key={index} className="border rounded-lg p-4 space-y-3">
+                          <div key={`temperatura-${config.equipo || index}-${index}`} className="border rounded-lg p-4 space-y-3">
                             <div className="flex items-center justify-between">
                               <h4 className="font-medium">Temperatura #{index + 1}</h4>
                               <Button
@@ -1044,7 +1044,7 @@ export function AddEditProductModal({
                       </CardHeader>
                       <CardContent className="space-y-4">
                         {calidadRangosConfigList.map((config, index) => (
-                          <div key={index} className="border rounded-lg p-4 space-y-3">
+                          <div key={`calidad-rangos-${(config as any).parametro || 'item'}-${index}`} className="border rounded-lg p-4 space-y-3">
                             <div className="flex items-center justify-between">
                               <h4 className="font-medium">Rango de Calidad #{index + 1}</h4>
                               <Button

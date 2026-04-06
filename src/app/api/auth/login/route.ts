@@ -38,15 +38,27 @@ export async function POST(request: NextRequest) {
         email: result.user.email,
         name: result.user.name,
         role: result.user.role
-      }
+      },
+      token: result.token // Incluir token en la respuesta para fallback
     });
 
+    console.log('🔍 Login API - Estableciendo cookie con token:', result.token ? 'EXISTE' : 'NULL');
+    
     response.cookies.set('auth-token', result.token, {
-      httpOnly: true,
+      httpOnly: false, // Mantener false para debugging
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60, // 7 días para persistencia más larga
       path: '/'
+    });
+
+    console.log('🔍 Login API - Cookie establecida. Configuración:', {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60,
+      path: '/',
+      nodeEnv: process.env.NODE_ENV
     });
 
     return response;

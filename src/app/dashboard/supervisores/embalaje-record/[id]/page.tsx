@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Calendar, Package, User, CheckCircle, AlertCircle, Search, Edit, FileText, ClipboardList, BarChart3, Users, Tag, Boxes, Scale, ShieldCheck, FileDown } from 'lucide-react';
+import { ArrowLeft, Calendar, Package, User, CheckCircle, AlertCircle, Search, Edit, FileText, ClipboardList, BarChart3, Users, Tag, Boxes, Scale, ShieldCheck, FileDown, History } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Link from 'next/link';
 import { useEffect, useRef, useState, use } from 'react';
@@ -14,6 +14,8 @@ import { AddEmbalajeRecordModal } from '@/components/supervisores/add-embalaje-r
 import { useScrollRestoration } from '@/hooks/useScrollRestoration';
 import { getProductCategories } from '@/lib/supervisores-data';
 import { ProductoPesosService } from '@/lib/producto-pesos-service';
+import { AuditedField } from '@/components/audited-field';
+import { FieldHistoryPanel } from '@/components/field-history-panel';
 
 export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { user } = useAuth();
@@ -25,6 +27,7 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isHistoryPanelOpen, setIsHistoryPanelOpen] = useState(false);
   const { saveScrollPosition } = useScrollRestoration();
   const autoOpenedRef = useRef(false);
 
@@ -256,6 +259,10 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
           </Button>
 
           <div className="flex items-center justify-end gap-2 flex-wrap">
+            <Button onClick={() => setIsHistoryPanelOpen(true)} variant="outline" size="sm" className="text-xs rounded-xl h-8 px-4 gap-1.5 border-gray-300">
+              <History className="h-3.5 w-3.5" />
+              Historial
+            </Button>
             <Button onClick={exportToExcel} variant="outline" size="sm" className="text-xs rounded-xl h-8 px-4 gap-1.5 border-gray-300">
               <FileDown className="h-3.5 w-3.5" />
               Exportar Excel
@@ -580,6 +587,15 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
           onSuccessfulEdit={handleSuccessfulEdit}
         />
       )}
+      
+      {/* Panel de Historial de Cambios */}
+      <FieldHistoryPanel
+        isOpen={isHistoryPanelOpen}
+        onClose={() => setIsHistoryPanelOpen(false)}
+        tableName="embalaje_records"
+        recordId={record.id}
+        recordTitle={`Lote ${record.lote}`}
+      />
     </div>
   );
 }
