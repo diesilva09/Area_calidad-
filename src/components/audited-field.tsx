@@ -21,8 +21,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { fieldAuditService, type FieldAuditLog } from '@/lib/field-audit-service';
-import { formatAuditValue, getFieldDisplayName, getChangeColor } from '@/lib/audit-utils';
-import { getUserDisplayName } from '@/lib/user-display-utils';
+import { formatAuditValue, getFieldDisplayName } from '@/lib/audit-utils';
+import { getRoleDisplayName, getUserDisplayName } from '@/lib/user-display-utils';
 
 interface AuditedFieldProps {
   label: string;
@@ -107,15 +107,6 @@ export function AuditedField({
       {/* Label */}
       <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
         {label}
-        {hasHistory && (
-          <Badge 
-            variant="secondary" 
-            className={`text-xs ${isRecent ? 'bg-orange-100 text-orange-800 border-orange-200' : ''}`}
-          >
-            <Clock className="h-3 w-3 mr-1" />
-            Modificado
-          </Badge>
-        )}
       </label>
 
       {/* Valor con indicador */}
@@ -124,16 +115,6 @@ export function AuditedField({
       }`}>
         <div className="flex-1">
           <div className="text-lg font-semibold">{displayValue}</div>
-          
-          {/* Información del último cambio */}
-          {lastChange && (
-            <div className="text-xs text-gray-600 mt-1">
-              Última modificación: {formatDistanceToNow(new Date(lastChange.created_at), { 
-                addSuffix: true, 
-                locale: es 
-              })}
-            </div>
-          )}
         </div>
 
         {/* Botón de historial */}
@@ -230,7 +211,7 @@ export function AuditedField({
 
                     {/* Metadatos */}
                     <div className="text-xs text-gray-500 mt-2 flex items-center gap-4">
-                      {change.user_role && <span>Rol: {change.user_role}</span>}
+                      {change.user_role && <span>Rol: {getRoleDisplayName(change.user_role)}</span>}
                       {change.ip_address && <span>IP: {change.ip_address}</span>}
                     </div>
                   </div>

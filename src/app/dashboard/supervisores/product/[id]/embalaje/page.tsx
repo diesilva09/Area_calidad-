@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, use } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useAuth } from '@/contexts/auth-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -12,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowLeft, Plus, Calendar, Package, Search, Filter, FileDown, User, Clock } from 'lucide-react';
+import { ArrowLeft, Plus, Calendar, Package, FileDown, User, Clock } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
@@ -30,6 +31,7 @@ export default function ProductEmbalajeRecordsPage({ params }: { params: Promise
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+  const { user } = useAuth();
   const resolvedParams = use(params);
   const productId = resolvedParams.id;
   const [product, setProduct] = useState<Product | null>(null);
@@ -147,22 +149,9 @@ export default function ProductEmbalajeRecordsPage({ params }: { params: Promise
   return () => cancel();
   }, [searchParams]);
 
-  const isPending = (record: EmbalajeRecord): boolean => {
+  function isPending(record: EmbalajeRecord): boolean {
     if (record.status === 'pending') return true;
-    const exportRecord = (e: React.MouseEvent, record: any) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const data: Record<string, any> = {};
-    for (const [key, value] of Object.entries(record)) {
-      data[key] = value;
-    }
-    const ws = XLSX.utils.json_to_sheet([data]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Registro');
-    XLSX.writeFile(wb, `RE-CAL-093_lote-`+String(record?.lote ?? 'sin-lote').replace(/[^a-zA-Z0-9_-]/g, '_')+`.xlsx`);
-  };
-
-  return (
+    return (
       record.presentacion === 'Pendiente' ||
       record.nivel_inspeccion === 'Pendiente' ||
       record.etiqueta === 'Pendiente' ||
@@ -173,7 +162,7 @@ export default function ProductEmbalajeRecordsPage({ params }: { params: Promise
       record.responsable_embalaje === 'Pendiente' ||
       record.responsable_calidad === 'Pendiente'
     );
-  };
+  }
 
   const filteredRecords = records.filter(record => {
     const matchesStatus =

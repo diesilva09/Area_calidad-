@@ -6,6 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { limpiezaRegistrosService, type LimpiezaRegistro } from '@/lib/limpieza-registros-service';
 import { useToast } from '@/hooks/use-toast';
 
@@ -25,6 +32,7 @@ export function EditLimpiezaRegistroModal({
   const { toast } = useToast();
   const [fecha, setFecha] = React.useState('');
   const [mesCorte, setMesCorte] = React.useState('');
+  const [turno, setTurno] = React.useState<'dia' | 'noche' | ''>('');
   const [detalles, setDetalles] = React.useState('');
   const [isSaving, setIsSaving] = React.useState(false);
 
@@ -37,6 +45,7 @@ export function EditLimpiezaRegistroModal({
         : fechaStr;
       setFecha(fechaParaInput);
       setMesCorte(registro.mes_corte || '');
+      setTurno((registro.turno ?? '') as any);
       setDetalles(registro.detalles || '');
     }
   }, [isOpen, registro]);
@@ -53,6 +62,7 @@ export function EditLimpiezaRegistroModal({
       await limpiezaRegistrosService.update(registro.id, {
         fecha,
         mes_corte: mesCorte || null,
+        turno: (turno || null) as any,
         detalles: detalles || null,
       });
 
@@ -94,6 +104,19 @@ export function EditLimpiezaRegistroModal({
             <div className="space-y-2">
               <Label>Mes de Corte</Label>
               <Input value={mesCorte} onChange={(e) => setMesCorte(e.target.value)} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Turno</Label>
+              <Select value={turno} onValueChange={(v) => setTurno((v || '') as any)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona turno" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="dia">Día</SelectItem>
+                  <SelectItem value="noche">Noche</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">

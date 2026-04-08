@@ -17,7 +17,7 @@ export const getUserDisplayName = (userIdentifier: string | null | undefined): s
   // Mapear emails conocidos a nombres reales
   const emailToNameMap: Record<string, string> = {
     'jefe@calidad.com': 'Jefe de Calidad',
-    'operario@calidad.com': 'Operario de Producción',
+    'operario@calidad.com': 'Supervisor',
     'diegoy2312@gmail.com': 'Diego',
     'diesilva1709@gmail.com': 'Diego Silva',
     // Agregar más mapeos según sea necesario
@@ -41,4 +41,12 @@ export const getUserDisplayName = (userIdentifier: string | null | undefined): s
   
   // Si ya es un nombre (no contiene @ y no es "system"), devolverlo tal cual
   return userIdentifier;
+};
+
+export const getRoleDisplayName = (role: string | null | undefined): string => {
+  const r = String(role || '').trim().toLowerCase();
+  if (r === 'jefe') return 'Jefe de Calidad';
+  if (r === 'operario' || r === 'supervisor') return 'Supervisor';
+  if (r === 'tecnico') return 'Técnico de Calidad';
+  return r || '—';
 };

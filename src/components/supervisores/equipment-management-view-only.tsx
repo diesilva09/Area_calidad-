@@ -58,7 +58,7 @@ export function EquipmentManagementViewOnly({ allowEdit = false }: EquipmentMana
                 Modo de solo lectura
               </h3>
               <p className="text-sm text-yellow-700 mt-1">
-                Como operario, solo puedes ver la lista de equipos. 
+                Como supervisor, solo puedes ver la lista de equipos. 
                 Para modificar equipos, contacta a un supervisor.
               </p>
             </div>

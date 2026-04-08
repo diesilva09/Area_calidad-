@@ -7,7 +7,7 @@ export interface User {
   id: number;
   email: string;
   name: string;
-  role: 'jefe' | 'operario';
+  role: 'jefe' | 'operario' | 'supervisor';
   is_active: boolean;
   email_verified: boolean;
   created_at: Date;
@@ -23,7 +23,7 @@ export interface RegisterRequest {
   email: string;
   password: string;
   name: string;
-  role: 'jefe' | 'operario';
+  role: 'jefe' | 'operario' | 'supervisor';
 }
 
 export interface AuthResponse {

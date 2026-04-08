@@ -58,7 +58,7 @@ export default function LabMicrobiologiaPage() {
     }
 
     // Verificar roles permitidos
-    if (user.role !== 'jefe' && user.role !== 'operario') {
+    if (user.role !== 'jefe' && user.role !== 'operario' && user.role !== 'supervisor') {
       router.push('/dashboard');
       return;
     }
@@ -181,7 +181,7 @@ export default function LabMicrobiologiaPage() {
     setVistaActual('principal');
   };
 
-  if (!user || (user.role !== 'jefe' && user.role !== 'operario')) {
+  if (!user || (user.role !== 'jefe' && user.role !== 'operario' && user.role !== 'supervisor')) {
     return null;
   }
 

@@ -499,6 +499,9 @@ export async function POST(request: NextRequest) {
         if (isPending && (value === null || value === undefined || value === '')) {
           return 'Pendiente';
         }
+        if (value === null || value === undefined || value === '') {
+          return null;
+        }
         return value;
       })(),
       vacio_pt: (() => {
@@ -607,7 +610,6 @@ export async function POST(request: NextRequest) {
         return value;
       })(),
       observaciones_pt: body.observacionesPT || null,
-      created_by: userName,
       updated_by: userName,
       status: body.status || 'completed'
     };
@@ -752,11 +754,16 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    if (existingRecord.status === 'completed') {
-      return NextResponse.json(
-        { error: 'Este registro ya está completado y no se puede modificar' },
-        { status: 400 }
-      );
+    // Regla de permisos:
+    // - Si el registro está COMPLETADO, solo el rol 'jefe' puede editar.
+    // - Si el registro está PENDIENTE, se mantiene la lógica actual (para poder completarlo).
+    if (String((existingRecord as any)?.status ?? '').toLowerCase() === 'completed') {
+      if (!user || String((user as any).role ?? '').toLowerCase() !== 'jefe') {
+        return NextResponse.json(
+          { error: 'No tienes permisos para editar un registro completado' },
+          { status: 403 }
+        );
+      }
     }
 
     // Mapeo explícito de SOLO campos que existen en la tabla production_records
@@ -926,8 +933,28 @@ export async function PUT(request: NextRequest) {
     try {
       console.log('🔍 AUDITORÍA - Detectando cambios en el registro...');
       
-      // Detectar cambios entre el registro original y el actualizado
-      const changes = detectFieldChanges(existingRecord, updateData);
+      // Detectar cambios SOLO sobre campos reales de BD.
+      // Importante: el frontend puede enviar payloads con valores vacíos/default al abrir,
+      // lo cual causaba falsos positivos ("establecido como N/A").
+      const auditData: any = { ...convertedData };
+      // Nunca auditar metadatos/control
+      delete auditData.updated_by;
+
+      // Filtrar valores vacíos que no representan un cambio real (p.ej. '' cuando antes era null/undefined)
+      for (const [key, value] of Object.entries(auditData)) {
+        if (value === undefined) {
+          delete auditData[key];
+          continue;
+        }
+
+        if (value === '' && (existingRecord?.[key] === null || existingRecord?.[key] === undefined || existingRecord?.[key] === '')) {
+          delete auditData[key];
+          continue;
+        }
+      }
+
+      // Detectar cambios entre el registro original y lo que realmente se intenta actualizar
+      const changes = detectFieldChanges(existingRecord, auditData, ['id', 'created_at', 'updated_at', 'created_by', 'updated_by']);
       
       if (changes.length > 0) {
         console.log(`📝 AUDITORÍA - Se detectaron ${changes.length} cambios:`, changes);
@@ -969,6 +996,17 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     console.log('DELETE /api/production-records - Eliminando registro de producción');
+
+    const user = await getAuthedUser(request);
+    if (!user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+    if (String((user as any).role ?? '').toLowerCase() !== 'jefe') {
+      return NextResponse.json(
+        { error: 'No tienes permisos para eliminar registros de producción' },
+        { status: 403 }
+      );
+    }
     
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

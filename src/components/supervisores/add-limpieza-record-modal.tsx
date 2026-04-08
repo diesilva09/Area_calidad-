@@ -913,6 +913,7 @@ export function AddLimpiezaRecordModal({
       form.reset({
         fecha: getFechaActual(),
         mesCorte: getMesActual(),
+        turno: undefined,
         detalles: '',
         lote: '',
         producto: '',
@@ -929,6 +930,7 @@ export function AddLimpiezaRecordModal({
       pendingForm.reset({
         fecha: getFechaActual(),
         mesCorte: getMesActual(),
+        turno: undefined,
         detalles: '',
         lote: '',
         producto: '',
@@ -1070,6 +1072,7 @@ export function AddLimpiezaRecordModal({
       form.reset({
         fecha: fechaAsForm || '',
         mesCorte: data.mes_corte || '',
+        turno: (data as any)?.turno ?? undefined,
         detalles: data.detalles || '',
         lote: data.lote || '',
         producto: data.producto || '',
@@ -1122,6 +1125,7 @@ export function AddLimpiezaRecordModal({
       pendingForm.reset({
         fecha: fechaAsForm || '',
         mesCorte: data.mes_corte || '',
+        turno: (data as any)?.turno ?? undefined,
         detalles: data.detalles || '',
         lote: data.lote || '',
         producto: data.producto || '',
@@ -1790,6 +1794,7 @@ export function AddLimpiezaRecordModal({
           const created = await limpiezaRegistrosService.create({
             fecha: fechaFormateada,
             mes_corte: values.mesCorte,
+            turno: values.turno ?? null,
             detalles: values.detalles || null,
             lote: values.lote || null,
             producto: values.producto || null,
@@ -1812,6 +1817,7 @@ export function AddLimpiezaRecordModal({
           await limpiezaRegistrosService.update(nextRegistroId, {
             fecha: fechaFormateada,
             mes_corte: values.mesCorte,
+            turno: values.turno ?? null,
             detalles: values.detalles || null,
             lote: values.lote || null,
             producto: values.producto || null,
@@ -1948,6 +1954,7 @@ export function AddLimpiezaRecordModal({
           form.reset({
             fecha: fechaAsForm,
             mesCorte: data.mes_corte ?? '',
+            turno: (data as any)?.turno ?? undefined,
             detalles: data.detalles ?? '',
             lote: data.lote ?? '',
             producto: data.producto ?? '',
@@ -1963,6 +1970,7 @@ export function AddLimpiezaRecordModal({
           pendingForm.reset({
             fecha: fechaAsForm,
             mesCorte: data.mes_corte ?? '',
+            turno: (data as any)?.turno ?? undefined,
             detalles: data.detalles ?? '',
             lote: data.lote ?? '',
             producto: data.producto ?? '',
@@ -2602,6 +2610,26 @@ export function AddLimpiezaRecordModal({
                           {...field} 
                           className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
                         />
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+
+                    <FormField control={form.control} name="turno" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Turno</FormLabel>
+                        <Select
+                          disabled={effectiveViewOnlyMode}
+                          value={field.value ?? ''}
+                          onValueChange={(v) => field.onChange((v || undefined) as any)}
+                        >
+                          <SelectTrigger className="h-10">
+                            <SelectValue placeholder="Selecciona turno" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="dia">Día</SelectItem>
+                            <SelectItem value="noche">Noche</SelectItem>
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )} />

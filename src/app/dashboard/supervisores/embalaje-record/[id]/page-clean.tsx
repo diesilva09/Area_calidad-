@@ -45,7 +45,7 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
   };
 
   useEffect(() => {
-    if (!user || (user.role !== 'jefe' && user.role !== 'operario' && user.role !== 'tecnico')) {
+    if (!user || (user.role !== 'jefe' && user.role !== 'operario' && user.role !== 'supervisor' && user.role !== 'tecnico')) {
       router.push('/dashboard');
       return;
     }

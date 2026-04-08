@@ -18,7 +18,8 @@ export function SupervisorTabs({
   userRole,
   onRefresh
 }: SupervisorTabsProps) {
-  const isJefe = (userRole ?? '').toLowerCase() === 'jefe';
+  const role = (userRole ?? '').toLowerCase();
+  const isJefe = role === 'jefe' || role === 'supervisor' || role === 'operario';
 
   return (
     <>

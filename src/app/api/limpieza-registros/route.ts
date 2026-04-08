@@ -9,12 +9,18 @@ async function getAuthedUser(request: NextRequest) {
   return authService.validateSession(token);
 }
 
+function canManageLimpieza(role: unknown): boolean {
+  const r = String(role ?? '').toLowerCase();
+  return r === 'jefe' || r === 'supervisor' || r === 'operario';
+}
+
 type LimpiezaRegistroStatus = 'pending' | 'completed';
 
 type LimpiezaRegistroRow = {
   id: string;
   fecha: string;
   mes_corte: string | null;
+  turno: string | null;
   detalles: string | null;
   lote: string | null;
   producto: string | null;
@@ -204,6 +210,7 @@ export async function POST(request: NextRequest) {
       fecha,
       mes_corte,
       mesCorte,
+      turno,
       detalles,
       lote,
       producto,
@@ -263,21 +270,22 @@ export async function POST(request: NextRequest) {
         const registroInsert = await client.query<LimpiezaRegistroRow>(
           `
             INSERT INTO limpieza_registros (
-              fecha, mes_corte, detalles, lote, producto,
+              fecha, mes_corte, turno, detalles, lote, producto,
               origin, generated_from_production_record_id,
               cronograma_task_id,
               status, created_by
             ) VALUES (
-              $1, $2, $3, $4, $5,
-              $6, $7,
-              $8,
-              'pending', $9
+              $1, $2, $3, $4, $5, $6,
+              $7, $8,
+              $9,
+              'pending', $10
             )
             RETURNING *;
           `,
           [
             fecha,
             mes_corte ?? mesCorte ?? null,
+            turno ?? null,
             detalles ?? null,
             lote ?? null,
             producto ?? null,
@@ -309,21 +317,22 @@ export async function POST(request: NextRequest) {
           const registroInsert = await client.query<LimpiezaRegistroRow>(
             `
               INSERT INTO limpieza_registros (
-                fecha, mes_corte, detalles, lote, producto,
+                fecha, mes_corte, turno, detalles, lote, producto,
                 origin, generated_from_production_record_id,
                 cronograma_task_id,
                 status, created_by
               ) VALUES (
-                $1, $2, $3, $4, $5,
-                $6, $7,
-                $8,
-                'pending', $9
+                $1, $2, $3, $4, $5, $6,
+                $7, $8,
+                $9,
+                'pending', $10
               )
               RETURNING *;
             `,
             [
               fecha,
               mes_corte ?? mesCorte ?? null,
+              turno ?? null,
               detalles ?? null,
               lote ?? null,
               producto ?? null,
@@ -340,21 +349,22 @@ export async function POST(request: NextRequest) {
         const registroInsert = await client.query<LimpiezaRegistroRow>(
           `
             INSERT INTO limpieza_registros (
-              fecha, mes_corte, detalles, lote, producto,
+              fecha, mes_corte, turno, detalles, lote, producto,
               origin, generated_from_production_record_id,
               cronograma_task_id,
               status, created_by
             ) VALUES (
-              $1, $2, $3, $4, $5,
-              $6, $7,
-              $8,
-              'pending', $9
+              $1, $2, $3, $4, $5, $6,
+              $7, $8,
+              $9,
+              'pending', $10
             )
             RETURNING *;
           `,
           [
             fecha,
             mes_corte ?? mesCorte ?? null,
+            turno ?? null,
             detalles ?? null,
             lote ?? null,
             producto ?? null,
@@ -498,6 +508,7 @@ export async function PUT(request: NextRequest) {
       fecha,
       mes_corte,
       mesCorte,
+      turno,
       detalles,
       lote,
       producto,
@@ -547,6 +558,10 @@ export async function PUT(request: NextRequest) {
       updates.push(`detalles = $${idx++}`);
       values.push(detalles ?? null);
     }
+    if (turno !== undefined) {
+      updates.push(`turno = $${idx++}`);
+      values.push(turno ?? null);
+    }
     if (lote !== undefined) {
       updates.push(`lote = $${idx++}`);
       values.push(lote ?? null);
@@ -588,6 +603,14 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const user = await getAuthedUser(request);
+    if (!user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+    if (!canManageLimpieza((user as any).role)) {
+      return NextResponse.json({ error: 'No tienes permisos para eliminar registros de limpieza' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 

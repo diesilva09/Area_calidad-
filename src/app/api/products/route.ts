@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { authService } from '@/lib/auth-service';
 import { 
   getProducts, 
   getProductsByCategory,
@@ -7,6 +8,17 @@ import {
   deleteProduct 
 } from '@/lib/server-db';
 import db from '@/lib/server-db';
+
+async function getAuthedUser(request: NextRequest) {
+  const token = request.cookies.get('auth-token')?.value;
+  if (!token) return null;
+  return authService.validateSession(token);
+}
+
+function canManageCatalog(role: unknown): boolean {
+  const r = String(role ?? '').toLowerCase();
+  return r === 'jefe' || r === 'supervisor' || r === 'operario';
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -32,6 +44,14 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await getAuthedUser(request);
+    if (!user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+    if (!canManageCatalog((user as any).role)) {
+      return NextResponse.json({ error: 'No tienes permisos para crear productos' }, { status: 403 });
+    }
+
     const body = await request.json();
     const { id, name, category_id, description } = body;
 
@@ -69,6 +89,14 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    const user = await getAuthedUser(request);
+    if (!user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+    if (!canManageCatalog((user as any).role)) {
+      return NextResponse.json({ error: 'No tienes permisos para editar productos' }, { status: 403 });
+    }
+
     const body = await request.json();
     const { id, oldCategoryId, ...updateData } = body;
 
@@ -112,6 +140,14 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const user = await getAuthedUser(request);
+    if (!user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+    if (!canManageCatalog((user as any).role)) {
+      return NextResponse.json({ error: 'No tienes permisos para eliminar productos' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     const categoryId = searchParams.get('categoryId');

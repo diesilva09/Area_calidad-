@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { authService } from '@/lib/auth-service';
 
 type FrequencyType = 'daily' | 'weekly' | 'monthly' | 'custom';
 type FrequencyUnit = 'day' | 'week' | 'month';
@@ -154,6 +155,7 @@ async function ensureRecurringInstancesForDate(client: any, tableName: string, d
           INSERT INTO limpieza_registros (
             fecha,
             mes_corte,
+            turno,
             detalles,
             lote,
             producto,
@@ -162,11 +164,12 @@ async function ensureRecurringInstancesForDate(client: any, tableName: string, d
             cronograma_task_id,
             status,
             created_by
-          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
         `,
         [
           dateStr,
           t.mes_corte ?? null,
+          null,
           t.detalles ?? null,
           null,
           null,
@@ -197,6 +200,17 @@ async function resolveTasksTable(): Promise<string> {
     throw new Error('No existe tabla de tareas de limpieza (limpieza_tasks/limpienza_tasks)');
   }
   return tableName;
+}
+
+async function getAuthedUser(request: NextRequest) {
+  const token = request.cookies.get('auth-token')?.value;
+  if (!token) return null;
+  return authService.validateSession(token);
+}
+
+function canManageLimpieza(role: unknown): boolean {
+  const r = String(role ?? '').toLowerCase();
+  return r === 'jefe' || r === 'supervisor' || r === 'operario';
 }
 
 export async function GET(request: NextRequest) {
@@ -284,6 +298,14 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const client = await pool.connect();
   try {
+    const user = await getAuthedUser(request);
+    if (!user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+    if (!canManageLimpieza((user as any).role)) {
+      return NextResponse.json({ error: 'No tienes permisos para crear labores de limpieza' }, { status: 403 });
+    }
+
     const body = await request.json();
     const {
       area,

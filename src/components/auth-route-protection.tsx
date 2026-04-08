@@ -16,6 +16,7 @@ export function AuthRouteProtection({
   fallback 
 }: AuthRouteProtectionProps) {
   const { user, loading, isAuthenticated, isJefe } = useAuth();
+  const isSupervisor = (user?.role ?? '').toLowerCase() === 'supervisor';
   const router = useRouter();
 
   useEffect(() => {
@@ -28,11 +29,11 @@ export function AuthRouteProtection({
     }
 
     // Si requiere rol de jefe y no es jefe, redirigir con mensaje
-    if (requireJefe && !isJefe) {
+    if (requireJefe && !isJefe && !isSupervisor) {
       router.push('/login-simple?message=Esta sección requiere privilegios de Jefe de Calidad');
       return;
     }
-  }, [loading, isAuthenticated, isJefe, requireJefe, router]);
+  }, [loading, isAuthenticated, isJefe, isSupervisor, requireJefe, router]);
 
   // Mostrar loading mientras se verifica la autenticación
   if (loading) {
@@ -52,7 +53,7 @@ export function AuthRouteProtection({
   }
 
   // Si requiere rol de jefe y no es jefe, mostrar fallback
-  if (requireJefe && !isJefe) {
+  if (requireJefe && !isJefe && !isSupervisor) {
     return fallback || (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">

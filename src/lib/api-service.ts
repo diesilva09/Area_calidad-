@@ -387,8 +387,18 @@ export const productionRecordsAPI = {
   },
 
   delete: async (id: string) => {
+    // Obtener token de localStorage como fallback
+    const token = localStorage.getItem('auth-token');
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+      console.log('🔐 Usando token desde localStorage como fallback en delete');
+    }
+
     const response = await fetch(`/api/production-records?id=${id}`, {
       method: 'DELETE',
+      headers,
+      credentials: 'include',
     });
     
     if (!response.ok) {

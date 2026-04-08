@@ -9,6 +9,7 @@ import {
   Users
 } from 'lucide-react';
 import Link from 'next/link';
+import { getRoleDisplayName } from '@/lib/user-display-utils';
 
 const menuItems = [
   {
@@ -49,9 +50,6 @@ export default function Dashboard() {
     return 'Buenas noches';
   };
 
-  const getRoleTitle = () => {
-    return user.role === 'jefe' ? 'Jefe de Calidad' : 'Técnico de Calidad';
-  };
 
   
 
@@ -74,7 +72,7 @@ export default function Dashboard() {
             Bienvenido al Sistema de Gestión de Calidad
           </p>
           <p className="text-base sm:text-lg text-gray-500 mt-2 px-2">
-            Tu rol: {getRoleTitle()}
+            Tu rol: {getRoleDisplayName(user.role)}
           </p>
         </div>
 

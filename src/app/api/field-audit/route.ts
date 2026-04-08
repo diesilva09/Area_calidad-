@@ -55,6 +55,46 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Filtrar entradas de auditoría que no representan un cambio real.
+    // Esto ayuda a “limpiar” historial generado por payloads con defaults/vacíos.
+    const normalize = (v: unknown) => String(v ?? '').trim();
+
+    const areEquivalentValues = (a: unknown, b: unknown) => {
+      const sa = normalize(a);
+      const sb = normalize(b);
+
+      if (!sa && !sb) return true;
+      if (sa === sb) return true;
+
+      const na = Number(sa);
+      const nb = Number(sb);
+      if (!Number.isNaN(na) && !Number.isNaN(nb)) {
+        if (Math.abs(na - nb) < 1e-9) return true;
+      }
+
+      const da = new Date(sa);
+      const db = new Date(sb);
+      if (!Number.isNaN(da.getTime()) && !Number.isNaN(db.getTime())) {
+        if (Math.abs(da.getTime() - db.getTime()) < 60_000) return true;
+        if (da.toISOString().slice(0, 10) === db.toISOString().slice(0, 10)) return true;
+      }
+
+      return false;
+    };
+
+    auditLogs = auditLogs.filter((log) => {
+      if (log.change_type !== 'UPDATE') return true;
+      if (log.field_name === 'CREATED_RECORD' || log.field_name === 'DELETED_RECORD') return true;
+
+      const oldV = normalize(log.old_value);
+      const newV = normalize(log.new_value);
+
+      if (!oldV && !newV) return false;
+      if (areEquivalentValues(oldV, newV)) return false;
+
+      return true;
+    });
+
     return NextResponse.json({
       success: true,
       data: auditLogs,

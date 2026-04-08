@@ -10,6 +10,7 @@ import { SupervisorTabs } from './components/supervisor-tabs';
 import { useSupervisorData } from './hooks/use-supervisor-data';
 import { LoadingState } from './components/loading-state';
 import { ErrorState } from './components/error-state';
+import { getRoleDisplayName } from '@/lib/user-display-utils';
 
 export default function SupervisoresPage() {
   const { user } = useAuth();
@@ -82,7 +83,7 @@ export default function SupervisoresPage() {
               <User2 className="h-4 w-4 text-gray-400" />
               <span className="text-sm text-gray-600 hidden sm:inline">{user?.name}</span>
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-200">
-                {user?.role}
+                {getRoleDisplayName(user?.role)}
               </span>
             </div>
           </div>

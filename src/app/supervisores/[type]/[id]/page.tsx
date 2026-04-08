@@ -133,7 +133,7 @@ export default function ProductDetailsPage() {
     );
   }
 
-  if (user.role !== 'jefe' && user.role !== 'tecnico') {
+  if (user.role !== 'jefe' && user.role !== 'operario' && user.role !== 'supervisor' && user.role !== 'tecnico') {
     return (
       <div className="flex h-full items-center justify-center py-6">
         <Card className="w-full max-w-lg text-center">
@@ -212,7 +212,7 @@ export default function ProductDetailsPage() {
     <div className="py-6">
       <div className="mb-4">
         <Link 
-          href={user.role === 'jefe' ? '/supervisores' : '/tecnico'}
+          href={user.role === 'jefe' ? '/supervisores' : (user.role === 'operario' || user.role === 'supervisor') ? '/supervisores' : '/tecnico'}
           onClick={(e) => {
             console.log('🔙 Guardando producto para destacar:', id);
             saveScrollPosition(id);

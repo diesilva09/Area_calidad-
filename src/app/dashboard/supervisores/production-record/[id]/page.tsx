@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Calendar, Package, User, Thermometer, CheckCircle, AlertCircle, Scale, Beaker, FlaskRound, TestTube, ClipboardList, Eye, Droplet, Ruler, Gauge, Factory, Box, Hash, Tag, Layers, Clock, FileText, ShieldCheck, Award, MapPin } from 'lucide-react';
+import { ArrowLeft, Calendar, Package, User, Thermometer, CheckCircle, AlertCircle, Scale, Beaker, FlaskRound, TestTube, ClipboardList, Eye, Droplet, Ruler, Gauge, Factory, Box, Hash, Tag, Layers, Clock, FileText, ShieldCheck, Award, MapPin, Pencil, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState, use, useCallback } from 'react';
 import { productionRecordsService } from '@/lib/supervisores-data';
@@ -17,7 +17,17 @@ import { Separator } from '@/components/ui/separator';
 import { AddProductionRecordModal } from '@/components/supervisores/add-production-record-modal';
 import { getUserDisplayName } from '@/lib/user-display-utils';
 import { AuditedField } from '@/components/audited-field';
-import { FieldHistoryPanel } from '@/components/field-history-panel';
+import FieldHistoryPanel from '@/components/field-history-panel';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const PT_ANALYSES_MARKER = '__PT_ANALYSES_JSON__';
 
@@ -152,6 +162,8 @@ export default function ProductionRecordDetailPage({
   const [envaseTipoTexto, setEnvaseTipoTexto] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isHistoryPanelOpen, setIsHistoryPanelOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const returnTo = searchParams?.get('returnTo') || '/dashboard/supervisores/records';
 
@@ -217,6 +229,116 @@ export default function ProductionRecordDetailPage({
         ...prev,
         [equipoId]: nombreDirecto || `Equipo ${equipoId}`,
       }));
+    }
+  };
+
+  const isJefe = String((user as any)?.role ?? '').toLowerCase() === 'jefe';
+  const canEditCompleted = isJefe && !isRegistroPendiente();
+
+  // Helper para parsear rango de vacíos (ej: ">= 20", "15-20", ">2")
+  const parseVaciosRangeConfig = (raw: unknown) => {
+    const s = String(raw ?? '').trim();
+    if (!s) return null as null | { min: number; max: number | null };
+    const matches = s.match(/\d+(?:[\.,]\d+)?/g);
+    if (!matches || matches.length === 0) return null;
+    const nums = matches
+      .map((m) => Number(m.replace(',', '.')))
+      .filter((n) => !Number.isNaN(n));
+    if (!nums.length) return null;
+
+    const min = Math.min(...nums);
+    const max = nums.length >= 2 ? Math.max(...nums) : null;
+    return { min, max };
+  };
+
+  // Helper para normalizar rangos de calidad (brix, ph, acidez, etc.)
+  const parseCalidadRangoConfig = (cfg: any) => {
+    if (!cfg) return null;
+    
+    const pickFirst = (obj: any, keys: string[]) => {
+      for (const k of keys) {
+        const v = obj?.[k];
+        if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+      }
+      return undefined;
+    };
+
+    const parseField = (val: unknown): number | null => {
+      if (val === null || val === undefined) return null;
+      if (typeof val === 'number') return isNaN(val) ? null : val;
+      const s = String(val).trim();
+      if (!s) return null;
+      const n = Number(s.replace(',', '.'));
+      return isNaN(n) ? null : n;
+    };
+
+    try {
+      // Parsear vacios (puede venir como string tipo ">= 20" o "15-20")
+      const vaciosRaw = pickFirst(cfg, ['vacios', 'vacios_config', 'vaciosConfig']);
+      let vaciosMin: number | null = null;
+      let vaciosMax: number | null = null;
+      if (vaciosRaw) {
+        if (typeof vaciosRaw === 'object') {
+          const minObj = parseField(pickFirst(vaciosRaw, ['min', 'vacios_min', 'vacio_min']));
+          const maxObj = parseField(pickFirst(vaciosRaw, ['max', 'vacios_max', 'vacio_max']));
+          vaciosMin = minObj;
+          vaciosMax = maxObj;
+        } else {
+          const vaciosParsed = parseVaciosRangeConfig(vaciosRaw);
+          if (vaciosParsed) {
+            vaciosMin = vaciosParsed.min;
+            vaciosMax = vaciosParsed.max;
+          }
+        }
+      }
+
+      return {
+        brix_min: parseField(pickFirst(cfg, ['brix_min', 'brixMin', 'brixMIN'])),
+        brix_max: parseField(pickFirst(cfg, ['brix_max', 'brixMax', 'brixMAX'])),
+        ph_min: parseField(pickFirst(cfg, ['ph_min', 'phMin', 'pH_min', 'pHMin'])),
+        ph_max: parseField(pickFirst(cfg, ['ph_max', 'phMax', 'pH_max', 'pHMax'])),
+        acidez_min: parseField(pickFirst(cfg, ['acidez_min', 'acidezMin'])),
+        acidez_max: parseField(pickFirst(cfg, ['acidez_max', 'acidezMax'])),
+        ppm_so2_min: parseField(pickFirst(cfg, ['ppm_so2_min', 'ppmSo2Min', 'ppm_so2Min', 'ppmso2_min'])),
+        ppm_so2_max: parseField(pickFirst(cfg, ['ppm_so2_max', 'ppmSo2Max', 'ppm_so2Max', 'ppmso2_max'])),
+        consistencia_min: parseField(pickFirst(cfg, ['consistencia_min', 'consistenciaMin'])),
+        consistencia_max: parseField(pickFirst(cfg, ['consistencia_max', 'consistenciaMax'])),
+        vacios_min: vaciosMin,
+        vacios_max: vaciosMax,
+      };
+    } catch (err) {
+      console.error('🔍 ERROR dentro de parseCalidadRangoConfig:', err);
+      return null;
+    }
+  };
+
+  const deleteDetails = useCallback(() => {
+    if (!record) return '';
+    const productoLabel = String((record as any)?.producto_nombre ?? (record as any)?.producto ?? '').trim();
+    const loteLabel = String((record as any)?.lote ?? '').trim();
+    const fechaLabel = String((record as any)?.fechaproduccion ?? '').slice(0, 10);
+    return [
+      productoLabel ? `Producto: ${productoLabel}` : '',
+      loteLabel ? `Lote: ${loteLabel}` : '',
+      fechaLabel ? `Fecha: ${fechaLabel}` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  }, [record]);
+
+  const handleDelete = async () => {
+    if (!record?.id) return;
+    try {
+      setActionError(null);
+      setIsDeleting(true);
+      await productionRecordsService.delete(record.id);
+      router.push(returnTo);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error al eliminar el registro';
+      setActionError(msg);
+    } finally {
+      setIsDeleting(false);
+      setConfirmDeleteOpen(false);
     }
   };
 
@@ -317,14 +439,40 @@ export default function ProductionRecordDetailPage({
           return list[0] || null;
         };
 
+        console.log('🔍 Cargando configuración calidad...', {
+          envaseRaw,
+          envaseOriginalNormalized,
+          envaseShortNormalized,
+          calidadRangosConfig: (detailedProduct as any)?.calidad_rangos_config,
+          listLength: (detailedProduct as any)?.calidad_rangos_config?.length,
+          firstConfig: JSON.stringify((detailedProduct as any)?.calidad_rangos_config?.[0])
+        });
+
         const list = Array.isArray((detailedProduct as any)?.calidad_rangos_config)
           ? (detailedProduct as any).calidad_rangos_config
           : [];
 
         const normalizedEnvase = envaseOriginalNormalized || envaseShortNormalized || 'general';
         let cfg = findConfigByEnvase(list);
-        if (!cfg && normalizedEnvase === 'general' && list.length >= 1) cfg = list[0];
-        setCalidadRangoActual(cfg || null);
+        console.log('🔍 findConfigByEnvase resultado:', JSON.stringify(cfg));
+        // Si no se encuentra config específico, usar cualquier config disponible
+        if (!cfg && list.length >= 1) cfg = list[0];
+        console.log('🔍 Config después de fallback:', JSON.stringify(cfg));
+        // Normalizar rangos para asegurar que sean números
+        console.log('🔍 cfg existe:', !!cfg, 'tipo:', typeof cfg);
+        const parsedConfig = parseCalidadRangoConfig(cfg);
+        console.log('🔍 parsedConfig:', JSON.stringify(parsedConfig));
+        console.log('🔍 Configuración calidad cargada:', { 
+          cfg: JSON.stringify(cfg), 
+          parsedConfig: JSON.stringify(parsedConfig), 
+          envaseOriginalNormalized,
+          vacio_pt: foundRecord?.vacio_pt,
+          brix_pt: foundRecord?.brix_pt,
+          ph_pt: foundRecord?.ph_pt
+        });
+        console.log('🔍 Llamando setCalidadRangoActual con:', JSON.stringify(parsedConfig));
+        setCalidadRangoActual(parsedConfig);
+        console.log('🔍 setCalidadRangoActual llamado');
 
         const tempList = Array.isArray((detailedProduct as any)?.temperaturas_config)
           ? (detailedProduct as any).temperaturas_config
@@ -346,7 +494,8 @@ export default function ProductionRecordDetailPage({
         } else {
           setTemperaturaRangoActual(null);
         }
-      } catch {
+      } catch (err) {
+        console.log('🔍 ERROR en bloque try de configuración:', err);
         setCalidadRangoActual(null);
         setTemperaturaRangoActual(null);
       }
@@ -359,7 +508,11 @@ export default function ProductionRecordDetailPage({
   }, [resolvedParams.id]);
 
   useEffect(() => {
-    if (!user || (user.role !== 'jefe' && user.role !== 'tecnico')) {
+    console.log('🔍 useEffect - calidadRangoActual cambió:', JSON.stringify(calidadRangoActual));
+  }, [calidadRangoActual]);
+
+  useEffect(() => {
+    if (!user || (user.role !== 'jefe' && user.role !== 'operario' && user.role !== 'supervisor' && user.role !== 'tecnico')) {
       router.push('/dashboard');
       return;
     }
@@ -590,20 +743,6 @@ export default function ProductionRecordDetailPage({
       .filter(Boolean);
   };
 
-  const parseVaciosRangeConfig = (raw: unknown) => {
-    const s = String(raw ?? '').trim();
-    if (!s) return null as null | { min: number; max: number | null };
-    const matches = s.match(/\d+(?:[\.,]\d+)?/g);
-    if (!matches || matches.length === 0) return null;
-    const nums = matches
-      .map((m) => Number(m.replace(',', '.')))
-      .filter((n) => !Number.isNaN(n));
-    if (!nums.length) return null;
-
-    const min = Math.min(...nums);
-    const max = nums.length >= 2 ? Math.max(...nums) : null;
-    return { min, max };
-  };
 
   function formatEnvase(raw: unknown) {
     const s = String(raw ?? '').trim();
@@ -718,16 +857,21 @@ export default function ProductionRecordDetailPage({
     const v = parseNumberValue(rawValue);
     const minN = parseNumberValue(min);
     const maxN = parseNumberValue(max);
-
-    if (v === null) return 'text-lg font-semibold text-gray-600';
-    if ((minN !== null && v < minN) || (maxN !== null && v > maxN)) {
-      return 'text-lg font-semibold text-red-600';
-    }
-    // Solo marcar verde si existe un rango definido y el valor está dentro
-    if (minN !== null || maxN !== null) {
-      return 'text-lg font-semibold text-green-600';
-    }
-    return 'text-lg font-semibold text-gray-900';
+    
+    // Debug - mostrar valores completos
+    const result = (() => {
+      if (v === null) return 'text-lg font-semibold text-gray-600';
+      if ((minN !== null && v < minN) || (maxN !== null && v > maxN)) {
+        return 'text-lg font-semibold text-red-600';
+      }
+      if (minN !== null || maxN !== null) {
+        return 'text-lg font-semibold text-green-600';
+      }
+      return 'text-lg font-semibold text-gray-900';
+    })();
+    
+    console.log('🔍 rangeClass:', JSON.stringify({ rawValue, v, min, minN, max, maxN, result }));
+    return result;
   };
 
   const SamplesGrid = ({ values }: { values: string[] }) => {
@@ -942,6 +1086,27 @@ export default function ProductionRecordDetailPage({
                 <Clock className="h-4 w-4" />
                 Ver Historial
               </Button>
+              {canEditCompleted && (
+                <Button
+                  onClick={() => setIsEditModalOpen(true)}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                >
+                  <Pencil className="h-4 w-4" />
+                  Editar
+                </Button>
+              )}
+              {canEditCompleted && (
+                <Button
+                  onClick={() => setConfirmDeleteOpen(true)}
+                  variant="outline"
+                  className="flex items-center gap-2 text-red-700 border-red-200 hover:bg-red-50"
+                  disabled={isDeleting}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Eliminar
+                </Button>
+              )}
               {isRegistroPendiente() && (
                 <Button
                   onClick={completarRegistro}
@@ -1207,7 +1372,7 @@ export default function ProductionRecordDetailPage({
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-4">
                   <div>
                     <CumpleField
                       label="Inspección Micropesaje No. Mezcla"
@@ -1231,6 +1396,16 @@ export default function ProductionRecordDetailPage({
                     />
                   </div>
                 </div>
+                {record.observaciones_analisis_pruebas && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                      <FileText className="h-3 w-3" /> Observaciones Análisis de Pruebas
+                    </label>
+                    <p className="mt-1 text-sm bg-amber-50 border border-amber-200 p-3 rounded-lg whitespace-pre-wrap break-words shadow-sm">
+                      {record.observaciones_analisis_pruebas}
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -1264,6 +1439,16 @@ export default function ProductionRecordDetailPage({
                     <SamplesGrid values={parseCsvValues(record.pesos_drenados)} />
                   </div>
                 </div>
+                {record.observaciones_peso_drenado && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                      <FileText className="h-3 w-3" /> Observaciones Peso Drenado
+                    </label>
+                    <p className="mt-1 text-sm bg-amber-50 border border-amber-200 p-3 rounded-lg whitespace-pre-wrap break-words shadow-sm">
+                      {record.observaciones_peso_drenado}
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -1295,6 +1480,16 @@ export default function ProductionRecordDetailPage({
                     <SamplesGrid values={parseCsvValues(record.pesos_netos)} />
                   </div>
                 </div>
+                {record.observaciones_peso_neto && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                      <FileText className="h-3 w-3" /> Observaciones Peso Neto
+                    </label>
+                    <p className="mt-1 text-sm bg-amber-50 border border-amber-200 p-3 rounded-lg whitespace-pre-wrap break-words shadow-sm">
+                      {record.observaciones_peso_neto}
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -1314,7 +1509,7 @@ export default function ProductionRecordDetailPage({
                   <div className="mt-2">
                     <VacioSamplesGrid
                       values={parseCsvValues(record.pruebas_vacio)}
-                      range={parseVaciosRangeConfig(calidadRangoActual?.vacios)}
+                      range={calidadRangoActual ? { min: calidadRangoActual.vacios_min ?? 0, max: calidadRangoActual.vacios_max } : null}
                     />
                   </div>
                 </div>
@@ -1325,40 +1520,53 @@ export default function ProductionRecordDetailPage({
                   recordId={record.id}
                   tableName="production_records"
                 />
-              </CardContent>
-            </Card>
-
-            {/* Información de Auditoría */}
-            <Card className="shadow-md border-gray-200">
-              <CardHeader className="bg-gradient-to-r from-orange-50 to-red-50 border-b border-gray-200">
-                <CardTitle className="flex items-center text-lg font-semibold text-gray-800">
-                  <Clock className="mr-2 h-5 w-5 text-orange-600" />
-                  Información de Auditoría
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 p-5">
-                <AuditedField
-                  label="Creado por"
-                  value={record.created_by}
-                  fieldName="created_by"
-                  recordId={record.id}
-                  tableName="production_records"
-                />
-                <AuditedField
-                  label="Editado por última vez"
-                  value={record.updated_by}
-                  fieldName="updated_by"
-                  recordId={record.id}
-                  tableName="production_records"
-                />
-                <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha de Creación</label>
-                  <p className="mt-1 text-sm font-medium text-gray-800">{formatDateTime(record.created_at)}</p>
-                </div>
+                {(() => {
+                  const parsed = parseNovCorrPorSeccion(record.novedades_proceso, record.observaciones_acciones_correctivas);
+                  const novedades = String(parsed.vacio.novedades || '').trim();
+                  const correcciones = String(parsed.vacio.correcciones || '').trim();
+                  return (
+                    (novedades || correcciones) && (
+                      <div className="space-y-4">
+                        {novedades && (
+                          <div>
+                            <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                              <AlertCircle className="h-3 w-3 text-amber-600" /> Novedades (Pruebas de Vacío)
+                            </label>
+                            <p className="mt-1 text-sm bg-amber-50 border border-amber-200 p-3 rounded-lg whitespace-pre-wrap break-words shadow-sm">
+                              {novedades}
+                            </p>
+                          </div>
+                        )}
+                        {correcciones && (
+                          <div>
+                            <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                              <FileText className="h-3 w-3" /> Correcciones (Pruebas de Vacío)
+                            </label>
+                            <p className="mt-1 text-sm bg-blue-50 border border-blue-200 p-3 rounded-lg whitespace-pre-wrap break-words shadow-sm">
+                              {correcciones}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  );
+                })()}
               </CardContent>
             </Card>
 
             {/* Análisis PT */}
+            {(() => {
+              console.log('🔍 DEBUG PT - record:', JSON.stringify({ 
+                vacio_pt: record.vacio_pt,
+                brix_pt: record.brix_pt,
+                ph_pt: record.ph_pt,
+                acidez_pt: record.acidez_pt,
+                ppm_so2_pt: record.ppm_so2_pt,
+                consistencia_pt: record.consistencia_pt,
+                calidadRangoActual
+              }, null, 2));
+              return null;
+            })()}
             <Card className="shadow-md border-gray-200">
               <CardHeader className="bg-gradient-to-r from-indigo-50 to-blue-50 border-b border-gray-200">
                 <CardTitle className="flex items-center text-lg font-semibold text-gray-800">
@@ -1377,31 +1585,46 @@ export default function ProductionRecordDetailPage({
                       <Hash className="h-3 w-3" /> No. Mezcla
                     </label>
                     <div className="mt-1">
-                      <CumpleField label="" rawValue={record.no_mezcla_pt} />
+                      <p className="text-sm font-medium text-gray-800">{record.no_mezcla_pt ?? 'N/A'}</p>
                     </div>
                   </div>
                   <div>
                     <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                       <Gauge className="h-3 w-3" /> Vacío
+                      {calidadRangoActual && (
+                        <span className="text-[10px] text-gray-400 normal-case ml-1">
+                          (Rango: {calidadRangoActual.vacios_min ?? 0} {calidadRangoActual.vacios_max ? `- ${calidadRangoActual.vacios_max}` : 'min'})
+                        </span>
+                      )}
                     </label>
-                    <div className="mt-1">
-                      <CumpleField label="" rawValue={record.vacio_pt} />
-                    </div>
+                    <p className={rangeClass(record.vacio_pt, calidadRangoActual?.vacios_min, calidadRangoActual?.vacios_max)}>
+                      {record.vacio_pt && record.vacio_pt !== 'Pendiente' ? record.vacio_pt : 'N/A'}
+                    </p>
                   </div>
                   <div>
                     <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                       <Ruler className="h-3 w-3" /> °Brix
+                      {calidadRangoActual && (calidadRangoActual.brix_min != null || calidadRangoActual.brix_max != null) && (
+                        <span className="text-[10px] text-gray-400 normal-case ml-1">
+                          ({calidadRangoActual.brix_min ?? '-'} - {calidadRangoActual.brix_max ?? '-'})
+                        </span>
+                      )}
                     </label>
                     <p className={rangeClass(record.brix_pt, calidadRangoActual?.brix_min, calidadRangoActual?.brix_max)}>
-                      {record.brix_pt}
+                      {record.brix_pt && record.brix_pt !== 'Pendiente' ? record.brix_pt : 'N/A'}
                     </p>
                   </div>
                   <div>
                     <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                       <TestTube className="h-3 w-3" /> pH
+                      {calidadRangoActual && (calidadRangoActual.ph_min != null || calidadRangoActual.ph_max != null) && (
+                        <span className="text-[10px] text-gray-400 normal-case ml-1">
+                          ({calidadRangoActual.ph_min ?? '-'} - {calidadRangoActual.ph_max ?? '-'})
+                        </span>
+                      )}
                     </label>
                     <p className={rangeClass(record.ph_pt, calidadRangoActual?.ph_min, calidadRangoActual?.ph_max)}>
-                      {record.ph_pt}
+                      {record.ph_pt && record.ph_pt !== 'Pendiente' ? record.ph_pt : 'N/A'}
                     </p>
                   </div>
                 </div>
@@ -1410,30 +1633,44 @@ export default function ProductionRecordDetailPage({
                   <div>
                     <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                       <Droplet className="h-3 w-3" /> Acidez
+                      {calidadRangoActual && (calidadRangoActual.acidez_min != null || calidadRangoActual.acidez_max != null) && (
+                        <span className="text-[10px] text-gray-400 normal-case ml-1">
+                          ({calidadRangoActual.acidez_min ?? '-'} - {calidadRangoActual.acidez_max ?? '-'})
+                        </span>
+                      )}
                     </label>
                     <p className={rangeClass(record.acidez_pt, calidadRangoActual?.acidez_min, calidadRangoActual?.acidez_max)}>
-                      {record.acidez_pt}
+                      {record.acidez_pt && record.acidez_pt !== 'Pendiente' ? record.acidez_pt : 'N/A'}
                     </p>
                   </div>
                   <div>
                     <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                       <Beaker className="h-3 w-3" /> PPM-SO2
+                      {calidadRangoActual && (calidadRangoActual.ppm_so2_min != null || calidadRangoActual.ppm_so2_max != null) && (
+                        <span className="text-[10px] text-gray-400 normal-case ml-1">
+                          ({calidadRangoActual.ppm_so2_min ?? '-'} - {calidadRangoActual.ppm_so2_max ?? '-'})
+                        </span>
+                      )}
                     </label>
                     <p className={rangeClass(record.ppm_so2_pt, calidadRangoActual?.ppm_so2_min, calidadRangoActual?.ppm_so2_max)}>
-                      {record.ppm_so2_pt}
+                      {record.ppm_so2_pt && record.ppm_so2_pt !== 'Pendiente' ? record.ppm_so2_pt : 'N/A'}
                     </p>
                   </div>
                   <div>
                     <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                       <Scale className="h-3 w-3" /> Peso Neto Real PT
                     </label>
-                    <p className="text-lg font-semibold text-gray-800">{record.peso_neto_real_pt}</p>
+                    <p className="text-lg font-semibold text-gray-800">
+                      {record.peso_neto_real_pt && record.peso_neto_real_pt !== 'Pendiente' ? record.peso_neto_real_pt : 'N/A'}
+                    </p>
                   </div>
                   <div>
                     <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                       <Scale className="h-3 w-3" /> Peso Drenado Real PT
                     </label>
-                    <p className="text-lg font-semibold text-gray-800">{record.peso_drenado_real_pt}</p>
+                    <p className="text-lg font-semibold text-gray-800">
+                      {record.peso_drenado_real_pt && record.peso_drenado_real_pt !== 'Pendiente' ? record.peso_drenado_real_pt : 'N/A'}
+                    </p>
                   </div>
                 </div>
 
@@ -1441,6 +1678,11 @@ export default function ProductionRecordDetailPage({
                   <div>
                     <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                       <Gauge className="h-3 w-3" /> Consistencia
+                      {calidadRangoActual && (calidadRangoActual.consistencia_min != null || calidadRangoActual.consistencia_max != null) && (
+                        <span className="text-[10px] text-gray-400 normal-case ml-1">
+                          ({calidadRangoActual.consistencia_min ?? '-'} - {calidadRangoActual.consistencia_max ?? '-'})
+                        </span>
+                      )}
                     </label>
                     <p
                       className={rangeClass(
@@ -1449,7 +1691,7 @@ export default function ProductionRecordDetailPage({
                         calidadRangoActual?.consistencia_max
                       )}
                     >
-                      {record.consistencia_pt}
+                      {record.consistencia_pt && record.consistencia_pt !== 'Pendiente' ? record.consistencia_pt : 'N/A'}
                     </p>
                   </div>
                   <div>
@@ -1554,14 +1796,24 @@ export default function ProductionRecordDetailPage({
                         <div>
                           <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                             <Gauge className="h-3 w-3" /> Vacío
+                            {calidadRangoActual && (
+                              <span className="text-[10px] text-gray-400 normal-case ml-1">
+                                ({calidadRangoActual.vacios_min ?? 0} {calidadRangoActual.vacios_max ? `- ${calidadRangoActual.vacios_max}` : 'min'})
+                              </span>
+                            )}
                           </label>
-                          <p className={rangeClass(extra.vacioPT, calidadRangoActual?.vacios?.min, calidadRangoActual?.vacios?.max)}>
-                            {extra.vacioPT || 'N/A'}
+                          <p className={rangeClass(extra.vacioPT, calidadRangoActual?.vacios_min, calidadRangoActual?.vacios_max)}>
+                            {extra.vacioPT && extra.vacioPT !== 'Pendiente' ? extra.vacioPT : 'N/A'}
                           </p>
                         </div>
                         <div>
                           <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                             <Ruler className="h-3 w-3" /> °Brix
+                            {calidadRangoActual && (calidadRangoActual.brix_min != null || calidadRangoActual.brix_max != null) && (
+                              <span className="text-[10px] text-gray-400 normal-case ml-1">
+                                ({calidadRangoActual.brix_min ?? '-'} - {calidadRangoActual.brix_max ?? '-'})
+                              </span>
+                            )}
                           </label>
                           <p className={rangeClass(extra.brixPT, calidadRangoActual?.brix_min, calidadRangoActual?.brix_max)}>
                             {extra.brixPT || 'N/A'}
@@ -1570,6 +1822,11 @@ export default function ProductionRecordDetailPage({
                         <div>
                           <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                             <TestTube className="h-3 w-3" /> pH
+                            {calidadRangoActual && (calidadRangoActual.ph_min != null || calidadRangoActual.ph_max != null) && (
+                              <span className="text-[10px] text-gray-400 normal-case ml-1">
+                                ({calidadRangoActual.ph_min ?? '-'} - {calidadRangoActual.ph_max ?? '-'})
+                              </span>
+                            )}
                           </label>
                           <p className={rangeClass(extra.phPT, calidadRangoActual?.ph_min, calidadRangoActual?.ph_max)}>
                             {extra.phPT || 'N/A'}
@@ -1582,6 +1839,11 @@ export default function ProductionRecordDetailPage({
                         <div>
                           <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                             <Droplet className="h-3 w-3" /> Acidez
+                            {calidadRangoActual && (calidadRangoActual.acidez_min != null || calidadRangoActual.acidez_max != null) && (
+                              <span className="text-[10px] text-gray-400 normal-case ml-1">
+                                ({calidadRangoActual.acidez_min ?? '-'} - {calidadRangoActual.acidez_max ?? '-'})
+                              </span>
+                            )}
                           </label>
                           <p className={rangeClass(extra.acidezPT, calidadRangoActual?.acidez_min, calidadRangoActual?.acidez_max)}>
                             {extra.acidezPT || 'N/A'}
@@ -1590,6 +1852,11 @@ export default function ProductionRecordDetailPage({
                         <div>
                           <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                             <Beaker className="h-3 w-3" /> PPM-SO2
+                            {calidadRangoActual && (calidadRangoActual.ppm_so2_min != null || calidadRangoActual.ppm_so2_max != null) && (
+                              <span className="text-[10px] text-gray-400 normal-case ml-1">
+                                ({calidadRangoActual.ppm_so2_min ?? '-'} - {calidadRangoActual.ppm_so2_max ?? '-'})
+                              </span>
+                            )}
                           </label>
                           <p className={rangeClass(extra.ppmSo2PT, calidadRangoActual?.ppm_so2_min, calidadRangoActual?.ppm_so2_max)}>
                             {extra.ppmSo2PT || 'N/A'}
@@ -1618,6 +1885,11 @@ export default function ProductionRecordDetailPage({
                         <div>
                           <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                             <Gauge className="h-3 w-3" /> Consistencia
+                            {calidadRangoActual && (calidadRangoActual.consistencia_min != null || calidadRangoActual.consistencia_max != null) && (
+                              <span className="text-[10px] text-gray-400 normal-case ml-1">
+                                ({calidadRangoActual.consistencia_min ?? '-'} - {calidadRangoActual.consistencia_max ?? '-'})
+                              </span>
+                            )}
                           </label>
                           <p className={rangeClass(
                             extra.consistenciaPT,
@@ -1739,6 +2011,30 @@ export default function ProductionRecordDetailPage({
         recordId={record.id}
         recordTitle={`${record.producto_nombre || record.producto} - ${record.lote}`}
       />
+
+      <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar eliminación</AlertDialogTitle>
+            <AlertDialogDescription>
+              Vas a eliminar este registro de producción. Esta acción es permanente y no se puede deshacer.
+              {deleteDetails() ? (
+                <span className="block mt-2 text-sm text-gray-600">{deleteDetails()}</span>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? 'Eliminando...' : 'Eliminar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

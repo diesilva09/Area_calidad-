@@ -44,6 +44,7 @@ export interface LimpiezaRegistro {
   id: string;
   fecha: string;
   mes_corte: string | null;
+  turno?: 'dia' | 'noche' | null;
   detalles: string | null;
   lote: string | null;
   producto: string | null;
@@ -111,6 +112,7 @@ class LimpiezaRegistrosService {
   async create(payload: {
     fecha: string;
     mes_corte?: string | null;
+    turno?: 'dia' | 'noche' | null;
     detalles?: string | null;
     lote?: string | null;
     producto?: string | null;
@@ -137,6 +139,7 @@ class LimpiezaRegistrosService {
   async update(id: string, payload: {
     fecha?: string;
     mes_corte?: string | null;
+    turno?: 'dia' | 'noche' | null;
     detalles?: string | null;
     lote?: string | null;
     producto?: string | null;

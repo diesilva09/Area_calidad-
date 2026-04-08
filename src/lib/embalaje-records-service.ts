@@ -95,12 +95,17 @@ export const embalajeRecordsAPI = {
 
   // Actualizar un registro de embalaje
   async update(id: string, updates: Partial<CreateEmbalajeRecord>): Promise<EmbalajeRecord> {
+    const token = localStorage.getItem('auth-token');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
     const response = await fetch(`/api/embalaje-records/${id}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify(updates),
+      credentials: 'include',
     });
     if (!response.ok) throw new Error('Error al actualizar registro de embalaje');
     return response.json();
@@ -108,8 +113,14 @@ export const embalajeRecordsAPI = {
 
   // Eliminar un registro
   async delete(id: string): Promise<void> {
+    const token = localStorage.getItem('auth-token');
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
     const response = await fetch(`/api/embalaje-records/${id}`, {
       method: 'DELETE',
+      headers,
+      credentials: 'include',
     });
     if (!response.ok) throw new Error('Error al eliminar registro de embalaje');
   },

@@ -17,7 +17,7 @@ export default function ProduccionPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user || (user.role !== 'jefe' && user.role !== 'tecnico')) {
+    if (!user || (user.role !== 'jefe' && user.role !== 'operario' && user.role !== 'supervisor' && user.role !== 'tecnico')) {
       router.push('/dashboard');
       return;
     }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { authService } from '@/lib/auth-service';
 
 type FrequencyType = 'daily' | 'weekly' | 'monthly' | 'custom';
 type FrequencyUnit = 'day' | 'week' | 'month';
@@ -20,6 +21,17 @@ async function resolveTasksTable(): Promise<string> {
     throw new Error('No existe tabla de tareas de limpieza (limpieza_tasks/limpienza_tasks)');
   }
   return tableName;
+}
+
+async function getAuthedUser(request: NextRequest) {
+  const token = request.cookies.get('auth-token')?.value;
+  if (!token) return null;
+  return authService.validateSession(token);
+}
+
+function canManageLimpieza(role: unknown): boolean {
+  const r = String(role ?? '').toLowerCase();
+  return r === 'jefe' || r === 'supervisor' || r === 'operario';
 }
 
 export async function GET(
@@ -298,6 +310,14 @@ export async function DELETE(
 ) {
   const client = await pool.connect();
   try {
+    const user = await getAuthedUser(request);
+    if (!user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+    if (!canManageLimpieza((user as any).role)) {
+      return NextResponse.json({ error: 'No tienes permisos para eliminar labores de limpieza' }, { status: 403 });
+    }
+
     const { id } = await params;
 
     const tableName = await resolveTasksTable();

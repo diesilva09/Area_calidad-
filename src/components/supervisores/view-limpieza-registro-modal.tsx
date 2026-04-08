@@ -168,6 +168,16 @@ export function ViewLimpiezaRegistroModal({
                     <div className="font-medium">Mes de Corte</div>
                     <div className="text-gray-600">{data.mes_corte || 'No especificado'}</div>
                   </div>
+                  <div>
+                    <div className="font-medium">Turno</div>
+                    <div className="text-gray-600">
+                      {(data as any)?.turno === 'dia'
+                        ? 'Día'
+                        : (data as any)?.turno === 'noche'
+                          ? 'Noche'
+                          : 'No especificado'}
+                    </div>
+                  </div>
                   {data.detalles && (
                     <div className="md:col-span-2">
                       <div className="font-medium">Detalles</div>

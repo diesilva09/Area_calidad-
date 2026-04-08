@@ -1,5 +1,6 @@
 'use client';
 
+import '@/lib/react-dom-patch';
 import { useAuth } from '@/contexts/auth-context';
 import AuthLoading from './auth-loading';
 

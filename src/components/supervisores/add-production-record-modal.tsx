@@ -413,8 +413,11 @@ export function AddProductionRecordModal({
     return dentroRango ? 'border-blue-500 focus:border-blue-500' : 'border-red-500 focus:border-red-500';
   };
 
-  const getPtRangeInputClass = (fieldName: 'brixPT' | 'phPT' | 'acidezPT' | 'consistenciaPT' | 'ppmSo2PT') => {
-    const value = form.getValues(fieldName);
+  const getPtRangeInputClass = (
+    fieldName: 'brixPT' | 'phPT' | 'acidezPT' | 'consistenciaPT' | 'ppmSo2PT',
+    rawValue?: unknown
+  ) => {
+    const value = rawValue ?? form.getValues(fieldName);
     if (!calidadRangoActual) return '';
     const v = parseNumberValue(value);
     if (v === null) return '';
@@ -427,8 +430,8 @@ export function AddProductionRecordModal({
     return dentro ? 'border-green-500 focus:border-green-500' : 'border-red-500 focus:border-red-500';
   };
 
-  const getVacioPTInputClass = () => {
-    const value = String(vacioPTWatch || '').trim();
+  const getVacioPTInputClass = (rawValue?: unknown) => {
+    const value = String(rawValue ?? vacioPTWatch ?? '').trim();
     if (!value) return '';
     const num = Number(value.replace(',', '.'));
     if (!Number.isFinite(num)) return 'border-red-500 focus:border-red-500';
@@ -1203,6 +1206,9 @@ export function AddProductionRecordModal({
         // Observaciones y acciones
         'novedades_proceso': 'novedadesProceso',
         'observaciones_acciones_correctivas': 'observacionesAccionesCorrectivas',
+        'observaciones_analisis_pruebas': 'observacionesAnalisisPruebas',
+        'observaciones_peso_drenado': 'observacionesPesoDrenado',
+        'observaciones_peso_neto': 'observacionesPesoNeto',
 
         // Responsables
         'responsable_produccion': 'responsableProduccion',
@@ -1248,7 +1254,10 @@ export function AddProductionRecordModal({
         const mappedField = fieldMapping[dbField];
         const formField = (mappedField || snakeToCamel(dbField) || dbField) as string;
 
-        if (!(formField in nextValues)) return;
+        // Permitir campos que no estén en nextValues inicialmente (como observaciones)
+        // pero que existen en el schema o son campos de sistema
+        const isSystemField = ['created_at', 'updated_at', 'created_by', 'updated_by', 'status', 'id'].includes(dbField);
+        if (!(formField in nextValues) && !isSystemField && !mappedField) return;
 
         const rawValue = (editingRecord as any)[dbField];
 
@@ -1325,6 +1334,12 @@ export function AddProductionRecordModal({
 
       // Rehidratar campos de observaciones (Sí/No + texto)
       const obsAnalisisPruebas = String((nextValues as any).observacionesAnalisisPruebas ?? '').trim();
+      console.log('🔍 Rehidratando observaciones:', {
+        obsAnalisisPruebas,
+        obsPesoDrenado: String((nextValues as any).observacionesPesoDrenado ?? '').trim(),
+        obsPesoNeto: String((nextValues as any).observacionesPesoNeto ?? '').trim(),
+        nextValuesKeys: Object.keys(nextValues).filter(k => k.toLowerCase().includes('observacion'))
+      });
       if (obsAnalisisPruebas) {
         nextValues.tieneObservacionesAnalisisPruebas = 'Si';
         nextValues.observacionesAnalisisPruebasTexto = obsAnalisisPruebas;
@@ -5368,7 +5383,7 @@ const createAutomaticLimpiezaRecord = async (
                                 </div>
                                 <div className="space-y-2">
                                   <FormLabel>Vacío INCH/HG</FormLabel>
-                                  <Input type="number" value={analysis.vacioPT} onChange={(e) => setField('vacioPT', e.target.value)} className={getVacioPTInputClass()} />
+                                  <Input type="number" value={analysis.vacioPT} onChange={(e) => setField('vacioPT', e.target.value)} className={getVacioPTInputClass(analysis.vacioPT)} />
                                 </div>
                                 <div className="space-y-2">
                                   <FormLabel>Peso Neto Real</FormLabel>
@@ -5381,27 +5396,27 @@ const createAutomaticLimpiezaRecord = async (
                                 <div className="space-y-2">
                                   <FormLabel>°Brix</FormLabel>
                                   {calidadRangoActual && <div className="text-xs text-muted-foreground">Rango: {calidadRangoActual.brix_min} - {calidadRangoActual.brix_max}</div>}
-                                  <Input type="number" value={analysis.brixPT} onChange={(e) => setField('brixPT', e.target.value)} className={getPtRangeInputClass('brixPT')} />
+                                  <Input type="number" value={analysis.brixPT} onChange={(e) => setField('brixPT', e.target.value)} className={getPtRangeInputClass('brixPT', analysis.brixPT)} />
                                 </div>
                                 <div className="space-y-2">
                                   <FormLabel>pH</FormLabel>
                                   {calidadRangoActual && <div className="text-xs text-muted-foreground">Rango: {calidadRangoActual.ph_min} - {calidadRangoActual.ph_max}</div>}
-                                  <Input type="number" value={analysis.phPT} onChange={(e) => setField('phPT', e.target.value)} className={getPtRangeInputClass('phPT')} />
+                                  <Input type="number" value={analysis.phPT} onChange={(e) => setField('phPT', e.target.value)} className={getPtRangeInputClass('phPT', analysis.phPT)} />
                                 </div>
                                 <div className="space-y-2">
                                   <FormLabel>Acidez</FormLabel>
                                   {calidadRangoActual && <div className="text-xs text-muted-foreground">Rango: {calidadRangoActual.acidez_min} - {calidadRangoActual.acidez_max}</div>}
-                                  <Input type="number" value={analysis.acidezPT} onChange={(e) => setField('acidezPT', e.target.value)} className={getPtRangeInputClass('acidezPT')} />
+                                  <Input type="number" value={analysis.acidezPT} onChange={(e) => setField('acidezPT', e.target.value)} className={getPtRangeInputClass('acidezPT', analysis.acidezPT)} />
                                 </div>
                                 <div className="space-y-2">
                                   <FormLabel>PPM-SO2</FormLabel>
                                   {calidadRangoActual && <div className="text-xs text-muted-foreground">Rango: {calidadRangoActual.ppm_so2_min} - {calidadRangoActual.ppm_so2_max}</div>}
-                                  <Input type="number" value={analysis.ppmSo2PT} onChange={(e) => setField('ppmSo2PT', e.target.value)} className={getPtRangeInputClass('ppmSo2PT')} />
+                                  <Input type="number" value={analysis.ppmSo2PT} onChange={(e) => setField('ppmSo2PT', e.target.value)} className={getPtRangeInputClass('ppmSo2PT', analysis.ppmSo2PT)} />
                                 </div>
                                 <div className="space-y-2">
                                   <FormLabel>Consistencia</FormLabel>
                                   {calidadRangoActual && <div className="text-xs text-muted-foreground">Rango: {calidadRangoActual.consistencia_min} - {calidadRangoActual.consistencia_max}</div>}
-                                  <Input type="number" value={analysis.consistenciaPT} onChange={(e) => setField('consistenciaPT', e.target.value)} className={getPtRangeInputClass('consistenciaPT')} />
+                                  <Input type="number" value={analysis.consistenciaPT} onChange={(e) => setField('consistenciaPT', e.target.value)} className={getPtRangeInputClass('consistenciaPT', analysis.consistenciaPT)} />
                                 </div>
                                 <div className="space-y-2">
                                   <FormLabel>Tapado y Cierre</FormLabel>

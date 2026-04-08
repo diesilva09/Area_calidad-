@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { useRouter, usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import NotificationBell from '@/components/notifications/notification-bell';
+import { getRoleDisplayName } from '@/lib/user-display-utils';
 import { 
   LayoutDashboard, 
   Users, 
@@ -38,21 +39,21 @@ const menuItems = [
     icon: Users,
     href: '/dashboard/supervisores',
     description: 'Gestión de supervisores',
-    roles: ['jefe', 'operario']
+    roles: ['jefe', 'operario', 'supervisor']
   },
   {
     title: 'Materia Prima',
     icon: Leaf,
     href: '/dashboard/materia-prima',
     description: 'Gestión de materia prima',
-    roles: ['jefe', 'operario']
+    roles: ['jefe', 'operario', 'supervisor']
   },
   {
     title: 'LAB. MICROBIOLOGÍA',
     icon: Microscope,
     href: '/dashboard/lab-microbiologia',
     description: 'Análisis microbiológicos',
-    roles: ['jefe', 'operario']
+    roles: ['jefe', 'operario', 'supervisor']
   },
   {
     title: 'Verificación de BPM',
@@ -122,10 +123,6 @@ function DashboardLayoutContent({
     await logout();
   };
 
-  const getRoleTitle = () => {
-    return user.role === 'jefe' ? 'Jefe de Calidad' : 'Operario';
-  };
-
   return (
     <div className="flex h-screen bg-white overflow-x-hidden">
       {/* Mobile Menu Overlay */}
@@ -171,7 +168,7 @@ function DashboardLayoutContent({
             />
             <div className={sidebarOpen ? 'block' : 'hidden sm:block'}>
               <h2 className="text-sm sm:text-base md:text-lg font-semibold text-gray-900">Area de Calidad</h2>
-              <p className="text-xs text-gray-500">{getRoleTitle()}</p>
+              <p className="text-xs text-gray-500">{getRoleDisplayName(user.role)}</p>
             </div>
           </div>
         </div>

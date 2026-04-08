@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Calendar, Package, User, CheckCircle, AlertCircle, Search, Edit, FileText, ClipboardList, BarChart3, Users, Tag, Boxes, Scale, ShieldCheck, FileDown, History } from 'lucide-react';
+
 import * as XLSX from 'xlsx';
 import Link from 'next/link';
 import { useEffect, useRef, useState, use } from 'react';
@@ -15,11 +16,22 @@ import { useScrollRestoration } from '@/hooks/useScrollRestoration';
 import { getProductCategories } from '@/lib/supervisores-data';
 import { ProductoPesosService } from '@/lib/producto-pesos-service';
 import { AuditedField } from '@/components/audited-field';
-import { FieldHistoryPanel } from '@/components/field-history-panel';
+import FieldHistoryPanel from '@/components/field-history-panel';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { user } = useAuth();
   const router = useRouter();
+
   const searchParams = useSearchParams();
   const [record, setRecord] = useState<EmbalajeRecord | null>(null);
   const [productMeta, setProductMeta] = useState<{ productId: string; productName: string; categoryId?: string } | null>(null);
@@ -28,6 +40,8 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
   const [error, setError] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isHistoryPanelOpen, setIsHistoryPanelOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const { saveScrollPosition } = useScrollRestoration();
   const autoOpenedRef = useRef(false);
 
@@ -72,7 +86,29 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
     return String(raw);
   };
 
+  function isRecordPending(record: EmbalajeRecord): boolean {
+    if (record.status === 'pending') return true;
+    return (
+      record.presentacion === 'Pendiente' ||
+      record.nivel_inspeccion === 'Pendiente' ||
+      record.etiqueta === 'Pendiente' ||
+      record.marcacion === 'Pendiente' ||
+      record.presentacion_no_conforme === 'Pendiente' ||
+      record.cajas === 'Pendiente' ||
+      record.responsable_identificador_cajas === 'Pendiente' ||
+      record.responsable_embalaje === 'Pendiente' ||
+      record.responsable_calidad === 'Pendiente'
+    );
+  }
+
   const returnTo = searchParams?.get('returnTo') || '/dashboard/supervisores?tab=embalaje';
+
+  const isJefe = String((user as any)?.role ?? '').toLowerCase() === 'jefe';
+  const statusValue = String((record as any)?.status ?? '').toLowerCase().trim();
+  const isCompleted = statusValue === 'completed' || statusValue === 'completado';
+  const isPendingByContent = record ? isRecordPending(record) : false;
+  const canEditCompleted = Boolean(isJefe && isCompleted && !isPendingByContent);
+  const canDelete = Boolean(isJefe);
 
   const resolvedParams = use(params);
 
@@ -116,7 +152,7 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
   };
 
   useEffect(() => {
-    if (!user || (user.role !== 'jefe' && user.role !== 'operario' && user.role !== 'tecnico')) {
+    if (!user || (user.role !== 'jefe' && user.role !== 'operario' && user.role !== 'supervisor' && user.role !== 'tecnico')) {
       router.push('/dashboard');
       return;
     }
@@ -152,21 +188,6 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
     };
     cargarPresentacion();
   }, [record, productMeta]);
-
-  const isRecordPending = (record: EmbalajeRecord): boolean => {
-    if (record.status === 'pending') return true;
-    return (
-      record.presentacion === 'Pendiente' ||
-      record.nivel_inspeccion === 'Pendiente' ||
-      record.etiqueta === 'Pendiente' ||
-      record.marcacion === 'Pendiente' ||
-      record.presentacion_no_conforme === 'Pendiente' ||
-      record.cajas === 'Pendiente' ||
-      record.responsable_identificador_cajas === 'Pendiente' ||
-      record.responsable_embalaje === 'Pendiente' ||
-      record.responsable_calidad === 'Pendiente'
-    );
-  };
 
   useEffect(() => {
     if (!record) return;
@@ -240,6 +261,34 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
     );
   }
 
+  const deleteDetails = () => {
+    if (!record) return '';
+    const productoLabel = String((productMeta as any)?.productName ?? (record as any)?.producto ?? '').trim();
+    const loteLabel = String((record as any)?.lote ?? '').trim();
+    const fechaLabel = String((record as any)?.fecha ?? '').slice(0, 10);
+    return [
+      productoLabel ? `Producto: ${productoLabel}` : '',
+      loteLabel ? `Lote: ${loteLabel}` : '',
+      fechaLabel ? `Fecha: ${fechaLabel}` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  };
+
+  const handleDelete = async () => {
+    if (!record?.id) return;
+    try {
+      setIsDeleting(true);
+      await embalajeRecordsService.delete(record.id);
+      router.push(returnTo);
+    } catch {
+      // Mantener comportamiento actual (toast fuera de alcance aquí)
+    } finally {
+      setIsDeleting(false);
+      setConfirmDeleteOpen(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-white text-zinc-900">
 
@@ -263,6 +312,29 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
               <History className="h-3.5 w-3.5" />
               Historial
             </Button>
+            {canEditCompleted && (
+              <Button
+                onClick={() => setIsEditModalOpen(true)}
+                variant="outline"
+                size="sm"
+                className="text-xs rounded-xl h-8 px-4 gap-1.5 border-gray-300"
+              >
+                <Edit className="h-3.5 w-3.5" />
+                Editar
+              </Button>
+            )}
+            {canDelete && (
+              <Button
+                onClick={() => setConfirmDeleteOpen(true)}
+                variant="outline"
+                size="sm"
+                className="text-xs rounded-xl h-8 px-4 gap-1.5 border-red-200 text-red-700 hover:bg-red-50"
+                disabled={isDeleting}
+              >
+                <FileText className="h-3.5 w-3.5" />
+                Eliminar
+              </Button>
+            )}
             <Button onClick={exportToExcel} variant="outline" size="sm" className="text-xs rounded-xl h-8 px-4 gap-1.5 border-gray-300">
               <FileDown className="h-3.5 w-3.5" />
               Exportar Excel
@@ -596,6 +668,30 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
         recordId={record.id}
         recordTitle={`Lote ${record.lote}`}
       />
+
+      <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar eliminación</AlertDialogTitle>
+            <AlertDialogDescription>
+              Vas a eliminar este registro de embalaje. Esta acción es permanente y no se puede deshacer.
+              {deleteDetails() ? (
+                <span className="block mt-2 text-sm text-zinc-600">{deleteDetails()}</span>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? 'Eliminando...' : 'Eliminar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

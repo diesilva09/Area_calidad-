@@ -7,7 +7,7 @@ export interface User {
   id: number;
   email: string;
   name: string;
-  role: 'jefe' | 'operario' | 'tecnico';
+  role: 'jefe' | 'operario' | 'supervisor' | 'tecnico';
   email_verified: boolean;
 }
 
@@ -16,7 +16,7 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
   logout: () => Promise<void>;
-  register: (email: string, password: string, name: string, role: 'jefe' | 'operario') => Promise<{ success: boolean; message: string }>;
+  register: (email: string, password: string, name: string, role: 'jefe' | 'operario' | 'supervisor') => Promise<{ success: boolean; message: string }>;
   verifyEmail: (token: string) => Promise<{ success: boolean; message: string }>;
   requestPasswordReset: (email: string) => Promise<{ success: boolean; message: string }>;
   resetPassword: (token: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
@@ -210,7 +210,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     email: string, 
     password: string, 
     name: string, 
-    role: 'jefe' | 'operario'
+    role: 'jefe' | 'operario' | 'supervisor'
   ): Promise<{ success: boolean; message: string }> => {
     try {
       const response = await fetch('/api/auth/register', {
@@ -302,22 +302,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const value: AuthContextType = {
-    user,
-    loading,
-    login,
-    logout,
-    register,
-    verifyEmail,
-    requestPasswordReset,
-    resetPassword,
-    isAuthenticated: !!user,
-    isJefe: user?.role === 'jefe',
-    isOperario: user?.role === 'operario',
-    isTecnico: user?.role === 'tecnico'
-  };
+const value: AuthContextType = {
+  user,
+  loading,
+  login,
+  logout,
+  register,
+  verifyEmail,
+  requestPasswordReset,
+  resetPassword,
+  isAuthenticated: !!user,
+  isJefe: user?.role === 'jefe',
+  isOperario: user?.role === 'operario' || user?.role === 'supervisor',
+  isTecnico: user?.role === 'tecnico'
+};
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
