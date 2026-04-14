@@ -45,12 +45,16 @@ interface AddIncubadoraControlModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   onSuccessfulSubmit?: (values: IncubadoraControlFormValues) => void;
+  editingRecord?: any | null;
+  onEditingRecordChange?: (record: any | null) => void;
 }
 
 export function AddIncubadoraControlModal({
   isOpen,
   onOpenChange,
   onSuccessfulSubmit,
+  editingRecord,
+  onEditingRecordChange,
 }: AddIncubadoraControlModalProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -67,6 +71,21 @@ export function AddIncubadoraControlModal({
       observaciones: '',
     },
   });
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    if (!editingRecord) return;
+
+    form.reset({
+      muestra: editingRecord.muestra ?? '',
+      fechaIngreso: editingRecord.fecha_ingreso ?? format(new Date(), 'yyyy-MM-dd'),
+      horaIngreso: editingRecord.hora_ingreso ?? '',
+      fechaSalida: editingRecord.fecha_salida ?? format(new Date(), 'yyyy-MM-dd'),
+      horaSalida: editingRecord.hora_salida ?? '',
+      responsable: editingRecord.responsable ?? '',
+      observaciones: editingRecord.observaciones ?? '',
+    });
+  }, [editingRecord, form, isOpen]);
 
   async function onSubmit(values: IncubadoraControlFormValues) {
     setIsSubmitting(true);
@@ -88,7 +107,11 @@ export function AddIncubadoraControlModal({
       console.log('🔍 DEBUG: Valores transformados para API:', transformedValues);
       
       // Guardar en la base de datos
-      await incubadoraControlService.create(transformedValues);
+      if (editingRecord?.id) {
+        await incubadoraControlService.update(editingRecord.id, transformedValues);
+      } else {
+        await incubadoraControlService.create(transformedValues);
+      }
       console.log('✅ Registro de incubadora guardado exitosamente');
       
       toast({
@@ -99,6 +122,7 @@ export function AddIncubadoraControlModal({
       onSuccessfulSubmit?.(values);
       onOpenChange(false);
       form.reset();
+      onEditingRecordChange?.(null);
     } catch (error) {
       console.error('❌ Error al guardar registro de incubadora:', error);
       toast({
@@ -112,13 +136,22 @@ export function AddIncubadoraControlModal({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(next) => {
+        onOpenChange(next);
+        if (!next) {
+          form.reset();
+          onEditingRecordChange?.(null);
+        }
+      }}
+    >
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-green-900">
             RE-CAL-089 - REGISTRO DE OPERACIÓN Y CONTROL DE INCUBADORA
           </DialogTitle>
-          <DialogDescription className="text-gray-600">
+          <DialogDescription asChild className="text-gray-600">
             <div className="mt-2 space-y-1">
               <p><strong>Código:</strong> RE-CAL-089</p>
               <p><strong>Versión:</strong> 1</p>

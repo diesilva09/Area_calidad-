@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
 
     if (sustanciaDesinfeccion) {
       conditions.push('(sustancia_desinfeccion_1_nombre ILIKE $' + (conditions.length + 1) + ' OR sustancia_desinfeccion_2_nombre ILIKE $' + (conditions.length + 1) + ')');
-      params.push(`%${sustanciaDesinfeccion}%`, `%${sustanciaDesinfeccion}%`);
+      params.push(`%${sustanciaDesinfeccion}%`);
     }
 
     if (conditions.length > 0) {

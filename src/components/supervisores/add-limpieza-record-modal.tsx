@@ -98,6 +98,7 @@ const tomaLimpiezaSchema = z.object({
 const recal084RelaxedSchema = z.object({
   fecha: z.string().min(1, 'Campo requerido'),
   mesCorte: z.string().min(1, 'Campo requerido'),
+  turno: z.enum(['dia', 'noche']).optional(),
   detalles: z.string().optional(),
   lote: z.string().optional(),
   producto: z.string().optional(),
@@ -120,6 +121,7 @@ const recal084RelaxedSchema = z.object({
 export const limpiezaFormSchema = z.object({
   fecha: z.string().min(1, 'Campo requerido'),
   mesCorte: z.string().min(1, 'Campo requerido'),
+  turno: z.enum(['dia', 'noche']).optional(),
   detalles: z.string().optional(),
   lote: z.string().optional(),
   producto: z.string().optional(),
@@ -135,6 +137,7 @@ export const limpiezaFormSchema = z.object({
 export const pendingLimpiezaFormSchema = z.object({
   fecha: z.string().min(1, 'Campo requerido'),
   mesCorte: z.string().min(1, 'Campo requerido'),
+  turno: z.enum(['dia', 'noche']).optional(),
   detalles: z.string().optional(),
   lote: z.string().optional(),
   producto: z.string().optional(),
@@ -263,6 +266,7 @@ export function AddLimpiezaRecordModal({
     defaultValues: {
       fecha: getFechaActual(),
       mesCorte: getMesActual(),
+      turno: undefined,
       detalles: '',
       lote: '',
       producto: '',
@@ -286,6 +290,7 @@ export function AddLimpiezaRecordModal({
     defaultValues: {
       fecha: getFechaActual(),
       mesCorte: getMesActual(),
+      turno: undefined,
       detalles: '',
       lote: '',
       producto: '',
@@ -1317,6 +1322,7 @@ export function AddLimpiezaRecordModal({
     const fieldsToSync: Array<keyof typeof sourceValues> = [
       'fecha',
       'mesCorte',
+      'turno',
       'detalles',
       'lote',
       'producto',
@@ -2293,6 +2299,7 @@ export function AddLimpiezaRecordModal({
         const created = await limpiezaRegistrosService.create({
           fecha: fechaFormateada,
           mes_corte: completeValues.mesCorte,
+          turno: completeValues.turno ?? null,
           detalles: completeValues.detalles || null,
           lote: completeValues.lote || null,
           producto: completeValues.producto || null,
@@ -2322,6 +2329,7 @@ export function AddLimpiezaRecordModal({
         await limpiezaRegistrosService.update(nextRegistroId, {
           fecha: fechaFormateada,
           mes_corte: completeValues.mesCorte,
+          turno: completeValues.turno ?? null,
           detalles: completeValues.detalles || null,
           lote: completeValues.lote || null,
           producto: completeValues.producto || null,
@@ -2453,6 +2461,7 @@ export function AddLimpiezaRecordModal({
           form.reset({
             fecha: fechaAsForm,
             mesCorte: data.mes_corte ?? '',
+            turno: (data as any)?.turno ?? undefined,
             detalles: data.detalles ?? '',
             lote: data.lote ?? '',
             producto: data.producto ?? '',
@@ -2469,6 +2478,7 @@ export function AddLimpiezaRecordModal({
           pendingForm.reset({
             fecha: fechaAsForm,
             mesCorte: data.mes_corte ?? '',
+            turno: (data as any)?.turno ?? undefined,
             detalles: data.detalles ?? '',
             lote: data.lote ?? '',
             producto: data.producto ?? '',
@@ -2614,26 +2624,6 @@ export function AddLimpiezaRecordModal({
                       </FormItem>
                     )} />
 
-                    <FormField control={form.control} name="turno" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Turno</FormLabel>
-                        <Select
-                          disabled={effectiveViewOnlyMode}
-                          value={field.value ?? ''}
-                          onValueChange={(v) => field.onChange((v || undefined) as any)}
-                        >
-                          <SelectTrigger className="h-10">
-                            <SelectValue placeholder="Selecciona turno" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="dia">Día</SelectItem>
-                            <SelectItem value="noche">Noche</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-
                     <FormField control={form.control} name="detalles" render={({ field }) => (
                       <FormItem className="md:col-span-2 lg:col-span-3">
                         <FormLabel>Detalles de labor de limpieza</FormLabel>
@@ -2747,6 +2737,7 @@ export function AddLimpiezaRecordModal({
                             const status = getLiberacionStatus(index);
                             const hora = String(form.getValues(`tomas.${index}.hora` as const) || '').trim();
                             const tipoVerificacion = String(form.getValues(`tipoVerificacion` as const) || '').trim();
+                            const turno = String(form.watch('turno' as const) || '').trim();
                             const linea = String(form.getValues(`tomas.${index}.linea` as const) || '').trim();
                             const lineaOtro = String(form.getValues(`tomas.${index}.lineaOtro` as const) || '').trim();
                             const equipoDisplay = linea === 'OTRO' ? lineaOtro : linea;
@@ -2783,6 +2774,11 @@ export function AddLimpiezaRecordModal({
                                       {tipoVerificacion}
                                     </div>
                                   )}
+                                  {turno && (
+                                    <div className="text-xs text-gray-600 truncate w-full">
+                                      {`Turno: ${turno === 'dia' ? 'Día' : turno === 'noche' ? 'Noche' : turno}`}
+                                    </div>
+                                  )}
                                   {equipoDisplay && (
                                     <div className="text-xs text-gray-500 truncate w-full flex items-center gap-1">
                                       <Factory className="h-3 w-3" />
@@ -2816,6 +2812,30 @@ export function AddLimpiezaRecordModal({
                         <div className="rounded-md border p-4 space-y-4">
                           <div className="font-semibold">Registro</div>
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <FormField control={form.control} name="turno" render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Turno</FormLabel>
+                                <Select
+                                  disabled={effectiveViewOnlyMode}
+                                  value={field.value ?? ''}
+                                  onValueChange={(v) => {
+                                    const next = (v || undefined) as any;
+                                    field.onChange(next);
+                                    pendingForm.setValue('turno', next);
+                                  }}
+                                >
+                                  <SelectTrigger className="h-10">
+                                    <SelectValue placeholder="Selecciona turno" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="dia">Día</SelectItem>
+                                    <SelectItem value="noche">Noche</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )} />
+
                             <FormField control={form.control} name={`tomas.${tomaActivaIndex}.hora`} render={({ field }) => (
                               <FormItem>
                                 <FormLabel>Hora</FormLabel>

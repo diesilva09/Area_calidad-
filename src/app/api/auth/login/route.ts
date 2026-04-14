@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authService, type LoginRequest } from '@/lib/auth-service';
 
+export const runtime = 'nodejs';
+
 export async function POST(request: NextRequest) {
   try {
     console.log('🔍 Login API: Recibida solicitud');

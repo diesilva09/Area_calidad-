@@ -53,7 +53,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    
+
     const {
       fecha,
       horario,
@@ -67,26 +67,26 @@ export async function PUT(
     const query = `
       UPDATE ${getMicroTable('temperatura_equipos')}
       SET
-        fecha = COALESCE($1, fecha),
-        horario = COALESCE($2, horario),
-        incubadora_037 = COALESCE($3, incubadora_037),
-        incubadora_038 = COALESCE($4, incubadora_038),
-        nevera = COALESCE($5, nevera),
-        realizado_por = COALESCE($6, realizado_por),
-        observaciones = COALESCE($7, observaciones),
+        fecha = CASE WHEN NULLIF($1, '') IS NULL THEN fecha ELSE CAST($1 AS INTEGER) END,
+        horario = CASE WHEN NULLIF($2, '') IS NULL THEN horario ELSE $2 END,
+        incubadora_037 = CASE WHEN NULLIF($3, '') IS NULL THEN incubadora_037 ELSE CAST($3 AS DECIMAL(5,2)) END,
+        incubadora_038 = CASE WHEN NULLIF($4, '') IS NULL THEN incubadora_038 ELSE CAST($4 AS DECIMAL(5,2)) END,
+        nevera = CASE WHEN NULLIF($5, '') IS NULL THEN nevera ELSE CAST($5 AS DECIMAL(5,2)) END,
+        realizado_por = CASE WHEN NULLIF($6, '') IS NULL THEN realizado_por ELSE $6 END,
+        observaciones = NULLIF($7, ''),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = $8
       RETURNING *
     `;
 
     const values = [
-      fecha,
-      horario,
-      incubadora_037,
-      incubadora_038,
-      nevera,
-      realizado_por,
-      observaciones || null,
+      fecha || '',
+      horario || '',
+      incubadora_037 || '',
+      incubadora_038 || '',
+      nevera || '',
+      realizado_por || '',
+      observaciones || '',
       id
     ];
 

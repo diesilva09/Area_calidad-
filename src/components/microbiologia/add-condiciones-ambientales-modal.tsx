@@ -47,6 +47,8 @@ interface AddCondicionesAmbientalesModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   onSuccessfulSubmit?: (values: CondicionesAmbientalesFormValues) => void;
+  editingRecord?: any | null;
+  onEditingRecordChange?: (record: any | null) => void;
 }
 
 // Función para determinar el período automáticamente basado en la hora actual
@@ -75,9 +77,27 @@ export function AddCondicionesAmbientalesModal({
   isOpen,
   onOpenChange,
   onSuccessfulSubmit,
+  editingRecord,
+  onEditingRecordChange,
 }: AddCondicionesAmbientalesModalProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  const toDateInput = (value: any, fallback: string) => {
+    if (!value) return fallback;
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return format(d, 'yyyy-MM-dd');
+    return String(value);
+  };
+
+  const emptyValues: CondicionesAmbientalesFormValues = {
+    fecha: '',
+    hora: '',
+    temperatura: '',
+    humedadRelativa: '',
+    responsable: '',
+    observaciones: '',
+  };
 
   const form = useForm<CondicionesAmbientalesFormValues>({
     resolver: zodResolver(condicionesAmbientalesSchema),
@@ -94,6 +114,7 @@ export function AddCondicionesAmbientalesModal({
   // Efecto para actualizar la hora automáticamente cada minuto
   React.useEffect(() => {
     if (!isOpen) return;
+    if (editingRecord) return;
 
     const actualizarHora = () => {
       const nuevoPeriodo = getPeriodoAutomatico();
@@ -108,6 +129,20 @@ export function AddCondicionesAmbientalesModal({
 
     return () => clearInterval(interval);
   }, [isOpen, form]);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    if (!editingRecord) return;
+
+    form.reset({
+      fecha: toDateInput(editingRecord.fecha, format(new Date(), 'yyyy-MM-dd')),
+      hora: editingRecord.hora ?? getPeriodoAutomatico(),
+      temperatura: editingRecord.temperatura ?? '',
+      humedadRelativa: editingRecord.humedad_relativa ?? '',
+      responsable: editingRecord.responsable ?? '',
+      observaciones: editingRecord.observaciones ?? '',
+    });
+  }, [editingRecord, form, isOpen]);
 
   async function onSubmit(values: CondicionesAmbientalesFormValues) {
     setIsSubmitting(true);
@@ -128,7 +163,11 @@ export function AddCondicionesAmbientalesModal({
       console.log('🔍 DEBUG: Valores transformados para API:', transformedValues);
       
       // Guardar en la base de datos
-      await condicionesAmbientalesService.create(transformedValues);
+      if (editingRecord?.id) {
+        await condicionesAmbientalesService.update(editingRecord.id, transformedValues);
+      } else {
+        await condicionesAmbientalesService.create(transformedValues);
+      }
       console.log('✅ Registro de condiciones ambientales guardado exitosamente');
       
       toast({
@@ -139,6 +178,7 @@ export function AddCondicionesAmbientalesModal({
       onSuccessfulSubmit?.(values);
       onOpenChange(false);
       form.reset();
+      onEditingRecordChange?.(null);
     } catch (error) {
       console.error('❌ Error al guardar registro de condiciones ambientales:', error);
       toast({
@@ -152,20 +192,28 @@ export function AddCondicionesAmbientalesModal({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(next) => {
+        onOpenChange(next);
+        if (!next) {
+          form.reset(emptyValues);
+          onEditingRecordChange?.(null);
+        } else if (!editingRecord) {
+          form.reset(emptyValues);
+        }
+      }}
+    >
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-blue-600">
-            RE-CAL-021 REGISTRO DE CONDICIONES AMBIENTALES
+          <DialogTitle className="text-xl font-bold text-blue-900">
+            RE-CAL-021 REGISTRO CONDICIONES AMBIENTALES
           </DialogTitle>
-          <DialogDescription className="text-sm">
-            <div className="space-y-1">
-              <div><strong>Código:</strong> RE-CAL-016</div>
-              <div><strong>Versión:</strong> 2</div>
-              <div><strong>Fecha de Aprobación:</strong> 03 de mayo de 2021</div>
-              <div className="pt-2 text-gray-600">
-                Laboratorio de Microbiología - Complete todos los campos del formulario.
-              </div>
+          <DialogDescription asChild className="text-gray-600">
+            <div className="mt-2 space-y-1">
+              <p><strong>Código:</strong> RE-CAL-021</p>
+              <p><strong>Versión:</strong> 2</p>
+              <p><strong>Fecha de Aprobación:</strong> 03 de mayo de 2021</p>
             </div>
           </DialogDescription>
         </DialogHeader>

@@ -31,16 +31,16 @@ import { resultadosMicrobiologicosService } from '@/lib/resultados-microbiologic
 
 // Esquema de validación para el formulario
 const resultadosMicrobiologicosSchema = z.object({
-  fecha: z.string().min(1, 'Campo requerido'),
-  mesMuestreo: z.string().min(1, 'Campo requerido'),
-  horaMuestreo: z.string().min(1, 'Campo requerido'),
-  internoExterno: z.string().min(1, 'Campo requerido'),
-  tipo: z.string().min(1, 'Campo requerido'),
-  area: z.string().min(1, 'Campo requerido'),
-  muestra: z.string().min(1, 'Campo requerido'),
-  lote: z.string().min(1, 'Campo requerido'),
-  fechaProduccion: z.string().min(1, 'Campo requerido'),
-  fechaVencimiento: z.string().min(1, 'Campo requerido'),
+  fecha: z.string().optional(),
+  mesMuestreo: z.string().optional(),
+  horaMuestreo: z.string().optional(),
+  internoExterno: z.string().optional(),
+  tipo: z.string().optional(),
+  area: z.string().optional(),
+  muestra: z.string().optional(),
+  lote: z.string().optional(),
+  fechaProduccion: z.string().optional(),
+  fechaVencimiento: z.string().optional(),
   mesofilos: z.string().optional(),
   coliformesTotales: z.string().optional(),
   coliformesFecales: z.string().optional(),
@@ -59,10 +59,10 @@ const resultadosMicrobiologicosSchema = z.object({
   parametrosReferencia: z.string().optional(),
   cumple: z.boolean().optional(),
   noCumple: z.boolean().optional(),
-  codigo: z.string().min(1, 'Campo requerido'),
+  codigo: z.string().optional(),
   medioDiluyente: z.string().optional(),
   factorDilucion: z.string().optional(),
-  responsable: z.string().min(1, 'Campo requerido'),
+  responsable: z.string().optional(),
 });
 
 type ResultadosMicrobiologicosFormValues = z.infer<typeof resultadosMicrobiologicosSchema>;
@@ -71,15 +71,62 @@ interface AddResultadosMicrobiologicosModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   onSuccessfulSubmit?: (values: ResultadosMicrobiologicosFormValues) => void;
+  editingRecord?: any | null;
+  onEditingRecordChange?: (record: any | null) => void;
 }
 
 export function AddResultadosMicrobiologicosModal({
   isOpen,
   onOpenChange,
   onSuccessfulSubmit,
+  editingRecord,
+  onEditingRecordChange,
 }: AddResultadosMicrobiologicosModalProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  const toDateInput = (value: any, fallback: string) => {
+    if (!value) return fallback;
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return format(d, 'yyyy-MM-dd');
+    // Si ya viene como yyyy-MM-dd lo dejamos; si viene otro string, retornamos tal cual
+    return String(value);
+  };
+
+  const emptyValues: ResultadosMicrobiologicosFormValues = {
+    fecha: '',
+    mesMuestreo: '',
+    horaMuestreo: '',
+    internoExterno: '',
+    tipo: '',
+    area: '',
+    muestra: '',
+    lote: '',
+    fechaProduccion: '',
+    fechaVencimiento: '',
+    mesofilos: '',
+    coliformesTotales: '',
+    coliformesFecales: '',
+    eColi: '',
+    mohos: '',
+    levaduras: '',
+    staphylococcusAureus: '',
+    bacillusCereus: '',
+    listeria: '',
+    salmonella: '',
+    enterobacterias: '',
+    clostridium: '',
+    esterilidadComercial: '',
+    anaerobias: '',
+    observaciones: '',
+    parametrosReferencia: '',
+    cumple: false,
+    noCumple: false,
+    codigo: '',
+    medioDiluyente: '',
+    factorDilucion: '',
+    responsable: '',
+  };
 
   const form = useForm<ResultadosMicrobiologicosFormValues>({
     resolver: zodResolver(resultadosMicrobiologicosSchema),
@@ -118,6 +165,46 @@ export function AddResultadosMicrobiologicosModal({
       responsable: '',
     },
   });
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    if (!editingRecord) return;
+
+    form.reset({
+      fecha: toDateInput(editingRecord.fecha, format(new Date(), 'yyyy-MM-dd')),
+      mesMuestreo: editingRecord.mes_muestreo ?? '',
+      horaMuestreo: editingRecord.hora_muestreo ?? '',
+      internoExterno: editingRecord.interno_externo ?? '',
+      tipo: editingRecord.tipo ?? '',
+      area: editingRecord.area ?? '',
+      muestra: editingRecord.muestra ?? '',
+      lote: editingRecord.lote ?? '',
+      fechaProduccion: toDateInput(editingRecord.fecha_produccion, ''),
+      fechaVencimiento: toDateInput(editingRecord.fecha_vencimiento, ''),
+      mesofilos: editingRecord.mesofilos ?? '',
+      coliformesTotales: editingRecord.coliformes_totales ?? '',
+      coliformesFecales: editingRecord.coliformes_fecales ?? '',
+      eColi: editingRecord.e_coli ?? '',
+      mohos: editingRecord.mohos ?? '',
+      levaduras: editingRecord.levaduras ?? '',
+      staphylococcusAureus: editingRecord.staphylococcus_aureus ?? '',
+      bacillusCereus: editingRecord.bacillus_cereus ?? '',
+      listeria: editingRecord.listeria ?? '',
+      salmonella: editingRecord.salmonella ?? '',
+      enterobacterias: editingRecord.enterobacterias ?? '',
+      clostridium: editingRecord.clostridium ?? '',
+      esterilidadComercial: editingRecord.esterilidad_comercial ?? '',
+      anaerobias: editingRecord.anaerobias ?? '',
+      observaciones: editingRecord.observaciones ?? '',
+      parametrosReferencia: editingRecord.parametros_referencia ?? '',
+      cumple: Boolean(editingRecord.cumple),
+      noCumple: Boolean(editingRecord.no_cumple),
+      codigo: editingRecord.codigo ?? '',
+      medioDiluyente: editingRecord.medio_diluyente ?? '',
+      factorDilucion: editingRecord.factor_dilucion ?? '',
+      responsable: editingRecord.responsable ?? '',
+    });
+  }, [editingRecord, form, isOpen]);
 
   async function onSubmit(values: ResultadosMicrobiologicosFormValues) {
     setIsSubmitting(true);
@@ -164,7 +251,11 @@ export function AddResultadosMicrobiologicosModal({
       console.log('🔍 DEBUG: Valores transformados para API:', transformedValues);
       
       // Guardar en la base de datos
-      await resultadosMicrobiologicosService.create(transformedValues);
+      if (editingRecord?.id) {
+        await resultadosMicrobiologicosService.update(editingRecord.id, transformedValues);
+      } else {
+        await resultadosMicrobiologicosService.create(transformedValues);
+      }
       console.log('✅ Registro de resultados microbiológicos guardado exitosamente');
       
       toast({
@@ -174,7 +265,8 @@ export function AddResultadosMicrobiologicosModal({
       
       onSuccessfulSubmit?.(values);
       onOpenChange(false);
-      form.reset();
+      form.reset(emptyValues);
+      onEditingRecordChange?.(null);
     } catch (error) {
       console.error('❌ Error al guardar registro de resultados microbiológicos:', error);
       toast({
@@ -188,17 +280,28 @@ export function AddResultadosMicrobiologicosModal({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(next) => {
+        onOpenChange(next);
+        if (!next) {
+          form.reset(emptyValues);
+          onEditingRecordChange?.(null);
+        } else if (!editingRecord) {
+          form.reset(emptyValues);
+        }
+      }}
+    >
       <DialogContent className="max-w-7xl max-h-[95vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-indigo-900">
-            RE-CAL-046 - RESULTADOS MICROBIOLÓGICOS ANÁLISIS INTERNOS Y EXTERNOS
+          <DialogTitle className="text-xl font-bold text-blue-900">
+            RE-CAL-046 RESULTADOS MICROBIOLÓGICOS
           </DialogTitle>
-          <DialogDescription className="text-gray-600">
+          <DialogDescription asChild className="text-gray-600">
             <div className="mt-2 space-y-1">
               <p><strong>Código:</strong> RE-CAL-046</p>
-              <p><strong>Versión:</strong> 4</p>
-              <p><strong>Fecha de Aprobación:</strong> 22 DE ABRIL DE 2024</p>
+              <p><strong>Versión:</strong> 2</p>
+              <p><strong>Fecha de Aprobación:</strong> 03 de mayo de 2021</p>
             </div>
           </DialogDescription>
         </DialogHeader>

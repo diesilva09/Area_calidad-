@@ -45,12 +45,16 @@ interface AddRegistrosRecepcionFormatosModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   onSuccessfulSubmit?: (values: RegistrosRecepcionFormatosFormValues) => void;
+  editingRecord?: any | null;
+  onEditingRecordChange?: (record: any | null) => void;
 }
 
 export function AddRegistrosRecepcionFormatosModal({
   isOpen,
   onOpenChange,
   onSuccessfulSubmit,
+  editingRecord,
+  onEditingRecordChange,
 }: AddRegistrosRecepcionFormatosModalProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -67,6 +71,21 @@ export function AddRegistrosRecepcionFormatosModal({
       observaciones: '',
     },
   });
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    if (!editingRecord) return;
+
+    form.reset({
+      fechaEntrega: editingRecord.fecha_entrega ?? format(new Date(), 'yyyy-MM-dd'),
+      fechaRegistros: editingRecord.fecha_registros ?? format(new Date(), 'yyyy-MM-dd'),
+      codigoVersionRegistros: editingRecord.codigo_version_registros ?? '',
+      numeroFolios: editingRecord.numero_folios ?? '',
+      nombreQuienEntrega: editingRecord.nombre_quien_entrega ?? '',
+      nombreQuienRecibe: editingRecord.nombre_quien_recibe ?? '',
+      observaciones: editingRecord.observaciones ?? '',
+    });
+  }, [editingRecord, form, isOpen]);
 
   async function onSubmit(values: RegistrosRecepcionFormatosFormValues) {
     setIsSubmitting(true);
@@ -88,7 +107,11 @@ export function AddRegistrosRecepcionFormatosModal({
       console.log('🔍 DEBUG: Valores transformados para API:', transformedValues);
       
       // Guardar en la base de datos
-      await registrosRecepcionFormatosService.create(transformedValues);
+      if (editingRecord?.id) {
+        await registrosRecepcionFormatosService.update(editingRecord.id, transformedValues);
+      } else {
+        await registrosRecepcionFormatosService.create(transformedValues);
+      }
       console.log('✅ Registro de recepción de formatos guardado exitosamente');
       
       toast({
@@ -99,6 +122,7 @@ export function AddRegistrosRecepcionFormatosModal({
       onSuccessfulSubmit?.(values);
       onOpenChange(false);
       form.reset();
+      onEditingRecordChange?.(null);
     } catch (error) {
       console.error('❌ Error al guardar registro de recepción de formatos:', error);
       toast({
@@ -112,13 +136,22 @@ export function AddRegistrosRecepcionFormatosModal({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(next) => {
+        onOpenChange(next);
+        if (!next) {
+          form.reset();
+          onEditingRecordChange?.(null);
+        }
+      }}
+    >
       <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-amber-900">
             RE-CAL-100 - REGISTROS RECEPCIÓN DE FORMATOS DILIGENCIADOS EN PROCESO
           </DialogTitle>
-          <DialogDescription className="text-gray-600">
+          <DialogDescription asChild className="text-gray-600">
             <div className="mt-2 space-y-1">
               <p><strong>Código:</strong> RE-CAL-100</p>
               <p><strong>Versión:</strong> 1</p>

@@ -376,6 +376,25 @@ export function formatAuditValue(value: any): string {
   
   // Si es un string que parece fecha, formatearlo
   if (typeof value === 'string') {
+    const PT_ANALYSES_MARKER = '__PT_ANALYSES_JSON__';
+    const markerIdx = value.indexOf(PT_ANALYSES_MARKER);
+    if (markerIdx !== -1) {
+      const base = String(value.slice(0, markerIdx)).trim();
+      const after = String(value.slice(markerIdx + PT_ANALYSES_MARKER.length)).trim();
+      try {
+        const parsed = JSON.parse(after);
+        const extras = Array.isArray(parsed) ? parsed : [];
+        const count = extras.length;
+        if (base) {
+          return `${base} (Análisis PT adicionales: ${count})`;
+        }
+        return `Análisis PT adicionales: ${count}`;
+      } catch {
+        if (base) return base;
+        return 'Análisis PT adicionales';
+      }
+    }
+
     // Intentar parsear como fecha si tiene formato de fecha
     const dateRegex = /^\d{4}-\d{2}-\d{2}/;
     if (dateRegex.test(value)) {

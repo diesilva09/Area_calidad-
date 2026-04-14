@@ -64,12 +64,16 @@ interface AddCustodiaMuestrasModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   onSuccessfulSubmit?: (values: CustodiaMuestrasFormValues) => void;
+  editingRecord?: any | null;
+  onEditingRecordChange?: (record: any | null) => void;
 }
 
 export function AddCustodiaMuestrasModal({
   isOpen,
   onOpenChange,
   onSuccessfulSubmit,
+  editingRecord,
+  onEditingRecordChange,
 }: AddCustodiaMuestrasModalProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -101,6 +105,36 @@ export function AddCustodiaMuestrasModal({
       observaciones: '',
     },
   });
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    if (!editingRecord) return;
+
+    form.reset({
+      codigo: editingRecord.codigo ?? '',
+      tipo: editingRecord.tipo ?? '',
+      muestraId: editingRecord.muestra_id ?? '',
+      area: editingRecord.area ?? '',
+      temperatura: editingRecord.temperatura ?? '',
+      cantidad: editingRecord.cantidad ?? '',
+      motivo: editingRecord.motivo ?? '',
+      tipoAnalisisSL: editingRecord.tipo_analisis_sl ?? '',
+      tipoAnalisisBC: editingRecord.tipo_analisis_bc ?? '',
+      tipoAnalisisYM: editingRecord.tipo_analisis_ym ?? '',
+      tipoAnalisisTC: editingRecord.tipo_analisis_tc ?? '',
+      tipoAnalisisEC: editingRecord.tipo_analisis_ec ?? '',
+      tipoAnalisisLS: editingRecord.tipo_analisis_ls ?? '',
+      tipoAnalisisETB: editingRecord.tipo_analisis_etb ?? '',
+      tipoAnalisisXSA: editingRecord.tipo_analisis_xsa ?? '',
+      tomaMuestraFecha: editingRecord.toma_muestra_fecha ?? format(new Date(), 'yyyy-MM-dd'),
+      tomaMuestraHora: editingRecord.toma_muestra_hora ?? '',
+      recepcionLabFecha: editingRecord.recepcion_lab_fecha ?? format(new Date(), 'yyyy-MM-dd'),
+      recepcionLabHora: editingRecord.recepcion_lab_hora ?? '',
+      medioTransporte: editingRecord.medio_transporte ?? '',
+      responsable: editingRecord.responsable ?? '',
+      observaciones: editingRecord.observaciones ?? '',
+    });
+  }, [editingRecord, form, isOpen]);
 
   // Función para obtener la hora actual
   const getCurrentTime = () => {
@@ -142,7 +176,11 @@ export function AddCustodiaMuestrasModal({
       console.log('🔍 DEBUG: Valores transformados para API:', transformedValues);
       
       // Guardar en la base de datos
-      await custodiaMuestrasService.create(transformedValues);
+      if (editingRecord?.id) {
+        await custodiaMuestrasService.update(editingRecord.id, transformedValues);
+      } else {
+        await custodiaMuestrasService.create(transformedValues);
+      }
       console.log('✅ Registro de custodia de muestras guardado exitosamente');
       
       toast({
@@ -153,6 +191,7 @@ export function AddCustodiaMuestrasModal({
       onSuccessfulSubmit?.(values);
       onOpenChange(false);
       form.reset();
+      onEditingRecordChange?.(null);
     } catch (error) {
       console.error('❌ Error al guardar registro de custodia de muestras:', error);
       toast({
@@ -166,13 +205,22 @@ export function AddCustodiaMuestrasModal({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+    <Dialog
+      open={isOpen}
+      onOpenChange={(next) => {
+        onOpenChange(next);
+        if (!next) {
+          form.reset();
+          onEditingRecordChange?.(null);
+        }
+      }}
+    >
+      <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-blue-900">
-            RE-CAL-107 REGISTRO Y CADENA DE CUSTODIA DE MUESTRAS ANÁLISIS INTERNO
+          <DialogTitle className="text-xl font-bold text-purple-900">
+            RE-CAL-047 - CUSTODIA DE MUESTRAS LABORATORIO MICROBIOLOGÍA
           </DialogTitle>
-          <DialogDescription className="text-gray-600">
+          <DialogDescription asChild className="text-gray-600">
             <div className="mt-2 space-y-1">
               <p><strong>Código:</strong> RE-CAL-107</p>
               <p><strong>Versión:</strong> 2</p>
@@ -363,12 +411,14 @@ export function AddCustodiaMuestrasModal({
                               type="checkbox"
                               className="mt-1"
                               checked={field.value === 'SL'}
-                              onCheckedChange={(checked) => 
-                                field.onChange(checked ? 'SL' : '')
+                              onChange={(e) =>
+                                field.onChange(e.target.checked ? 'SL' : '')
                               }
                             />
                           </FormControl>
-                          <FormLabel className="text-sm font-normal">SL</FormLabel>
+                          <div>
+                            <p className="font-medium">SL</p>
+                          </div>
                         </FormItem>
                       )}
                     />
@@ -383,12 +433,14 @@ export function AddCustodiaMuestrasModal({
                               type="checkbox"
                               className="mt-1"
                               checked={field.value === 'BC'}
-                              onCheckedChange={(checked) => 
-                                field.onChange(checked ? 'BC' : '')
+                              onChange={(e) =>
+                                field.onChange(e.target.checked ? 'BC' : '')
                               }
                             />
                           </FormControl>
-                          <FormLabel className="text-sm font-normal">BC</FormLabel>
+                          <div>
+                            <p className="font-medium">BC</p>
+                          </div>
                         </FormItem>
                       )}
                     />
@@ -403,12 +455,14 @@ export function AddCustodiaMuestrasModal({
                               type="checkbox"
                               className="mt-1"
                               checked={field.value === 'YM'}
-                              onCheckedChange={(checked) => 
-                                field.onChange(checked ? 'YM' : '')
+                              onChange={(e) =>
+                                field.onChange(e.target.checked ? 'YM' : '')
                               }
                             />
                           </FormControl>
-                          <FormLabel className="text-sm font-normal">YM</FormLabel>
+                          <div>
+                            <p className="font-medium">YM</p>
+                          </div>
                         </FormItem>
                       )}
                     />
@@ -423,12 +477,14 @@ export function AddCustodiaMuestrasModal({
                               type="checkbox"
                               className="mt-1"
                               checked={field.value === 'TC'}
-                              onCheckedChange={(checked) => 
-                                field.onChange(checked ? 'TC' : '')
+                              onChange={(e) =>
+                                field.onChange(e.target.checked ? 'TC' : '')
                               }
                             />
                           </FormControl>
-                          <FormLabel className="text-sm font-normal">TC</FormLabel>
+                          <div>
+                            <p className="font-medium">TC</p>
+                          </div>
                         </FormItem>
                       )}
                     />
@@ -443,12 +499,14 @@ export function AddCustodiaMuestrasModal({
                               type="checkbox"
                               className="mt-1"
                               checked={field.value === 'EC'}
-                              onCheckedChange={(checked) => 
-                                field.onChange(checked ? 'EC' : '')
+                              onChange={(e) =>
+                                field.onChange(e.target.checked ? 'EC' : '')
                               }
                             />
                           </FormControl>
-                          <FormLabel className="text-sm font-normal">EC</FormLabel>
+                          <div>
+                            <p className="font-medium">EC</p>
+                          </div>
                         </FormItem>
                       )}
                     />
@@ -463,12 +521,14 @@ export function AddCustodiaMuestrasModal({
                               type="checkbox"
                               className="mt-1"
                               checked={field.value === 'LS'}
-                              onCheckedChange={(checked) => 
-                                field.onChange(checked ? 'LS' : '')
+                              onChange={(e) =>
+                                field.onChange(e.target.checked ? 'LS' : '')
                               }
                             />
                           </FormControl>
-                          <FormLabel className="text-sm font-normal">LS</FormLabel>
+                          <div>
+                            <p className="font-medium">LS</p>
+                          </div>
                         </FormItem>
                       )}
                     />
@@ -483,12 +543,14 @@ export function AddCustodiaMuestrasModal({
                               type="checkbox"
                               className="mt-1"
                               checked={field.value === 'ETB'}
-                              onCheckedChange={(checked) => 
-                                field.onChange(checked ? 'ETB' : '')
+                              onChange={(e) =>
+                                field.onChange(e.target.checked ? 'ETB' : '')
                               }
                             />
                           </FormControl>
-                          <FormLabel className="text-sm font-normal">ETB</FormLabel>
+                          <div>
+                            <p className="font-medium">ETB</p>
+                          </div>
                         </FormItem>
                       )}
                     />
@@ -503,12 +565,14 @@ export function AddCustodiaMuestrasModal({
                               type="checkbox"
                               className="mt-1"
                               checked={field.value === 'XSA'}
-                              onCheckedChange={(checked) => 
-                                field.onChange(checked ? 'XSA' : '')
+                              onChange={(e) =>
+                                field.onChange(e.target.checked ? 'XSA' : '')
                               }
                             />
                           </FormControl>
-                          <FormLabel className="text-sm font-normal">XSA</FormLabel>
+                          <div>
+                            <p className="font-medium">XSA</p>
+                          </div>
                         </FormItem>
                       )}
                     />

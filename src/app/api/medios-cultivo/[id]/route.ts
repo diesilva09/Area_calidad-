@@ -15,16 +15,16 @@ export async function GET(
       SELECT
         id,
         fecha,
-        medio,
-        lote,
-        fecha_vencimiento,
-        preparado_por,
-        autoclave,
-        temperatura,
-        presion,
-        tiempo,
-        control_negativo,
+        medio_cultivo,
+        cantidad_ml,
+        cantidad_medio_cultivo_g,
+        control_negativo_inicio,
+        control_negativo_final,
+        control_negativo_cumple,
+        control_negativo_no_cumple,
+        accion_correctiva,
         observaciones,
+        responsable,
         created_at,
         updated_at
       FROM ${getMicroTable('medios_cultivo')}
@@ -60,15 +60,15 @@ export async function PUT(
     
     const {
       fecha,
-      medio,
-      lote,
-      fecha_vencimiento,
-      preparado_por,
-      autoclave,
-      temperatura,
-      presion,
-      tiempo,
-      control_negativo,
+      medio_cultivo,
+      cantidad_ml,
+      cantidad_medio_cultivo_g,
+      control_negativo_inicio,
+      control_negativo_final,
+      control_negativo_cumple,
+      control_negativo_no_cumple,
+      accion_correctiva,
+      responsable,
       observaciones
     } = body;
 
@@ -76,15 +76,15 @@ export async function PUT(
       UPDATE ${getMicroTable('medios_cultivo')}
       SET
         fecha = COALESCE($1, fecha),
-        medio = COALESCE($2, medio),
-        lote = COALESCE($3, lote),
-        fecha_vencimiento = COALESCE($4, fecha_vencimiento),
-        preparado_por = COALESCE($5, preparado_por),
-        autoclave = COALESCE($6, autoclave),
-        temperatura = COALESCE($7, temperatura),
-        presion = COALESCE($8, presion),
-        tiempo = COALESCE($9, tiempo),
-        control_negativo = COALESCE($10, control_negativo),
+        medio_cultivo = COALESCE($2, medio_cultivo),
+        cantidad_ml = COALESCE($3, cantidad_ml),
+        cantidad_medio_cultivo_g = COALESCE($4, cantidad_medio_cultivo_g),
+        control_negativo_inicio = COALESCE($5, control_negativo_inicio),
+        control_negativo_final = COALESCE($6, control_negativo_final),
+        control_negativo_cumple = COALESCE($7, control_negativo_cumple),
+        control_negativo_no_cumple = COALESCE($8, control_negativo_no_cumple),
+        accion_correctiva = COALESCE($9, accion_correctiva),
+        responsable = COALESCE($10, responsable),
         observaciones = COALESCE($11, observaciones),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = $12
@@ -93,15 +93,15 @@ export async function PUT(
 
     const values = [
       fecha,
-      medio,
-      lote,
-      fecha_vencimiento,
-      preparado_por,
-      autoclave,
-      temperatura,
-      presion,
-      tiempo,
-      control_negativo,
+      medio_cultivo,
+      cantidad_ml,
+      cantidad_medio_cultivo_g,
+      control_negativo_inicio,
+      control_negativo_final,
+      control_negativo_cumple,
+      control_negativo_no_cumple,
+      accion_correctiva,
+      responsable,
       observaciones || null,
       id
     ];

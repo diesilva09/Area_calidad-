@@ -55,15 +55,42 @@ interface AddEsterilizacionAutoclaveModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   onSuccessfulSubmit?: (values: EsterilizacionAutoclaveFormValues) => void;
+  editingRecord?: any | null;
+  onEditingRecordChange?: (record: any | null) => void;
 }
 
 export function AddEsterilizacionAutoclaveModal({
   isOpen,
   onOpenChange,
   onSuccessfulSubmit,
+  editingRecord,
+  onEditingRecordChange,
 }: AddEsterilizacionAutoclaveModalProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  const toDateInput = (value: any, fallback: string) => {
+    if (!value) return fallback;
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return format(d, 'yyyy-MM-dd');
+    return String(value);
+  };
+
+  const emptyValues: EsterilizacionAutoclaveFormValues = {
+    fecha: '',
+    elementosMediosCultivo: '',
+    inicioCicloHora: '',
+    inicioProcesoHora: '',
+    inicioProcesoTC: '',
+    inicioProcesoPresion: '',
+    finProcesoHora: '',
+    finProcesoTC: '',
+    finProcesoPresion: '',
+    finCicloHora: '',
+    cintaIndicadora: '',
+    realizadoPor: '',
+    observaciones: '',
+  };
 
   const form = useForm<EsterilizacionAutoclaveFormValues>({
     resolver: zodResolver(esterilizacionAutoclaveSchema),
@@ -83,6 +110,27 @@ export function AddEsterilizacionAutoclaveModal({
       observaciones: '',
     },
   });
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    if (!editingRecord) return;
+
+    form.reset({
+      fecha: toDateInput(editingRecord.fecha, format(new Date(), 'yyyy-MM-dd')),
+      elementosMediosCultivo: editingRecord.elementos_medios_cultivo ?? '',
+      inicioCicloHora: editingRecord.inicio_ciclo_hora ?? '',
+      inicioProcesoHora: editingRecord.inicio_proceso_hora ?? '',
+      inicioProcesoTC: editingRecord.inicio_proceso_tc ?? '',
+      inicioProcesoPresion: editingRecord.inicio_proceso_presion ?? '',
+      finProcesoHora: editingRecord.fin_proceso_hora ?? '',
+      finProcesoTC: editingRecord.fin_proceso_tc ?? '',
+      finProcesoPresion: editingRecord.fin_proceso_presion ?? '',
+      finCicloHora: editingRecord.fin_ciclo_hora ?? '',
+      cintaIndicadora: editingRecord.cinta_indicadora ?? '',
+      realizadoPor: editingRecord.realizado_por ?? '',
+      observaciones: editingRecord.observaciones ?? '',
+    });
+  }, [editingRecord, form, isOpen]);
 
   // Función para obtener la hora actual
   const getCurrentTime = () => {
@@ -130,7 +178,11 @@ export function AddEsterilizacionAutoclaveModal({
       console.log('🔍 DEBUG: Valores transformados para API:', transformedValues);
       
       // Guardar en la base de datos
-      await esterilizacionAutoclaveService.create(transformedValues);
+      if (editingRecord?.id) {
+        await esterilizacionAutoclaveService.update(editingRecord.id, transformedValues);
+      } else {
+        await esterilizacionAutoclaveService.create(transformedValues);
+      }
       console.log('✅ Registro de esterilización en autoclave guardado exitosamente');
       
       toast({
@@ -141,6 +193,7 @@ export function AddEsterilizacionAutoclaveModal({
       onSuccessfulSubmit?.(values);
       onOpenChange(false);
       form.reset();
+      onEditingRecordChange?.(null);
     } catch (error) {
       console.error('❌ Error al guardar registro de esterilización en autoclave:', error);
       toast({
@@ -154,13 +207,24 @@ export function AddEsterilizacionAutoclaveModal({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(next) => {
+        onOpenChange(next);
+        if (!next) {
+          form.reset(emptyValues);
+          onEditingRecordChange?.(null);
+        } else if (!editingRecord) {
+          form.reset(emptyValues);
+        }
+      }}
+    >
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-blue-900">
             RE-CAL-017 REGISTRO DE PROCESO DE ESTERILIZACIÓN EN AUTOCLAVE MICROBIOLOGÍA
           </DialogTitle>
-          <DialogDescription className="text-gray-600">
+          <DialogDescription asChild className="text-gray-600">
             <div className="mt-2 space-y-1">
               <p><strong>Código:</strong> RE-CAL-017</p>
               <p><strong>Versión:</strong> 2</p>

@@ -51,12 +51,16 @@ interface AddControlLavadoInactivacionModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   onSuccessfulSubmit?: (values: ControlLavadoInactivacionFormValues) => void;
+  editingRecord?: any | null;
+  onEditingRecordChange?: (record: any | null) => void;
 }
 
 export function AddControlLavadoInactivacionModal({
   isOpen,
   onOpenChange,
   onSuccessfulSubmit,
+  editingRecord,
+  onEditingRecordChange,
 }: AddControlLavadoInactivacionModalProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -79,6 +83,27 @@ export function AddControlLavadoInactivacionModal({
       observaciones: '',
     },
   });
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    if (!editingRecord) return;
+
+    form.reset({
+      fecha: editingRecord.fecha ?? format(new Date(), 'yyyy-MM-dd'),
+      actividadRealizada: editingRecord.actividad_realizada ?? '',
+      sustanciaLimpiezaNombre: editingRecord.sustancia_limpieza_nombre ?? '',
+      sustanciaLimpiezaCantidadPreparada: editingRecord.sustancia_limpieza_cantidad_preparada ?? '',
+      sustanciaLimpiezaCantidadSustancia: editingRecord.sustancia_limpieza_cantidad_sustancia ?? '',
+      sustanciaDesinfeccion1Nombre: editingRecord.sustancia_desinfeccion_1_nombre ?? '',
+      sustanciaDesinfeccion1CantidadPreparada: editingRecord.sustancia_desinfeccion_1_cantidad_preparada ?? '',
+      sustanciaDesinfeccion1CantidadSustancia: editingRecord.sustancia_desinfeccion_1_cantidad_sustancia ?? '',
+      sustanciaDesinfeccion2Nombre: editingRecord.sustancia_desinfeccion_2_nombre ?? '',
+      sustanciaDesinfeccion2CantidadPreparada: editingRecord.sustancia_desinfeccion_2_cantidad_preparada ?? '',
+      sustanciaDesinfeccion2CantidadSustancia: editingRecord.sustancia_desinfeccion_2_cantidad_sustancia ?? '',
+      realizadoPor: editingRecord.realizado_por ?? '',
+      observaciones: editingRecord.observaciones ?? '',
+    });
+  }, [editingRecord, form, isOpen]);
 
   async function onSubmit(values: ControlLavadoInactivacionFormValues) {
     setIsSubmitting(true);
@@ -106,7 +131,11 @@ export function AddControlLavadoInactivacionModal({
       console.log('🔍 DEBUG: Valores transformados para API:', transformedValues);
       
       // Guardar en la base de datos
-      await controlLavadoInactivacionService.create(transformedValues);
+      if (editingRecord?.id) {
+        await controlLavadoInactivacionService.update(editingRecord.id, transformedValues);
+      } else {
+        await controlLavadoInactivacionService.create(transformedValues);
+      }
       console.log('✅ Registro de control de lavado e inactivación guardado exitosamente');
       
       toast({
@@ -117,6 +146,7 @@ export function AddControlLavadoInactivacionModal({
       onSuccessfulSubmit?.(values);
       onOpenChange(false);
       form.reset();
+      onEditingRecordChange?.(null);
     } catch (error) {
       console.error('❌ Error al guardar registro de control de lavado e inactivación:', error);
       toast({
@@ -130,13 +160,22 @@ export function AddControlLavadoInactivacionModal({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(next) => {
+        onOpenChange(next);
+        if (!next) {
+          form.reset();
+          onEditingRecordChange?.(null);
+        }
+      }}
+    >
       <DialogContent className="max-w-4xl max-h-[95vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-cyan-900">
             RE-CAL-111 - CONTROL LAVADO E INACTIVACIÓN DE MATERIAL - LABORATORIO MICROBIOLOGÍA
           </DialogTitle>
-          <DialogDescription className="text-gray-600">
+          <DialogDescription asChild className="text-gray-600">
             <div className="mt-2 space-y-1">
               <p><strong>Código:</strong> RE-CAL-111</p>
               <p><strong>Versión:</strong> 1</p>

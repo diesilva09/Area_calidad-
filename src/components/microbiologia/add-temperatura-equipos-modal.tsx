@@ -34,12 +34,12 @@ import { temperaturaEquiposService } from '@/lib/temperatura-equipos-service';
 
 // Esquema de validación para el formulario
 const temperaturaEquiposSchema = z.object({
-  fecha: z.string().min(1, 'Campo requerido'),
-  horario: z.string().min(1, 'Campo requerido'),
-  incubadora037: z.string().min(1, 'Campo requerido'),
-  incubadora038: z.string().min(1, 'Campo requerido'),
-  nevera: z.string().min(1, 'Campo requerido'),
-  realizadoPor: z.string().min(1, 'Campo requerido'),
+  fecha: z.string().optional(),
+  horario: z.string().optional(),
+  incubadora037: z.string().optional(),
+  incubadora038: z.string().optional(),
+  nevera: z.string().optional(),
+  realizadoPor: z.string().optional(),
   observaciones: z.string().optional(),
 });
 
@@ -49,6 +49,8 @@ interface AddTemperaturaEquiposModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   onSuccessfulSubmit?: (values: TemperaturaEquiposFormValues) => void;
+  editingRecord?: any | null;
+  onEditingRecordChange?: (record: any | null) => void;
 }
 
 // Función para determinar el período automáticamente basado en la hora actual
@@ -87,13 +89,50 @@ const getExcelSerialDate = (date: Date): number => {
   return diffDays + 1 + adjustment;
 };
 
+const excelSerialToDate = (serial: number): Date => {
+  // Inverso aproximado de getExcelSerialDate, respetando el bug de Excel (1900 bisiesto).
+  // Base: 1900-01-01 es día 1.
+  const excelEpoch = new Date(1900, 0, 1);
+  const needsBugAdjustment = serial > 60 ? 1 : 0;
+  const days = serial - 1 - needsBugAdjustment;
+  const d = new Date(excelEpoch);
+  d.setDate(excelEpoch.getDate() + days);
+  return d;
+};
+
+const normalizeExcelSerial = (value: any): string => {
+  if (value === null || value === undefined || value === '') return getExcelSerialDate(new Date()).toString();
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (/^\d+$/.test(trimmed)) return trimmed;
+
+    const d = new Date(trimmed);
+    if (!Number.isNaN(d.getTime())) return getExcelSerialDate(d).toString();
+    return trimmed;
+  }
+  return String(value);
+};
+
 export function AddTemperaturaEquiposModal({
   isOpen,
   onOpenChange,
   onSuccessfulSubmit,
+  editingRecord,
+  onEditingRecordChange,
 }: AddTemperaturaEquiposModalProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  const emptyValues: TemperaturaEquiposFormValues = {
+    fecha: '',
+    horario: '',
+    incubadora037: '',
+    incubadora038: '',
+    nevera: '',
+    realizadoPor: '',
+    observaciones: '',
+  };
 
   const form = useForm<TemperaturaEquiposFormValues>({
     resolver: zodResolver(temperaturaEquiposSchema),
@@ -111,6 +150,7 @@ export function AddTemperaturaEquiposModal({
   // Efecto para actualizar el horario automáticamente cada minuto
   React.useEffect(() => {
     if (!isOpen) return;
+    if (editingRecord) return;
 
     const actualizarHorario = () => {
       const nuevoPeriodo = getPeriodoAutomatico();
@@ -124,7 +164,22 @@ export function AddTemperaturaEquiposModal({
     const interval = setInterval(actualizarHorario, 60000); // 60 segundos
 
     return () => clearInterval(interval);
-  }, [isOpen, form]);
+  }, [editingRecord, isOpen, form]);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    if (!editingRecord) return;
+
+    form.reset({
+      fecha: normalizeExcelSerial(editingRecord.fecha ?? getExcelSerialDate(new Date()).toString()),
+      horario: editingRecord.horario ?? getPeriodoAutomatico(),
+      incubadora037: editingRecord.incubadora_037 ?? '',
+      incubadora038: editingRecord.incubadora_038 ?? '',
+      nevera: editingRecord.nevera ?? '',
+      realizadoPor: editingRecord.realizado_por ?? '',
+      observaciones: editingRecord.observaciones ?? '',
+    });
+  }, [editingRecord, form, isOpen]);
 
   async function onSubmit(values: TemperaturaEquiposFormValues) {
     setIsSubmitting(true);
@@ -134,19 +189,23 @@ export function AddTemperaturaEquiposModal({
       
       // Transformar los datos para la API
       const transformedValues = {
-        fecha: values.fecha,
-        horario: values.horario,
-        incubadora_037: values.incubadora037,
-        incubadora_038: values.incubadora038,
-        nevera: values.nevera,
-        realizado_por: values.realizadoPor,
+        fecha: values.fecha || '',
+        horario: values.horario || '',
+        incubadora_037: values.incubadora037 || '',
+        incubadora_038: values.incubadora038 || '',
+        nevera: values.nevera || '',
+        realizado_por: values.realizadoPor || '',
         observaciones: values.observaciones || undefined,
       };
       
       console.log('🔍 DEBUG: Valores transformados para API:', transformedValues);
       
       // Guardar en la base de datos
-      await temperaturaEquiposService.create(transformedValues);
+      if (editingRecord?.id) {
+        await temperaturaEquiposService.update(editingRecord.id, transformedValues);
+      } else {
+        await temperaturaEquiposService.create(transformedValues);
+      }
       console.log('✅ Registro de temperatura de equipos guardado exitosamente');
       
       toast({
@@ -157,6 +216,7 @@ export function AddTemperaturaEquiposModal({
       onSuccessfulSubmit?.(values);
       onOpenChange(false);
       form.reset();
+      onEditingRecordChange?.(null);
     } catch (error) {
       console.error('❌ Error al guardar registro de temperatura de equipos:', error);
       toast({
@@ -170,13 +230,24 @@ export function AddTemperaturaEquiposModal({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(next) => {
+        onOpenChange(next);
+        if (!next) {
+          form.reset(emptyValues);
+          onEditingRecordChange?.(null);
+        } else if (!editingRecord) {
+          form.reset(emptyValues);
+        }
+      }}
+    >
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-blue-900">
             RE-CAL-016 REGISTRO DE TEMPERATURA EQUIPOS DE MICROBIOLOGÍA
           </DialogTitle>
-          <DialogDescription className="text-gray-600">
+          <DialogDescription asChild className="text-gray-600">
             <div className="mt-2 space-y-1">
               <p><strong>Código:</strong> RE-CAL-016</p>
               <p><strong>Versión:</strong> 2</p>
@@ -198,19 +269,52 @@ export function AddTemperaturaEquiposModal({
                     <FormLabel>FECHA</FormLabel>
                     <FormControl>
                       <div className="space-y-2">
-                        <Input 
-                          {...field} 
-                          placeholder="Ej: 46027"
-                          className="font-mono"
-                        />
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                'w-full justify-start text-left font-normal',
+                                !field.value && 'text-muted-foreground'
+                              )}
+                            >
+                              {field.value ? (
+                                (() => {
+                                  const serial = Number(field.value);
+                                  if (!Number.isFinite(serial)) return field.value;
+                                  return format(excelSerialToDate(serial), 'PPP', { locale: es });
+                                })()
+                              ) : (
+                                <span>Seleccionar fecha</span>
+                              )}
+                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={(() => {
+                                const serial = Number(field.value);
+                                if (!Number.isFinite(serial)) return undefined;
+                                return excelSerialToDate(serial);
+                              })()}
+                              onSelect={(date) => {
+                                if (date) {
+                                  field.onChange(getExcelSerialDate(date).toString());
+                                }
+                              }}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
                         <div className="text-xs text-gray-500">
-                          Fecha actual: {format(new Date(), 'dd/MM/yyyy')} → Serial: {getExcelSerialDate(new Date())}
+                          Serial (Excel): <span className="font-mono">{field.value || '-'}</span>
                         </div>
                       </div>
                     </FormControl>
                     <FormMessage />
                     <FormDescription>
-                      Formato serial de Excel (ej: 46027, 46030, 46031)
+                      Selecciona una fecha y el sistema la guardará como serial de Excel.
                     </FormDescription>
                   </FormItem>
                 )}

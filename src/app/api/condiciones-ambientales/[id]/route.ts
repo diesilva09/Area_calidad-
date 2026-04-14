@@ -1,26 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
-
-// Configuración de la base de datos
-const getPoolConfig = () => {
-  const config: any = {
-    host: '127.0.0.1', // Forzar IPv4 para evitar problemas de autenticación
-    port: 5432,
-    database: 'area_calidad',
-    user: 'postgres',
-    ssl: { rejectUnauthorized: false },
-  };
-
-  // NO agregar contraseña para evitar el error de SASL
-  // Si PostgreSQL requiere contraseña, configurar en pg_hba.conf para 'trust'
-
-  return config;
-};
+import { getMicroTable, getPoolConfig } from '../../micro-config';
 
 const pool = new Pool(getPoolConfig());
-
-// Nombre del esquema para las tablas de microbiología
-const SCHEMA = 'lab_microbiologia';
 
 export async function GET(
   request: NextRequest,
@@ -40,7 +22,7 @@ export async function GET(
         observaciones,
         created_at,
         updated_at
-      FROM ${SCHEMA}.condiciones_ambientales
+      FROM ${getMicroTable('condiciones_ambientales')}
       WHERE id = $1
     `;
 
@@ -88,7 +70,7 @@ export async function PUT(
     }
 
     const query = `
-      UPDATE ${SCHEMA}.condiciones_ambientales
+      UPDATE ${getMicroTable('condiciones_ambientales')}
       SET
         fecha = $1,
         hora = $2,
@@ -137,7 +119,7 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    const query = 'DELETE FROM condiciones_ambientales WHERE id = $1 RETURNING *';
+    const query = `DELETE FROM ${getMicroTable('condiciones_ambientales')} WHERE id = $1 RETURNING *`;
     const result = await pool.query(query, [id]);
 
     if (result.rows.length === 0) {

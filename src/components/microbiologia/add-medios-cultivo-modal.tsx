@@ -34,17 +34,17 @@ import { mediosCultivoService } from '@/lib/medios-cultivo-service';
 
 // Esquema de validación para el formulario
 const mediosCultivoSchema = z.object({
-  fecha: z.string().min(1, 'Campo requerido'),
-  medioCultivo: z.string().min(1, 'Campo requerido'),
-  cantidadMl: z.string().min(1, 'Campo requerido'),
-  cantidadMedioCultivoG: z.string().min(1, 'Campo requerido'),
-  controlNegativoInicio: z.string().min(1, 'Campo requerido'),
-  controlNegativoFinal: z.string().min(1, 'Campo requerido'),
-  controlNegativoCumple: z.string().min(1, 'Campo requerido'),
-  controlNegativoNoCumple: z.string().min(1, 'Campo requerido'),
-  accionCorrectiva: z.string().min(1, 'Campo requerido'),
+  fecha: z.string().optional(),
+  medioCultivo: z.string().optional(),
+  cantidadMl: z.string().optional(),
+  cantidadMedioCultivoG: z.string().optional(),
+  controlNegativoInicio: z.string().optional(),
+  controlNegativoFinal: z.string().optional(),
+  controlNegativoCumple: z.string().optional(),
+  controlNegativoNoCumple: z.string().optional(),
+  accionCorrectiva: z.string().optional(),
   observaciones: z.string().optional(),
-  responsable: z.string().min(1, 'Campo requerido'),
+  responsable: z.string().optional(),
 });
 
 type MediosCultivoFormValues = z.infer<typeof mediosCultivoSchema>;
@@ -53,15 +53,40 @@ interface AddMediosCultivoModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   onSuccessfulSubmit?: (values: MediosCultivoFormValues) => void;
+  editingRecord?: any | null;
+  onEditingRecordChange?: (record: any | null) => void;
 }
 
 export function AddMediosCultivoModal({
   isOpen,
   onOpenChange,
   onSuccessfulSubmit,
+  editingRecord,
+  onEditingRecordChange,
 }: AddMediosCultivoModalProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  const toDateInput = (value: any, fallback: string) => {
+    if (!value) return fallback;
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return format(d, 'yyyy-MM-dd');
+    return String(value);
+  };
+
+  const emptyValues: MediosCultivoFormValues = {
+    fecha: '',
+    medioCultivo: '',
+    cantidadMl: '',
+    cantidadMedioCultivoG: '',
+    controlNegativoInicio: '',
+    controlNegativoFinal: '',
+    controlNegativoCumple: '',
+    controlNegativoNoCumple: '',
+    accionCorrectiva: '',
+    observaciones: '',
+    responsable: '',
+  };
 
   const form = useForm<MediosCultivoFormValues>({
     resolver: zodResolver(mediosCultivoSchema),
@@ -79,6 +104,25 @@ export function AddMediosCultivoModal({
       responsable: '',
     },
   });
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    if (!editingRecord) return;
+
+    form.reset({
+      fecha: toDateInput(editingRecord.fecha, format(new Date(), 'yyyy-MM-dd')),
+      medioCultivo: editingRecord.medio_cultivo ?? '',
+      cantidadMl: editingRecord.cantidad_ml ?? '',
+      cantidadMedioCultivoG: editingRecord.cantidad_medio_cultivo_g ?? '',
+      controlNegativoInicio: editingRecord.control_negativo_inicio ?? '',
+      controlNegativoFinal: editingRecord.control_negativo_final ?? '',
+      controlNegativoCumple: editingRecord.control_negativo_cumple ?? '',
+      controlNegativoNoCumple: editingRecord.control_negativo_no_cumple ?? '',
+      accionCorrectiva: editingRecord.accion_correctiva ?? '',
+      observaciones: editingRecord.observaciones ?? '',
+      responsable: editingRecord.responsable ?? '',
+    });
+  }, [editingRecord, form, isOpen]);
 
   async function onSubmit(values: MediosCultivoFormValues) {
     setIsSubmitting(true);
@@ -104,7 +148,11 @@ export function AddMediosCultivoModal({
       console.log('🔍 DEBUG: Valores transformados para API:', transformedValues);
       
       // Guardar en la base de datos
-      await mediosCultivoService.create(transformedValues);
+      if (editingRecord?.id) {
+        await mediosCultivoService.update(editingRecord.id, transformedValues);
+      } else {
+        await mediosCultivoService.create(transformedValues);
+      }
       console.log('✅ Registro de medios de cultivo guardado exitosamente');
       
       toast({
@@ -114,7 +162,8 @@ export function AddMediosCultivoModal({
       
       onSuccessfulSubmit?.(values);
       onOpenChange(false);
-      form.reset();
+      form.reset(emptyValues);
+      onEditingRecordChange?.(null);
     } catch (error) {
       console.error('❌ Error al guardar registro de medios de cultivo:', error);
       toast({
@@ -128,13 +177,24 @@ export function AddMediosCultivoModal({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(next) => {
+        onOpenChange(next);
+        if (!next) {
+          form.reset(emptyValues);
+          onEditingRecordChange?.(null);
+        } else if (!editingRecord) {
+          form.reset(emptyValues);
+        }
+      }}
+    >
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-blue-900">
             RE-CAL-022 REGISTRO DE PREPARACIÓN DE MEDIOS DE CULTIVO Y CONTROL NEGATIVO
           </DialogTitle>
-          <DialogDescription className="text-gray-600">
+          <DialogDescription asChild className="text-gray-600">
             <div className="mt-2 space-y-1">
               <p><strong>Código:</strong> RE-CAL-022</p>
               <p><strong>Versión:</strong> 2</p>

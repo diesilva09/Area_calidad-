@@ -21,7 +21,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { fieldAuditService, type FieldAuditLog } from '@/lib/field-audit-service';
-import { formatAuditValue, getFieldDisplayName } from '@/lib/audit-utils';
+import { formatAuditValue, getChangeColor, getFieldDisplayName } from '@/lib/audit-utils';
 import { getRoleDisplayName, getUserDisplayName } from '@/lib/user-display-utils';
 
 interface AuditedFieldProps {
@@ -98,7 +98,7 @@ export function AuditedField({
     loadHistory();
   };
 
-  const displayValue = value !== null && value !== undefined ? String(value) : 'N/A';
+  const displayValue = formatAuditValue(value);
   const changeColor = lastChange ? getChangeColor(lastChange.created_at) : '';
   const isRecent = lastChange && (new Date().getTime() - new Date(lastChange.created_at).getTime()) < (24 * 60 * 60 * 1000);
 

@@ -597,13 +597,6 @@ export function LimpiezaRegistrosTab({
                     <dd className="text-gray-800 font-medium">{registro.mes_corte || '—'}</dd>
                   </div>
 
-                  <div>
-                    <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Turno</dt>
-                    <dd className="text-gray-800 font-medium">
-                      {registro.turno === 'dia' ? 'Día' : registro.turno === 'noche' ? 'Noche' : '—'}
-                    </dd>
-                  </div>
-
                   {registro.detalles && (
                     <div className="col-span-2">
                       <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Detalles de limpieza</dt>
