@@ -18,6 +18,8 @@ export async function GET(
         tipo,
         muestra_id,
         area,
+        tipo_muestra,
+        valor_muestra,
         temperatura,
         cantidad,
         motivo,
@@ -74,6 +76,8 @@ export async function PUT(
       tipo,
       muestra_id,
       area,
+      tipo_muestra,
+      valor_muestra,
       temperatura,
       cantidad,
       motivo,
@@ -91,7 +95,8 @@ export async function PUT(
       recepcion_lab_hora,
       medio_transporte,
       responsable,
-      observaciones
+      observaciones,
+      estado
     } = body;
 
     const query = `
@@ -101,26 +106,29 @@ export async function PUT(
         tipo = COALESCE($2, tipo),
         muestra_id = COALESCE($3, muestra_id),
         area = COALESCE($4, area),
-        temperatura = COALESCE($5, temperatura),
-        cantidad = COALESCE($6, cantidad),
-        motivo = COALESCE($7, motivo),
-        tipo_analisis_sl = COALESCE($8, tipo_analisis_sl),
-        tipo_analisis_bc = COALESCE($9, tipo_analisis_bc),
-        tipo_analisis_ym = COALESCE($10, tipo_analisis_ym),
-        tipo_analisis_tc = COALESCE($11, tipo_analisis_tc),
-        tipo_analisis_ec = COALESCE($12, tipo_analisis_ec),
-        tipo_analisis_ls = COALESCE($13, tipo_analisis_ls),
-        tipo_analisis_etb = COALESCE($14, tipo_analisis_etb),
-        tipo_analisis_xsa = COALESCE($15, tipo_analisis_xsa),
-        toma_muestra_fecha = COALESCE($16, toma_muestra_fecha),
-        toma_muestra_hora = COALESCE($17, toma_muestra_hora),
-        recepcion_lab_fecha = COALESCE($18, recepcion_lab_fecha),
-        recepcion_lab_hora = COALESCE($19, recepcion_lab_hora),
-        medio_transporte = COALESCE($20, medio_transporte),
-        responsable = COALESCE($21, responsable),
-        observaciones = COALESCE($22, observaciones),
+        tipo_muestra = COALESCE($5, tipo_muestra),
+        valor_muestra = COALESCE($6, valor_muestra),
+        temperatura = COALESCE($7, temperatura),
+        cantidad = COALESCE($8, cantidad),
+        motivo = COALESCE($9, motivo),
+        tipo_analisis_sl = COALESCE($10, tipo_analisis_sl),
+        tipo_analisis_bc = COALESCE($11, tipo_analisis_bc),
+        tipo_analisis_ym = COALESCE($12, tipo_analisis_ym),
+        tipo_analisis_tc = COALESCE($13, tipo_analisis_tc),
+        tipo_analisis_ec = COALESCE($14, tipo_analisis_ec),
+        tipo_analisis_ls = COALESCE($15, tipo_analisis_ls),
+        tipo_analisis_etb = COALESCE($16, tipo_analisis_etb),
+        tipo_analisis_xsa = COALESCE($17, tipo_analisis_xsa),
+        toma_muestra_fecha = COALESCE($18, toma_muestra_fecha),
+        toma_muestra_hora = COALESCE($19, toma_muestra_hora),
+        recepcion_lab_fecha = COALESCE($20, recepcion_lab_fecha),
+        recepcion_lab_hora = COALESCE($21, recepcion_lab_hora),
+        medio_transporte = COALESCE($22, medio_transporte),
+        responsable = COALESCE($23, responsable),
+        observaciones = COALESCE($24, observaciones),
+        estado = COALESCE($25, estado),
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = $23
+      WHERE id = $26
       RETURNING *
     `;
 
@@ -129,6 +137,8 @@ export async function PUT(
       tipo,
       muestra_id,
       area,
+      tipo_muestra,
+      valor_muestra,
       temperatura,
       cantidad,
       motivo,
@@ -147,6 +157,7 @@ export async function PUT(
       medio_transporte,
       responsable,
       observaciones || null,
+      estado,
       id
     ];
 

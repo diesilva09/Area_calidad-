@@ -48,7 +48,7 @@ type TemperaturaEquiposFormValues = z.infer<typeof temperaturaEquiposSchema>;
 interface AddTemperaturaEquiposModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onSuccessfulSubmit?: (values: TemperaturaEquiposFormValues) => void;
+  onSuccessfulSubmit?: (values: TemperaturaEquiposFormValues, estado: 'pendiente' | 'completado') => void;
   editingRecord?: any | null;
   onEditingRecordChange?: (record: any | null) => void;
 }
@@ -101,7 +101,7 @@ const excelSerialToDate = (serial: number): Date => {
 };
 
 const normalizeExcelSerial = (value: any): string => {
-  if (value === null || value === undefined || value === '') return getExcelSerialDate(new Date()).toString();
+  if (value === null || value === undefined || value === '') return '';
   if (typeof value === 'number') return String(value);
   if (typeof value === 'string') {
     const trimmed = value.trim();
@@ -171,7 +171,7 @@ export function AddTemperaturaEquiposModal({
     if (!editingRecord) return;
 
     form.reset({
-      fecha: normalizeExcelSerial(editingRecord.fecha ?? getExcelSerialDate(new Date()).toString()),
+      fecha: editingRecord.fecha ? normalizeExcelSerial(editingRecord.fecha) : '',
       horario: editingRecord.horario ?? getPeriodoAutomatico(),
       incubadora037: editingRecord.incubadora_037 ?? '',
       incubadora038: editingRecord.incubadora_038 ?? '',
@@ -181,11 +181,11 @@ export function AddTemperaturaEquiposModal({
     });
   }, [editingRecord, form, isOpen]);
 
-  async function onSubmit(values: TemperaturaEquiposFormValues) {
+  async function handleSave(values: TemperaturaEquiposFormValues, estado: 'pendiente' | 'completado') {
     setIsSubmitting(true);
     
     try {
-      console.log('🔍 DEBUG: Valores del formulario:', values);
+      console.log('🔍 DEBUG: Valores del formulario:', values, 'Estado:', estado);
       
       // Transformar los datos para la API
       const transformedValues = {
@@ -196,6 +196,7 @@ export function AddTemperaturaEquiposModal({
         nevera: values.nevera || '',
         realizado_por: values.realizadoPor || '',
         observaciones: values.observaciones || undefined,
+        estado: estado,
       };
       
       console.log('🔍 DEBUG: Valores transformados para API:', transformedValues);
@@ -209,11 +210,13 @@ export function AddTemperaturaEquiposModal({
       console.log('✅ Registro de temperatura de equipos guardado exitosamente');
       
       toast({
-        title: "Registro guardado",
-        description: "El registro de temperatura de equipos ha sido guardado exitosamente.",
+        title: estado === 'pendiente' ? "Registro guardado como pendiente" : "Registro completado",
+        description: estado === 'pendiente' 
+          ? "El registro ha sido guardado como pendiente. Puedes completarlo más tarde."
+          : "El registro de temperatura de equipos ha sido guardado exitosamente.",
       });
       
-      onSuccessfulSubmit?.(values);
+      onSuccessfulSubmit?.(values, estado);
       onOpenChange(false);
       form.reset();
       onEditingRecordChange?.(null);
@@ -257,7 +260,7 @@ export function AddTemperaturaEquiposModal({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               
               {/* FECHA - Serial de Excel */}
@@ -450,21 +453,34 @@ export function AddTemperaturaEquiposModal({
               />
             </div>
 
-            <DialogFooter className="pt-4">
+            <DialogFooter className="pt-4 gap-2">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={isSubmitting}
+                onClick={() => {
+                  onOpenChange(false);
+                  form.reset();
+                  onEditingRecordChange?.(null);
+                }}
               >
                 Cancelar
               </Button>
               <Button
-                type="submit"
+                type="button"
+                variant="outline"
                 disabled={isSubmitting}
+                onClick={form.handleSubmit((values) => handleSave(values, 'pendiente'))}
+                className="border-orange-400 text-orange-700 hover:bg-orange-50"
+              >
+                {isSubmitting ? 'Guardando...' : 'Guardar como Pendiente'}
+              </Button>
+              <Button
+                type="button"
+                disabled={isSubmitting}
+                onClick={form.handleSubmit((values) => handleSave(values, 'completado'))}
                 className="bg-blue-600 hover:bg-blue-700"
               >
-                {isSubmitting ? 'Guardando...' : 'Guardar Registro'}
+                {isSubmitting ? 'Guardando...' : 'Guardar Completado'}
               </Button>
             </DialogFooter>
           </form>

@@ -26,6 +26,13 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { resultadosMicrobiologicosService } from '@/lib/resultados-microbiologicos-service';
 
@@ -38,7 +45,9 @@ const resultadosMicrobiologicosSchema = z.object({
   tipo: z.string().optional(),
   area: z.string().optional(),
   muestra: z.string().optional(),
-  lote: z.string().optional(),
+  // Nuevos campos para especificar el tipo de muestra (reemplazan lote)
+  tipoMuestra: z.string().optional(),
+  valorMuestra: z.string().optional(),
   fechaProduccion: z.string().optional(),
   fechaVencimiento: z.string().optional(),
   mesofilos: z.string().optional(),
@@ -70,7 +79,7 @@ type ResultadosMicrobiologicosFormValues = z.infer<typeof resultadosMicrobiologi
 interface AddResultadosMicrobiologicosModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onSuccessfulSubmit?: (values: ResultadosMicrobiologicosFormValues) => void;
+  onSuccessfulSubmit?: (values: ResultadosMicrobiologicosFormValues, estado: 'pendiente' | 'completado') => void;
   editingRecord?: any | null;
   onEditingRecordChange?: (record: any | null) => void;
 }
@@ -84,6 +93,8 @@ export function AddResultadosMicrobiologicosModal({
 }: AddResultadosMicrobiologicosModalProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [cronogramaTaskId, setCronogramaTaskId] = React.useState<number | null>(null);
+  const isViewOnly = Boolean(editingRecord?.cronograma_task_id);
 
   const toDateInput = (value: any, fallback: string) => {
     if (!value) return fallback;
@@ -101,7 +112,8 @@ export function AddResultadosMicrobiologicosModal({
     tipo: '',
     area: '',
     muestra: '',
-    lote: '',
+    tipoMuestra: '',
+    valorMuestra: '',
     fechaProduccion: '',
     fechaVencimiento: '',
     mesofilos: '',
@@ -138,7 +150,8 @@ export function AddResultadosMicrobiologicosModal({
       tipo: '',
       area: '',
       muestra: '',
-      lote: '',
+      tipoMuestra: '',
+      valorMuestra: '',
       fechaProduccion: '',
       fechaVencimiento: '',
       mesofilos: '',
@@ -166,51 +179,189 @@ export function AddResultadosMicrobiologicosModal({
     },
   });
 
+  // Watch para mostrar/ocultar campo de valor según el tipo de muestra seleccionado
+  const tipoMuestra = form.watch('tipoMuestra');
+
+  // Función para limpiar el tipo de muestra de valores duplicados o corruptos
+  const limpiarTipoMuestra = (tipo: string): string => {
+    if (!tipo) return '';
+
+    // Lista de tipos válidos
+    const tiposValidos = ['nombre', 'linea', 'producto', 'lote', 'envase', 'otro'];
+
+    // Si el tipo ya es válido, retornarlo
+    if (tiposValidos.includes(tipo)) return tipo;
+
+    // Buscar si contiene una subcadena que coincida con un tipo válido
+    for (const tipoValido of tiposValidos) {
+      if (tipo.toLowerCase().includes(tipoValido)) {
+        return tipoValido;
+      }
+    }
+
+    // Si no se encuentra coincidencia, retornar el valor original
+    return tipo;
+  };
+
+  // Función para limpiar el área de valores duplicados o corruptos
+  const limpiarArea = (area: string): string => {
+    if (!area) return '';
+
+    // Lista de áreas válidas
+    const areasValidas = [
+      'Conservas', 'Salsas', 'Preparación Conservas', 'Preparación Salsas',
+      'Embalaje', 'Frutos Secos', 'Micropesaje', 'BD MP (Bodega Materia Prima)',
+      'BD PT (Bodega Producto Terminado)', 'Personal de Aseo', 'Mantenimiento (MTTO)',
+      'Laboratorio Procesos', 'Laboratorio MP', 'Vestier Masculino 1',
+      'Vestier Masculino 2', 'Vestier Femenino 1', 'Vestier Femenino 2',
+      'Esclusa Ingreso Área de Preparación', 'Estación de Lavado de Manos Preparación de Salsas',
+      'Estación de Lavado de Manos Envasado de Salsas', 'Esclusa Ingreso Área de Producción',
+      'Envases (general)', 'Dispensadores', 'Secador Vestier Masculino 1',
+      'Secador Vestier Masculino 2', 'Secador Vestier Femenino 1', 'Secador Vestier Femenino 2',
+      'Otro'
+    ];
+
+    // Si el área ya es válida, retornarla
+    if (areasValidas.includes(area)) return area;
+
+    // Buscar si contiene una subcadena que coincida con un área válida
+    for (const areaValida of areasValidas) {
+      if (area.includes(areaValida)) {
+        return areaValida;
+      }
+    }
+
+    // Si no se encuentra coincidencia, retornar el valor original
+    return area;
+  };
+
+  // Vigilar el valor del tipo de muestra y limpiarlo automáticamente si es corrupto
+  const tipoMuestraActual = form.watch('tipoMuestra');
+  const tipoMuestraProcesadaRef = React.useRef<string>('');
+
+  React.useEffect(() => {
+    if (tipoMuestraActual && tipoMuestraActual !== tipoMuestraProcesadaRef.current) {
+      const tipoLimpio = limpiarTipoMuestra(tipoMuestraActual);
+      tipoMuestraProcesadaRef.current = tipoLimpio;
+      if (tipoLimpio !== tipoMuestraActual) {
+        console.log('🔍 DEBUG: Auto-limpieza de tipoMuestra:', tipoMuestraActual, '->', tipoLimpio);
+        // Pequeño delay para evitar conflictos con el renderizado
+        setTimeout(() => {
+          form.setValue('tipoMuestra', tipoLimpio, { shouldValidate: false, shouldDirty: true });
+        }, 0);
+      }
+    }
+  }, [tipoMuestraActual, form]);
+
+  // Vigilar el valor del área y limpiarlo automáticamente si es corrupto
+  const areaActual = form.watch('area');
+  const areaProcesadaRef = React.useRef<string>('');
+
+  React.useEffect(() => {
+    if (areaActual && areaActual !== areaProcesadaRef.current) {
+      const areaLimpia = limpiarArea(areaActual);
+      areaProcesadaRef.current = areaLimpia;
+      if (areaLimpia !== areaActual) {
+        console.log('🔍 DEBUG: Auto-limpieza de área:', areaActual, '->', areaLimpia);
+        // Pequeño delay para evitar conflictos con el renderizado
+        setTimeout(() => {
+          form.setValue('area', areaLimpia, { shouldValidate: false, shouldDirty: true });
+        }, 0);
+      }
+    }
+  }, [areaActual, form]);
+
   React.useEffect(() => {
     if (!isOpen) return;
-    if (!editingRecord) return;
 
+    // Si hay editingRecord (modo edición o vista)
+    if (editingRecord) {
+      setCronogramaTaskId(editingRecord.cronograma_task_id || null);
+      // Limpiar área y tipo de muestra para corregir valores corruptos
+      const areaLimpia = limpiarArea(editingRecord.area ?? '');
+      const tipoMuestraLimpio = limpiarTipoMuestra(editingRecord.tipo_muestra ?? '');
+      form.reset({
+        fecha: editingRecord.fecha ? toDateInput(editingRecord.fecha, '') : '',
+        mesMuestreo: editingRecord.mes_muestreo ?? '',
+        horaMuestreo: editingRecord.hora_muestreo ?? '',
+        internoExterno: editingRecord.interno_externo ?? '',
+        tipo: editingRecord.tipo ?? '',
+        area: areaLimpia,
+        muestra: editingRecord.muestra ?? '',
+        tipoMuestra: tipoMuestraLimpio,
+        valorMuestra: editingRecord.valor_muestra ?? '',
+        fechaProduccion: toDateInput(editingRecord.fecha_produccion, ''),
+        fechaVencimiento: toDateInput(editingRecord.fecha_vencimiento, ''),
+        mesofilos: editingRecord.mesofilos ?? '',
+        coliformesTotales: editingRecord.coliformes_totales ?? '',
+        coliformesFecales: editingRecord.coliformes_fecales ?? '',
+        eColi: editingRecord.e_coli ?? '',
+        mohos: editingRecord.mohos ?? '',
+        levaduras: editingRecord.levaduras ?? '',
+        staphylococcusAureus: editingRecord.staphylococcus_aureus ?? '',
+        bacillusCereus: editingRecord.bacillus_cereus ?? '',
+        listeria: editingRecord.listeria ?? '',
+        salmonella: editingRecord.salmonella ?? '',
+        enterobacterias: editingRecord.enterobacterias ?? '',
+        clostridium: editingRecord.clostridium ?? '',
+        esterilidadComercial: editingRecord.esterilidad_comercial ?? '',
+        anaerobias: editingRecord.anaerobias ?? '',
+        observaciones: editingRecord.observaciones ?? '',
+        parametrosReferencia: editingRecord.parametros_referencia ?? '',
+        cumple: Boolean(editingRecord.cumple),
+        noCumple: Boolean(editingRecord.no_cumple),
+        codigo: editingRecord.codigo ?? '',
+        medioDiluyente: editingRecord.medio_diluyente ?? '',
+        factorDilucion: editingRecord.factor_dilucion ?? '',
+        responsable: editingRecord.responsable ?? '',
+      });
+      return;
+    }
+
+    // Resetear si no hay editingRecord
+    setCronogramaTaskId(null);
     form.reset({
-      fecha: toDateInput(editingRecord.fecha, format(new Date(), 'yyyy-MM-dd')),
-      mesMuestreo: editingRecord.mes_muestreo ?? '',
-      horaMuestreo: editingRecord.hora_muestreo ?? '',
-      internoExterno: editingRecord.interno_externo ?? '',
-      tipo: editingRecord.tipo ?? '',
-      area: editingRecord.area ?? '',
-      muestra: editingRecord.muestra ?? '',
-      lote: editingRecord.lote ?? '',
-      fechaProduccion: toDateInput(editingRecord.fecha_produccion, ''),
-      fechaVencimiento: toDateInput(editingRecord.fecha_vencimiento, ''),
-      mesofilos: editingRecord.mesofilos ?? '',
-      coliformesTotales: editingRecord.coliformes_totales ?? '',
-      coliformesFecales: editingRecord.coliformes_fecales ?? '',
-      eColi: editingRecord.e_coli ?? '',
-      mohos: editingRecord.mohos ?? '',
-      levaduras: editingRecord.levaduras ?? '',
-      staphylococcusAureus: editingRecord.staphylococcus_aureus ?? '',
-      bacillusCereus: editingRecord.bacillus_cereus ?? '',
-      listeria: editingRecord.listeria ?? '',
-      salmonella: editingRecord.salmonella ?? '',
-      enterobacterias: editingRecord.enterobacterias ?? '',
-      clostridium: editingRecord.clostridium ?? '',
-      esterilidadComercial: editingRecord.esterilidad_comercial ?? '',
-      anaerobias: editingRecord.anaerobias ?? '',
-      observaciones: editingRecord.observaciones ?? '',
-      parametrosReferencia: editingRecord.parametros_referencia ?? '',
-      cumple: Boolean(editingRecord.cumple),
-      noCumple: Boolean(editingRecord.no_cumple),
-      codigo: editingRecord.codigo ?? '',
-      medioDiluyente: editingRecord.medio_diluyente ?? '',
-      factorDilucion: editingRecord.factor_dilucion ?? '',
-      responsable: editingRecord.responsable ?? '',
+      fecha: format(new Date(), 'yyyy-MM-dd'),
+      mesMuestreo: '',
+      horaMuestreo: '',
+      internoExterno: '',
+      tipo: '',
+      area: '',
+      muestra: '',
+      tipoMuestra: '',
+      valorMuestra: '',
+      fechaProduccion: '',
+      fechaVencimiento: '',
+      mesofilos: '',
+      coliformesTotales: '',
+      coliformesFecales: '',
+      eColi: '',
+      mohos: '',
+      levaduras: '',
+      staphylococcusAureus: '',
+      bacillusCereus: '',
+      listeria: '',
+      salmonella: '',
+      enterobacterias: '',
+      clostridium: '',
+      esterilidadComercial: '',
+      anaerobias: '',
+      observaciones: '',
+      parametrosReferencia: '',
+      cumple: false,
+      noCumple: false,
+      codigo: '',
+      medioDiluyente: '',
+      factorDilucion: '',
+      responsable: '',
     });
   }, [editingRecord, form, isOpen]);
 
-  async function onSubmit(values: ResultadosMicrobiologicosFormValues) {
+  async function handleSave(values: ResultadosMicrobiologicosFormValues, estado: 'pendiente' | 'completado') {
     setIsSubmitting(true);
     
     try {
-      console.log('🔍 DEBUG: Valores del formulario:', values);
+      console.log('🔍 DEBUG: Valores del formulario:', values, 'Estado:', estado);
       
       // Transformar los datos para la API
       const transformedValues = {
@@ -221,7 +372,11 @@ export function AddResultadosMicrobiologicosModal({
         tipo: values.tipo,
         area: values.area,
         muestra: values.muestra,
-        lote: values.lote,
+        // Nuevos campos para especificar el tipo de muestra
+        tipo_muestra: values.tipoMuestra || '',
+        valor_muestra: values.valorMuestra || '',
+        // Si el tipo es 'lote', usar el valor_muestra como lote también
+        lote: values.tipoMuestra === 'lote' ? values.valorMuestra || '' : '',
         fecha_produccion: values.fechaProduccion,
         fecha_vencimiento: values.fechaVencimiento,
         mesofilos: values.mesofilos || null,
@@ -246,6 +401,7 @@ export function AddResultadosMicrobiologicosModal({
         medio_diluyente: values.medioDiluyente || undefined,
         factor_dilucion: values.factorDilucion || undefined,
         responsable: values.responsable,
+        estado: estado,
       };
       
       console.log('🔍 DEBUG: Valores transformados para API:', transformedValues);
@@ -254,16 +410,24 @@ export function AddResultadosMicrobiologicosModal({
       if (editingRecord?.id) {
         await resultadosMicrobiologicosService.update(editingRecord.id, transformedValues);
       } else {
-        await resultadosMicrobiologicosService.create(transformedValues);
+        // Si hay cronogramaTaskId, incluirlo al crear
+        const createValues = cronogramaTaskId 
+          ? { ...transformedValues, cronograma_task_id: cronogramaTaskId }
+          : transformedValues;
+        console.log('📋 Creando registro con values:', createValues);
+        console.log('🔗 cronograma_task_id:', cronogramaTaskId);
+        await resultadosMicrobiologicosService.create(createValues);
       }
       console.log('✅ Registro de resultados microbiológicos guardado exitosamente');
       
       toast({
-        title: "Registro guardado",
-        description: "El registro de resultados microbiológicos ha sido guardado exitosamente.",
+        title: estado === 'pendiente' ? "Registro guardado como pendiente" : "Registro completado",
+        description: estado === 'pendiente' 
+          ? "El registro ha sido guardado como pendiente. Puedes completarlo más tarde."
+          : "El registro de resultados microbiológicos ha sido guardado exitosamente.",
       });
       
-      onSuccessfulSubmit?.(values);
+      onSuccessfulSubmit?.(values, estado);
       onOpenChange(false);
       form.reset(emptyValues);
       onEditingRecordChange?.(null);
@@ -296,6 +460,11 @@ export function AddResultadosMicrobiologicosModal({
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-blue-900">
             RE-CAL-046 RESULTADOS MICROBIOLÓGICOS
+            {isViewOnly && (
+              <span className="ml-2 text-sm font-normal text-amber-600 bg-amber-100 px-2 py-1 rounded">
+                SOLO LECTURA
+              </span>
+            )}
           </DialogTitle>
           <DialogDescription asChild className="text-gray-600">
             <div className="mt-2 space-y-1">
@@ -307,7 +476,7 @@ export function AddResultadosMicrobiologicosModal({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+          <form className="space-y-6">
             
             {/* Sección 1: Información General */}
             <div className="border rounded-lg p-4 bg-gray-50">
@@ -446,23 +615,100 @@ export function AddResultadosMicrobiologicosModal({
                   )}
                 />
 
-                {/* LOTE */}
+                {/* TIPO DE MUESTRA */}
                 <FormField
                   control={form.control}
-                  name="lote"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>LOTE</FormLabel>
-                      <FormControl>
-                        <Input 
-                          {...field} 
-                          placeholder="Ej: L-12345"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                  name="tipoMuestra"
+                  render={({ field }) => {
+                    // Limpiar el valor del tipo de muestra antes de usarlo
+                    const tipoValue = limpiarTipoMuestra(field.value || '');
+                    
+                    // DEBUG
+                    console.log('🔍 RENDER tipoMuestra - field.value:', field.value, '| tipoValue:', tipoValue);
+                    
+                    // Forzar limpieza si el valor es corrupto
+                    if (field.value && field.value !== tipoValue && tipoValue !== '') {
+                      console.log('🧹 FORZANDO LIMPIEZA de tipoMuestra:', field.value, '->', tipoValue);
+                      setTimeout(() => {
+                        field.onChange(tipoValue);
+                      }, 0);
+                    }
+                    
+                    // Opciones para navegación con teclado
+                    const options = ['nombre', 'linea', 'producto', 'lote', 'envase', 'otro'];
+
+                    const handleKeyDown = (e: React.KeyboardEvent) => {
+                      const currentIndex = options.indexOf(tipoValue || '');
+
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        const nextIndex = currentIndex < options.length - 1 ? currentIndex + 1 : 0;
+                        field.onChange(options[nextIndex]);
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        const prevIndex = currentIndex > 0 ? currentIndex - 1 : options.length - 1;
+                        field.onChange(options[prevIndex]);
+                      }
+                    };
+
+                    return (
+                      <FormItem>
+                        <FormLabel>TIPO DE MUESTRA</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={tipoValue}
+                        >
+                          <FormControl>
+                            <SelectTrigger onKeyDown={handleKeyDown}>
+                              <SelectValue placeholder="Seleccionar tipo">
+                                {tipoValue && (
+                                  tipoValue === 'nombre' ? 'Nombre' :
+                                  tipoValue === 'linea' ? 'Línea' :
+                                  tipoValue === 'producto' ? 'Producto' :
+                                  tipoValue === 'lote' ? 'Lote' :
+                                  tipoValue === 'envase' ? 'Envase' :
+                                  tipoValue === 'otro' ? 'Otro' : tipoValue
+                                )}
+                              </SelectValue>
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="nombre">Nombre</SelectItem>
+                            <SelectItem value="linea">Línea</SelectItem>
+                            <SelectItem value="producto">Producto</SelectItem>
+                            <SelectItem value="lote">Lote</SelectItem>
+                            <SelectItem value="envase">Envase</SelectItem>
+                            <SelectItem value="otro">Otro</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
                 />
+
+                {/* VALOR DE MUESTRA - Solo aparece si se seleccionó un tipo */}
+                {form.watch('tipoMuestra') && (
+                  <FormField
+                    control={form.control}
+                    name="valorMuestra"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          VALOR {form.watch('tipoMuestra')?.toUpperCase()}
+                        </FormLabel>
+                        <FormControl>
+                          <Input 
+                            {...field} 
+                            value={field.value || ''}
+                            placeholder={`Ingrese ${form.watch('tipoMuestra')}...`}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 {/* FECHA DE PRODUCCIÓN */}
                 <FormField
@@ -953,22 +1199,36 @@ export function AddResultadosMicrobiologicosModal({
               />
             </div>
 
-            <DialogFooter className="pt-4">
+            <DialogFooter className="pt-4 gap-2">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => onOpenChange(false)}
                 disabled={isSubmitting}
               >
-                Cancelar
+                {isViewOnly ? 'Cerrar' : 'Cancelar'}
               </Button>
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-                className="bg-indigo-600 hover:bg-indigo-700"
-              >
-                {isSubmitting ? 'Guardando...' : 'Guardar Registro'}
-              </Button>
+              {!isViewOnly && (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isSubmitting}
+                    onClick={form.handleSubmit((values) => handleSave(values, 'pendiente'))}
+                    className="border-orange-400 text-orange-700 hover:bg-orange-50"
+                  >
+                    {isSubmitting ? 'Guardando...' : 'Guardar como Pendiente'}
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={form.handleSubmit((values) => handleSave(values, 'completado'))}
+                    className="bg-indigo-600 hover:bg-indigo-700"
+                  >
+                    {isSubmitting ? 'Guardando...' : 'Guardar Completado'}
+                  </Button>
+                </>
+              )}
             </DialogFooter>
           </form>
         </Form>

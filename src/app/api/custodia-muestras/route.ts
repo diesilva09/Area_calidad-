@@ -12,6 +12,10 @@ export async function GET(request: NextRequest) {
     const fechaFin = searchParams.get('fecha_fin');
     const codigo = searchParams.get('codigo');
     const tipoAnalisis = searchParams.get('tipo_analisis');
+    const cronogramaTaskId = searchParams.get('cronograma_task_id');
+    const estado = searchParams.get('estado');
+    const mes = searchParams.get('mes');
+    const anio = searchParams.get('anio');
 
     let query = `
       SELECT
@@ -20,6 +24,8 @@ export async function GET(request: NextRequest) {
         tipo,
         muestra_id,
         area,
+        tipo_muestra,
+        valor_muestra,
         temperatura,
         cantidad,
         motivo,
@@ -38,6 +44,9 @@ export async function GET(request: NextRequest) {
         medio_transporte,
         responsable,
         observaciones,
+        cronograma_task_id,
+        motivo_personalizado,
+        estado,
         created_at,
         updated_at
       FROM ${getMicroTable('custodia_muestras')}
@@ -75,6 +84,25 @@ export async function GET(request: NextRequest) {
       params.push(tipoAnalisis);
     }
 
+    if (cronogramaTaskId) {
+      conditions.push('cronograma_task_id = $' + (conditions.length + 1));
+      params.push(parseInt(cronogramaTaskId));
+    }
+
+    if (estado) {
+      conditions.push('estado = $' + (conditions.length + 1));
+      params.push(estado);
+    }
+
+    if (mes && anio) {
+      const mesNum = parseInt(mes);
+      const anioNum = parseInt(anio);
+      const fechaInicioMes = `${anioNum}-${String(mesNum).padStart(2, '0')}-01`;
+      const fechaFinMes = new Date(anioNum, mesNum, 0).toISOString().split('T')[0];
+      conditions.push('toma_muestra_fecha BETWEEN $' + (conditions.length + 1) + ' AND $' + (conditions.length + 2));
+      params.push(fechaInicioMes, fechaFinMes);
+    }
+
     if (conditions.length > 0) {
       query += ' WHERE ' + conditions.join(' AND ');
     }
@@ -102,9 +130,12 @@ export async function POST(request: NextRequest) {
       tipo,
       muestra_id,
       area,
+      tipo_muestra,
+      valor_muestra,
       temperatura,
       cantidad,
       motivo,
+      motivo_personalizado,
       tipo_analisis_sl,
       tipo_analisis_bc,
       tipo_analisis_ym,
@@ -119,7 +150,9 @@ export async function POST(request: NextRequest) {
       recepcion_lab_hora,
       medio_transporte,
       responsable,
-      observaciones
+      observaciones,
+      cronograma_task_id,
+      estado
     } = body;
 
     // Validación básica
@@ -138,6 +171,8 @@ export async function POST(request: NextRequest) {
         tipo,
         muestra_id,
         area,
+        tipo_muestra,
+        valor_muestra,
         temperatura,
         cantidad,
         motivo,
@@ -155,8 +190,11 @@ export async function POST(request: NextRequest) {
         recepcion_lab_hora,
         medio_transporte,
         responsable,
-        observaciones
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+        observaciones,
+        cronograma_task_id,
+        motivo_personalizado,
+        estado
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
       RETURNING *
     `;
 
@@ -165,6 +203,8 @@ export async function POST(request: NextRequest) {
       tipo,
       muestra_id,
       area,
+      tipo_muestra || null,
+      valor_muestra || null,
       temperatura,
       cantidad,
       motivo,
@@ -182,11 +222,14 @@ export async function POST(request: NextRequest) {
       recepcion_lab_hora,
       medio_transporte,
       responsable,
-      observaciones || null
+      observaciones || null,
+      cronograma_task_id || null,
+      motivo_personalizado || null,
+      estado || 'pendiente', // Usar el estado enviado desde el frontend, default 'pendiente'
     ];
 
     const result = await pool.query(query, values);
-
+    
     return NextResponse.json(result.rows[0], { status: 201 });
   } catch (error) {
     console.error('Error al crear registro de custodia de muestras:', error);

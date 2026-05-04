@@ -52,7 +52,7 @@ type MediosCultivoFormValues = z.infer<typeof mediosCultivoSchema>;
 interface AddMediosCultivoModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onSuccessfulSubmit?: (values: MediosCultivoFormValues) => void;
+  onSuccessfulSubmit?: (values: MediosCultivoFormValues, estado: 'pendiente' | 'completado') => void;
   editingRecord?: any | null;
   onEditingRecordChange?: (record: any | null) => void;
 }
@@ -110,7 +110,7 @@ export function AddMediosCultivoModal({
     if (!editingRecord) return;
 
     form.reset({
-      fecha: toDateInput(editingRecord.fecha, format(new Date(), 'yyyy-MM-dd')),
+      fecha: editingRecord.fecha ? toDateInput(editingRecord.fecha, '') : '',
       medioCultivo: editingRecord.medio_cultivo ?? '',
       cantidadMl: editingRecord.cantidad_ml ?? '',
       cantidadMedioCultivoG: editingRecord.cantidad_medio_cultivo_g ?? '',
@@ -124,11 +124,11 @@ export function AddMediosCultivoModal({
     });
   }, [editingRecord, form, isOpen]);
 
-  async function onSubmit(values: MediosCultivoFormValues) {
+  async function handleSave(values: MediosCultivoFormValues, estado: 'pendiente' | 'completado') {
     setIsSubmitting(true);
     
     try {
-      console.log('🔍 DEBUG: Valores del formulario:', values);
+      console.log('🔍 DEBUG: Valores del formulario:', values, 'Estado:', estado);
       
       // Transformar los datos para la API
       const transformedValues = {
@@ -143,6 +143,7 @@ export function AddMediosCultivoModal({
         accion_correctiva: values.accionCorrectiva,
         observaciones: values.observaciones || undefined,
         responsable: values.responsable,
+        estado: estado,
       };
       
       console.log('🔍 DEBUG: Valores transformados para API:', transformedValues);
@@ -156,11 +157,13 @@ export function AddMediosCultivoModal({
       console.log('✅ Registro de medios de cultivo guardado exitosamente');
       
       toast({
-        title: "Registro guardado",
-        description: "El registro de medios de cultivo ha sido guardado exitosamente.",
+        title: estado === 'pendiente' ? "Registro guardado como pendiente" : "Registro completado",
+        description: estado === 'pendiente' 
+          ? "El registro ha sido guardado como pendiente. Puedes completarlo más tarde."
+          : "El registro de medios de cultivo ha sido guardado exitosamente.",
       });
       
-      onSuccessfulSubmit?.(values);
+      onSuccessfulSubmit?.(values, estado);
       onOpenChange(false);
       form.reset(emptyValues);
       onEditingRecordChange?.(null);
@@ -204,7 +207,7 @@ export function AddMediosCultivoModal({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               
               {/* FECHA */}
@@ -412,7 +415,7 @@ export function AddMediosCultivoModal({
               />
             </div>
 
-            <DialogFooter className="pt-4">
+            <DialogFooter className="pt-4 gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -422,11 +425,21 @@ export function AddMediosCultivoModal({
                 Cancelar
               </Button>
               <Button
-                type="submit"
+                type="button"
+                variant="outline"
                 disabled={isSubmitting}
+                onClick={form.handleSubmit((values) => handleSave(values, 'pendiente'))}
+                className="border-orange-400 text-orange-700 hover:bg-orange-50"
+              >
+                {isSubmitting ? 'Guardando...' : 'Guardar como Pendiente'}
+              </Button>
+              <Button
+                type="button"
+                disabled={isSubmitting}
+                onClick={form.handleSubmit((values) => handleSave(values, 'completado'))}
                 className="bg-blue-600 hover:bg-blue-700"
               >
-                {isSubmitting ? 'Guardando...' : 'Guardar Registro'}
+                {isSubmitting ? 'Guardando...' : 'Guardar Completado'}
               </Button>
             </DialogFooter>
           </form>

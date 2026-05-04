@@ -114,18 +114,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       let data;
       
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
-        console.log('✅ Frontend Login: JSON parseado correctamente');
-      } else {
-        // Si no es JSON, obtener el texto del error
+      // Intentar parsear como JSON incluso si el content-type no lo indica
+      try {
         const text = await response.text();
-        console.log('❌ Frontend Login: Respuesta no es JSON. Content-Type:', contentType);
-        console.log('❌ Frontend Login: Texto recibido:', text.substring(0, 500) + (text.length > 500 ? '...' : ''));
-        if (isDev) {
-          console.log('❌ Frontend Login: Respuesta no es JSON:', text);
+        console.log('🔍 Frontend Login: Texto recibido:', text.substring(0, 200));
+        
+        // Intentar parsear como JSON
+        data = JSON.parse(text);
+        console.log('✅ Frontend Login: JSON parseado correctamente');
+      } catch (parseError) {
+        // No es JSON válido
+        console.log('❌ Frontend Login: No es JSON válido');
+        
+        // Si es error 401/403, mostrar mensaje de credenciales inválidas
+        if (response.status === 401) {
+          return { success: false, message: 'Correo o contraseña incorrectos' };
         }
-        return { success: false, message: 'Error en el servidor: respuesta no válida' };
+        if (response.status === 403) {
+          return { success: false, message: 'Acceso denegado' };
+        }
+        
+        // Para otros errores del servidor
+        if (response.status >= 500) {
+          return { success: false, message: 'Error en el servidor. Intente más tarde.' };
+        }
+        
+        return { success: false, message: `Error ${response.status}: Respuesta no válida del servidor` };
       }
       
       if (isDev) {

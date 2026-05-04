@@ -32,12 +32,13 @@ import { cn } from '@/lib/utils';
 import { condicionesAmbientalesService } from '@/lib/condiciones-ambientales-service';
 
 // Esquema de validación para el formulario
+// Todos los campos son opcionales para permitir guardar como pendiente
 const condicionesAmbientalesSchema = z.object({
-  fecha: z.string().min(1, 'Campo requerido'),
-  hora: z.string().min(1, 'Campo requerido'),
-  temperatura: z.string().min(1, 'Campo requerido'),
-  humedadRelativa: z.string().min(1, 'Campo requerido'),
-  responsable: z.string().min(1, 'Campo requerido'),
+  fecha: z.string().optional(),
+  hora: z.string().optional(),
+  temperatura: z.string().optional(),
+  humedadRelativa: z.string().optional(),
+  responsable: z.string().optional(),
   observaciones: z.string().optional(),
 });
 
@@ -46,7 +47,7 @@ type CondicionesAmbientalesFormValues = z.infer<typeof condicionesAmbientalesSch
 interface AddCondicionesAmbientalesModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onSuccessfulSubmit?: (values: CondicionesAmbientalesFormValues) => void;
+  onSuccessfulSubmit?: (values: CondicionesAmbientalesFormValues, estado: 'pendiente' | 'completado') => void;
   editingRecord?: any | null;
   onEditingRecordChange?: (record: any | null) => void;
 }
@@ -135,7 +136,7 @@ export function AddCondicionesAmbientalesModal({
     if (!editingRecord) return;
 
     form.reset({
-      fecha: toDateInput(editingRecord.fecha, format(new Date(), 'yyyy-MM-dd')),
+      fecha: editingRecord.fecha ? toDateInput(editingRecord.fecha, '') : '',
       hora: editingRecord.hora ?? getPeriodoAutomatico(),
       temperatura: editingRecord.temperatura ?? '',
       humedadRelativa: editingRecord.humedad_relativa ?? '',
@@ -144,11 +145,11 @@ export function AddCondicionesAmbientalesModal({
     });
   }, [editingRecord, form, isOpen]);
 
-  async function onSubmit(values: CondicionesAmbientalesFormValues) {
+  async function handleSave(values: CondicionesAmbientalesFormValues, estado: 'pendiente' | 'completado') {
     setIsSubmitting(true);
     
     try {
-      console.log('🔍 DEBUG: Valores del formulario:', values);
+      console.log('🔍 DEBUG: Valores del formulario:', values, 'Estado:', estado);
       
       // Transformar los datos para la API
       const transformedValues = {
@@ -157,7 +158,8 @@ export function AddCondicionesAmbientalesModal({
         temperatura: values.temperatura,
         humedad_relativa: values.humedadRelativa,
         responsable: values.responsable,
-        observaciones: values.observaciones || undefined, // Cambiar null a undefined
+        observaciones: values.observaciones || undefined,
+        estado: estado,
       };
       
       console.log('🔍 DEBUG: Valores transformados para API:', transformedValues);
@@ -171,11 +173,13 @@ export function AddCondicionesAmbientalesModal({
       console.log('✅ Registro de condiciones ambientales guardado exitosamente');
       
       toast({
-        title: "Registro guardado",
-        description: "El registro de condiciones ambientales ha sido guardado exitosamente.",
+        title: estado === 'pendiente' ? "Registro guardado como pendiente" : "Registro completado",
+        description: estado === 'pendiente' 
+          ? "El registro ha sido guardado como pendiente. Puedes completarlo más tarde."
+          : "El registro de condiciones ambientales ha sido guardado exitosamente.",
       });
       
-      onSuccessfulSubmit?.(values);
+      onSuccessfulSubmit?.(values, estado);
       onOpenChange(false);
       form.reset();
       onEditingRecordChange?.(null);
@@ -219,7 +223,7 @@ export function AddCondicionesAmbientalesModal({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* FECHA */}
               <FormField
@@ -383,7 +387,7 @@ export function AddCondicionesAmbientalesModal({
               />
             </div>
 
-            <DialogFooter className="pt-4">
+            <DialogFooter className="pt-4 gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -392,12 +396,22 @@ export function AddCondicionesAmbientalesModal({
               >
                 Cancelar
               </Button>
-              <Button 
-                type="submit" 
+              <Button
+                type="button"
+                variant="outline"
                 disabled={isSubmitting}
+                onClick={form.handleSubmit((values) => handleSave(values, 'pendiente'))}
+                className="border-orange-400 text-orange-700 hover:bg-orange-50"
+              >
+                {isSubmitting ? 'Guardando...' : 'Guardar como Pendiente'}
+              </Button>
+              <Button
+                type="button"
+                disabled={isSubmitting}
+                onClick={form.handleSubmit((values) => handleSave(values, 'completado'))}
                 className="bg-blue-600 hover:bg-blue-700"
               >
-                {isSubmitting ? 'Guardando...' : 'Guardar Registro'}
+                {isSubmitting ? 'Guardando...' : 'Guardar Completado'}
               </Button>
             </DialogFooter>
           </form>

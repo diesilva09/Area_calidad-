@@ -29,28 +29,38 @@ import { useToast } from '@/hooks/use-toast';
 import { controlLavadoInactivacionService } from '@/lib/control-lavado-inactivacion-service';
 
 // Esquema de validación para el formulario
+// Esquema de validación para el formulario
+// Todos los campos son opcionales para permitir guardar como pendiente
 const controlLavadoInactivacionSchema = z.object({
-  fecha: z.string().min(1, 'Campo requerido'),
-  actividadRealizada: z.string().min(1, 'Campo requerido'),
-  sustanciaLimpiezaNombre: z.string().min(1, 'Campo requerido'),
-  sustanciaLimpiezaCantidadPreparada: z.string().min(1, 'Campo requerido'),
-  sustanciaLimpiezaCantidadSustancia: z.string().min(1, 'Campo requerido'),
-  sustanciaDesinfeccion1Nombre: z.string().min(1, 'Campo requerido'),
-  sustanciaDesinfeccion1CantidadPreparada: z.string().min(1, 'Campo requerido'),
-  sustanciaDesinfeccion1CantidadSustancia: z.string().min(1, 'Campo requerido'),
-  sustanciaDesinfeccion2Nombre: z.string().min(1, 'Campo requerido'),
-  sustanciaDesinfeccion2CantidadPreparada: z.string().min(1, 'Campo requerido'),
-  sustanciaDesinfeccion2CantidadSustancia: z.string().min(1, 'Campo requerido'),
-  realizadoPor: z.string().min(1, 'Campo requerido'),
+  fecha: z.string().optional(),
+  actividadRealizada: z.string().optional(),
+  sustanciaLimpiezaNombre: z.string().optional(),
+  sustanciaLimpiezaCantidadPreparada: z.string().optional(),
+  sustanciaLimpiezaCantidadSustancia: z.string().optional(),
+  sustanciaDesinfeccion1Nombre: z.string().optional(),
+  sustanciaDesinfeccion1CantidadPreparada: z.string().optional(),
+  sustanciaDesinfeccion1CantidadSustancia: z.string().optional(),
+  sustanciaDesinfeccion2Nombre: z.string().optional(),
+  sustanciaDesinfeccion2CantidadPreparada: z.string().optional(),
+  sustanciaDesinfeccion2CantidadSustancia: z.string().optional(),
+  realizadoPor: z.string().optional(),
   observaciones: z.string().optional(),
 });
 
 type ControlLavadoInactivacionFormValues = z.infer<typeof controlLavadoInactivacionSchema>;
 
+// Helper para convertir fechas al formato de input
+const toDateInput = (value: any, fallback: string) => {
+  if (!value) return fallback;
+  const d = new Date(value);
+  if (!Number.isNaN(d.getTime())) return format(d, 'yyyy-MM-dd');
+  return fallback;
+};
+
 interface AddControlLavadoInactivacionModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onSuccessfulSubmit?: (values: ControlLavadoInactivacionFormValues) => void;
+  onSuccessfulSubmit?: (values: ControlLavadoInactivacionFormValues, estado: 'pendiente' | 'completado') => void;
   editingRecord?: any | null;
   onEditingRecordChange?: (record: any | null) => void;
 }
@@ -89,7 +99,7 @@ export function AddControlLavadoInactivacionModal({
     if (!editingRecord) return;
 
     form.reset({
-      fecha: editingRecord.fecha ?? format(new Date(), 'yyyy-MM-dd'),
+      fecha: toDateInput(editingRecord.fecha, ''),
       actividadRealizada: editingRecord.actividad_realizada ?? '',
       sustanciaLimpiezaNombre: editingRecord.sustancia_limpieza_nombre ?? '',
       sustanciaLimpiezaCantidadPreparada: editingRecord.sustancia_limpieza_cantidad_preparada ?? '',
@@ -105,11 +115,11 @@ export function AddControlLavadoInactivacionModal({
     });
   }, [editingRecord, form, isOpen]);
 
-  async function onSubmit(values: ControlLavadoInactivacionFormValues) {
+  async function handleSave(values: ControlLavadoInactivacionFormValues, estado: 'pendiente' | 'completado') {
     setIsSubmitting(true);
     
     try {
-      console.log('🔍 DEBUG: Valores del formulario:', values);
+      console.log('🔍 DEBUG: Valores del formulario:', values, 'Estado:', estado);
       
       // Transformar los datos para la API
       const transformedValues = {
@@ -126,6 +136,7 @@ export function AddControlLavadoInactivacionModal({
         sustancia_desinfeccion_2_cantidad_sustancia: values.sustanciaDesinfeccion2CantidadSustancia,
         realizado_por: values.realizadoPor,
         observaciones: values.observaciones || undefined,
+        estado: estado,
       };
       
       console.log('🔍 DEBUG: Valores transformados para API:', transformedValues);
@@ -139,11 +150,13 @@ export function AddControlLavadoInactivacionModal({
       console.log('✅ Registro de control de lavado e inactivación guardado exitosamente');
       
       toast({
-        title: "Registro guardado",
-        description: "El registro de control de lavado e inactivación ha sido guardado exitosamente.",
+        title: estado === 'pendiente' ? "Registro guardado como pendiente" : "Registro completado",
+        description: estado === 'pendiente' 
+          ? "El registro ha sido guardado como pendiente. Puedes completarlo más tarde."
+          : "El registro de control de lavado e inactivación ha sido guardado exitosamente.",
       });
       
-      onSuccessfulSubmit?.(values);
+      onSuccessfulSubmit?.(values, estado);
       onOpenChange(false);
       form.reset();
       onEditingRecordChange?.(null);
@@ -185,7 +198,7 @@ export function AddControlLavadoInactivacionModal({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+          <form className="space-y-8">
             
             {/* Sección 1: Información General */}
             <div className="border rounded-lg p-4 bg-gray-50">
@@ -454,7 +467,7 @@ export function AddControlLavadoInactivacionModal({
               />
             </div>
 
-            <DialogFooter className="pt-4">
+            <DialogFooter className="pt-4 gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -464,11 +477,21 @@ export function AddControlLavadoInactivacionModal({
                 Cancelar
               </Button>
               <Button
-                type="submit"
+                type="button"
+                variant="outline"
                 disabled={isSubmitting}
+                onClick={form.handleSubmit((values) => handleSave(values, 'pendiente'))}
+                className="border-orange-400 text-orange-700 hover:bg-orange-50"
+              >
+                {isSubmitting ? 'Guardando...' : 'Guardar como Pendiente'}
+              </Button>
+              <Button
+                type="button"
+                disabled={isSubmitting}
+                onClick={form.handleSubmit((values) => handleSave(values, 'completado'))}
                 className="bg-cyan-600 hover:bg-cyan-700"
               >
-                {isSubmitting ? 'Guardando...' : 'Guardar Registro'}
+                {isSubmitting ? 'Guardando...' : 'Guardar Completado'}
               </Button>
             </DialogFooter>
           </form>

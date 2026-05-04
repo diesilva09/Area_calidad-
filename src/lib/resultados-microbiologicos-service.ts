@@ -8,6 +8,8 @@ export interface ResultadosMicrobiologicos {
   tipo: string;
   area: string;
   muestra: string;
+  tipo_muestra?: string;
+  valor_muestra?: string;
   lote: string;
   fecha_produccion: string;
   fecha_vencimiento: string;
@@ -29,10 +31,12 @@ export interface ResultadosMicrobiologicos {
   parametros_referencia?: string;
   cumple?: boolean;
   no_cumple?: boolean;
+  estado?: 'pendiente' | 'completado';
   codigo: string;
   medio_diluyente?: string;
   factor_dilucion?: string;
   responsable: string;
+  cronograma_task_id?: number | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -72,6 +76,83 @@ class ResultadosMicrobiologicosService {
       return await response.json();
     } catch (error) {
       console.error(`Error en ResultadosMicrobiologicosService.getById(${id}):`, error);
+      throw error;
+    }
+  }
+
+  // Obtener un registro por ID de tarea del cronograma
+  async getByCronogramaTaskId(cronogramaTaskId: number): Promise<ResultadosMicrobiologicos | null> {
+    try {
+      console.log('🔍 Service: Buscando registro con cronograma_task_id:', cronogramaTaskId);
+      const url = `${this.baseUrl}?cronograma_task_id=${encodeURIComponent(cronogramaTaskId)}`;
+      console.log('🔗 URL:', url);
+      const response = await fetch(url, {
+        credentials: 'include',
+      });
+      console.log('📡 Response status:', response.status);
+      if (!response.ok) {
+        if (response.status === 404) {
+          return null;
+        }
+        throw new Error('Error al obtener el registro de resultados microbiológicos por tarea de cronograma');
+      }
+      const results = await response.json();
+      console.log('📊 Results:', results);
+      // Retornar el primer resultado (debería ser único)
+      return results && results.length > 0 ? results[0] : null;
+    } catch (error) {
+      console.error(`Error en ResultadosMicrobiologicosService.getByCronogramaTaskId(${cronogramaTaskId}):`, error);
+      throw error;
+    }
+  }
+
+  // Crear un nuevo registro desde datos de custodia de muestras (RE-CAL-107)
+  async createFromCustodia(custodiaData: {
+    tipo: string;
+    area: string;
+    observaciones: string;
+    muestraId: string;
+    codigo: string;
+    tipoMuestra?: string;
+    valorMuestra?: string;
+  }): Promise<ResultadosMicrobiologicos> {
+    try {
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const currentTime = now.toTimeString().split(' ')[0].substring(0, 5); // HH:mm
+      const currentMonth = now.toLocaleString('es-ES', { month: 'long' }).toUpperCase();
+      
+      // Si el tipo de muestra es 'lote', usar el valorMuestra como lote, sino 'PENDIENTE'
+      const loteValue = custodiaData.tipoMuestra === 'lote' && custodiaData.valorMuestra
+        ? custodiaData.valorMuestra
+        : 'PENDIENTE';
+      
+      const data = {
+        // Truncar campos a 50 caracteres para evitar error de longitud
+        tipo: custodiaData.tipo.substring(0, 50),
+        area: custodiaData.area.substring(0, 50),
+        // El código del 107 (ej: M-1) va al campo código del 046
+        codigo: custodiaData.codigo.substring(0, 50),
+        // El ID de Muestra del 107 va al campo muestra del 046
+        muestra: custodiaData.muestraId.substring(0, 50),
+        // El tipo de muestra y valor del 107 se pasan al 046
+        tipo_muestra: (custodiaData.tipoMuestra || '').substring(0, 50),
+        valor_muestra: (custodiaData.valorMuestra || '').substring(0, 100),
+        fecha: today,
+        estado: 'pendiente' as const,
+        // Campos obligatorios con valores por defecto
+        mes_muestreo: currentMonth.substring(0, 50),
+        hora_muestreo: currentTime,
+        interno_externo: 'INTERNO',
+        lote: loteValue.substring(0, 50),
+        fecha_produccion: today,
+        fecha_vencimiento: today,
+        responsable: 'PENDIENTE',
+      };
+      
+      return await this.create(data as any);
+    } catch (error) {
+      console.error('Error en ResultadosMicrobiologicosService.createFromCustodia():', error);
       throw error;
     }
   }

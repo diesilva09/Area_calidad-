@@ -33,19 +33,20 @@ import { cn } from '@/lib/utils';
 import { esterilizacionAutoclaveService } from '@/lib/esterilizacion-autoclave-service';
 
 // Esquema de validación para el formulario
+// Todos los campos son opcionales para permitir guardar como pendiente
 const esterilizacionAutoclaveSchema = z.object({
-  fecha: z.string().min(1, 'Campo requerido'),
-  elementosMediosCultivo: z.string().min(1, 'Campo requerido'),
-  inicioCicloHora: z.string().min(1, 'Campo requerido'),
-  inicioProcesoHora: z.string().min(1, 'Campo requerido'),
-  inicioProcesoTC: z.string().min(1, 'Campo requerido'),
-  inicioProcesoPresion: z.string().min(1, 'Campo requerido'),
-  finProcesoHora: z.string().min(1, 'Campo requerido'),
-  finProcesoTC: z.string().min(1, 'Campo requerido'),
-  finProcesoPresion: z.string().min(1, 'Campo requerido'),
-  finCicloHora: z.string().min(1, 'Campo requerido'),
-  cintaIndicadora: z.string().min(1, 'Campo requerido'),
-  realizadoPor: z.string().min(1, 'Campo requerido'),
+  fecha: z.string().optional(),
+  elementosMediosCultivo: z.string().optional(),
+  inicioCicloHora: z.string().optional(),
+  inicioProcesoHora: z.string().optional(),
+  inicioProcesoTC: z.string().optional(),
+  inicioProcesoPresion: z.string().optional(),
+  finProcesoHora: z.string().optional(),
+  finProcesoTC: z.string().optional(),
+  finProcesoPresion: z.string().optional(),
+  finCicloHora: z.string().optional(),
+  cintaIndicadora: z.string().optional(),
+  realizadoPor: z.string().optional(),
   observaciones: z.string().optional(),
 });
 
@@ -54,7 +55,7 @@ type EsterilizacionAutoclaveFormValues = z.infer<typeof esterilizacionAutoclaveS
 interface AddEsterilizacionAutoclaveModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onSuccessfulSubmit?: (values: EsterilizacionAutoclaveFormValues) => void;
+  onSuccessfulSubmit?: (values: EsterilizacionAutoclaveFormValues, estado: 'pendiente' | 'completado') => void;
   editingRecord?: any | null;
   onEditingRecordChange?: (record: any | null) => void;
 }
@@ -116,7 +117,7 @@ export function AddEsterilizacionAutoclaveModal({
     if (!editingRecord) return;
 
     form.reset({
-      fecha: toDateInput(editingRecord.fecha, format(new Date(), 'yyyy-MM-dd')),
+      fecha: editingRecord.fecha ? toDateInput(editingRecord.fecha, '') : '',
       elementosMediosCultivo: editingRecord.elementos_medios_cultivo ?? '',
       inicioCicloHora: editingRecord.inicio_ciclo_hora ?? '',
       inicioProcesoHora: editingRecord.inicio_proceso_hora ?? '',
@@ -152,11 +153,11 @@ export function AddEsterilizacionAutoclaveModal({
     }
   };
 
-  async function onSubmit(values: EsterilizacionAutoclaveFormValues) {
+  async function handleSave(values: EsterilizacionAutoclaveFormValues, estado: 'pendiente' | 'completado') {
     setIsSubmitting(true);
     
     try {
-      console.log('🔍 DEBUG: Valores del formulario:', values);
+      console.log('🔍 DEBUG: Valores del formulario:', values, 'Estado:', estado);
       
       // Transformar los datos para la API
       const transformedValues = {
@@ -173,6 +174,7 @@ export function AddEsterilizacionAutoclaveModal({
         cinta_indicadora: values.cintaIndicadora,
         realizado_por: values.realizadoPor,
         observaciones: values.observaciones || undefined,
+        estado: estado,
       };
       
       console.log('🔍 DEBUG: Valores transformados para API:', transformedValues);
@@ -186,11 +188,13 @@ export function AddEsterilizacionAutoclaveModal({
       console.log('✅ Registro de esterilización en autoclave guardado exitosamente');
       
       toast({
-        title: "Registro guardado",
-        description: "El registro de esterilización en autoclave ha sido guardado exitosamente.",
+        title: estado === 'pendiente' ? "Registro guardado como pendiente" : "Registro completado",
+        description: estado === 'pendiente' 
+          ? "El registro ha sido guardado como pendiente. Puedes completarlo más tarde."
+          : "El registro de esterilización en autoclave ha sido guardado exitosamente.",
       });
       
-      onSuccessfulSubmit?.(values);
+      onSuccessfulSubmit?.(values, estado);
       onOpenChange(false);
       form.reset();
       onEditingRecordChange?.(null);
@@ -234,7 +238,7 @@ export function AddEsterilizacionAutoclaveModal({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               
               {/* FECHA */}
@@ -490,21 +494,34 @@ export function AddEsterilizacionAutoclaveModal({
               />
             </div>
 
-            <DialogFooter className="pt-4">
+            <DialogFooter className="pt-4 gap-2">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={isSubmitting}
+                onClick={() => {
+                  onOpenChange(false);
+                  form.reset();
+                  onEditingRecordChange?.(null);
+                }}
               >
                 Cancelar
               </Button>
               <Button
-                type="submit"
+                type="button"
+                variant="outline"
                 disabled={isSubmitting}
+                onClick={form.handleSubmit((values) => handleSave(values, 'pendiente'))}
+                className="border-orange-400 text-orange-700 hover:bg-orange-50"
+              >
+                {isSubmitting ? 'Guardando...' : 'Guardar como Pendiente'}
+              </Button>
+              <Button
+                type="button"
+                disabled={isSubmitting}
+                onClick={form.handleSubmit((values) => handleSave(values, 'completado'))}
                 className="bg-blue-600 hover:bg-blue-700"
               >
-                {isSubmitting ? 'Guardando...' : 'Guardar Registro'}
+                {isSubmitting ? 'Guardando...' : 'Guardar Completado'}
               </Button>
             </DialogFooter>
           </form>

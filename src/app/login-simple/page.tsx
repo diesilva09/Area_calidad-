@@ -70,9 +70,6 @@ function LoginContent() {
         }
         // El AuthContext ya maneja la redirección
       } else {
-        if (process.env.NODE_ENV !== 'production') {
-          console.error(' Error en login:', result.message);
-        }
         toast({
           title: 'Error de inicio de sesión',
           description: result.message || 'Error en el inicio de sesión',

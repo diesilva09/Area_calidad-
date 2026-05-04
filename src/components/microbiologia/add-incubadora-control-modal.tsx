@@ -29,22 +29,31 @@ import { useToast } from '@/hooks/use-toast';
 import { incubadoraControlService } from '@/lib/incubadora-control-service';
 
 // Esquema de validación para el formulario
+// Todos los campos son opcionales para permitir guardar como pendiente
 const incubadoraControlSchema = z.object({
-  muestra: z.string().min(1, 'Campo requerido'),
-  fechaIngreso: z.string().min(1, 'Campo requerido'),
-  horaIngreso: z.string().min(1, 'Campo requerido'),
-  fechaSalida: z.string().min(1, 'Campo requerido'),
-  horaSalida: z.string().min(1, 'Campo requerido'),
-  responsable: z.string().min(1, 'Campo requerido'),
+  muestra: z.string().optional(),
+  fechaIngreso: z.string().optional(),
+  horaIngreso: z.string().optional(),
+  fechaSalida: z.string().optional(),
+  horaSalida: z.string().optional(),
+  responsable: z.string().optional(),
   observaciones: z.string().optional(),
 });
 
 type IncubadoraControlFormValues = z.infer<typeof incubadoraControlSchema>;
 
+// Helper para convertir fechas al formato de input
+const toDateInput = (value: any, fallback: string) => {
+  if (!value) return fallback;
+  const d = new Date(value);
+  if (!Number.isNaN(d.getTime())) return format(d, 'yyyy-MM-dd');
+  return fallback;
+};
+
 interface AddIncubadoraControlModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onSuccessfulSubmit?: (values: IncubadoraControlFormValues) => void;
+  onSuccessfulSubmit?: (values: IncubadoraControlFormValues, estado: 'pendiente' | 'completado') => void;
   editingRecord?: any | null;
   onEditingRecordChange?: (record: any | null) => void;
 }
@@ -78,20 +87,20 @@ export function AddIncubadoraControlModal({
 
     form.reset({
       muestra: editingRecord.muestra ?? '',
-      fechaIngreso: editingRecord.fecha_ingreso ?? format(new Date(), 'yyyy-MM-dd'),
+      fechaIngreso: toDateInput(editingRecord.fecha_ingreso, ''),
       horaIngreso: editingRecord.hora_ingreso ?? '',
-      fechaSalida: editingRecord.fecha_salida ?? format(new Date(), 'yyyy-MM-dd'),
+      fechaSalida: toDateInput(editingRecord.fecha_salida, ''),
       horaSalida: editingRecord.hora_salida ?? '',
       responsable: editingRecord.responsable ?? '',
       observaciones: editingRecord.observaciones ?? '',
     });
   }, [editingRecord, form, isOpen]);
 
-  async function onSubmit(values: IncubadoraControlFormValues) {
+  async function handleSave(values: IncubadoraControlFormValues, estado: 'pendiente' | 'completado') {
     setIsSubmitting(true);
     
     try {
-      console.log('🔍 DEBUG: Valores del formulario:', values);
+      console.log('🔍 DEBUG: Valores del formulario:', values, 'Estado:', estado);
       
       // Transformar los datos para la API
       const transformedValues = {
@@ -102,6 +111,7 @@ export function AddIncubadoraControlModal({
         hora_salida: values.horaSalida,
         responsable: values.responsable,
         observaciones: values.observaciones || undefined,
+        estado: estado,
       };
       
       console.log('🔍 DEBUG: Valores transformados para API:', transformedValues);
@@ -115,11 +125,13 @@ export function AddIncubadoraControlModal({
       console.log('✅ Registro de incubadora guardado exitosamente');
       
       toast({
-        title: "Registro guardado",
-        description: "El registro de operación y control de incubadora ha sido guardado exitosamente.",
+        title: estado === 'pendiente' ? "Registro guardado como pendiente" : "Registro completado",
+        description: estado === 'pendiente' 
+          ? "El registro ha sido guardado como pendiente. Puedes completarlo más tarde."
+          : "El registro de operación y control de incubadora ha sido guardado exitosamente.",
       });
       
-      onSuccessfulSubmit?.(values);
+      onSuccessfulSubmit?.(values, estado);
       onOpenChange(false);
       form.reset();
       onEditingRecordChange?.(null);
@@ -161,7 +173,7 @@ export function AddIncubadoraControlModal({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form className="space-y-6">
             
             {/* Sección 1: Información de Muestra */}
             <div className="border rounded-lg p-4 bg-green-50">
@@ -318,7 +330,7 @@ export function AddIncubadoraControlModal({
               />
             </div>
 
-            <DialogFooter className="pt-4">
+            <DialogFooter className="pt-4 gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -328,11 +340,21 @@ export function AddIncubadoraControlModal({
                 Cancelar
               </Button>
               <Button
-                type="submit"
+                type="button"
+                variant="outline"
                 disabled={isSubmitting}
+                onClick={form.handleSubmit((values) => handleSave(values, 'pendiente'))}
+                className="border-orange-400 text-orange-700 hover:bg-orange-50"
+              >
+                {isSubmitting ? 'Guardando...' : 'Guardar como Pendiente'}
+              </Button>
+              <Button
+                type="button"
+                disabled={isSubmitting}
+                onClick={form.handleSubmit((values) => handleSave(values, 'completado'))}
                 className="bg-green-600 hover:bg-green-700"
               >
-                {isSubmitting ? 'Guardando...' : 'Guardar Registro'}
+                {isSubmitting ? 'Guardando...' : 'Guardar Completado'}
               </Button>
             </DialogFooter>
           </form>

@@ -2817,7 +2817,7 @@ export function AddLimpiezaRecordModal({
                                 <FormLabel>Turno</FormLabel>
                                 <Select
                                   disabled={effectiveViewOnlyMode}
-                                  value={field.value ?? ''}
+                                  value={field.value || undefined}
                                   onValueChange={(v) => {
                                     const next = (v || undefined) as any;
                                     field.onChange(next);
@@ -2881,7 +2881,7 @@ export function AddLimpiezaRecordModal({
                                       form.setValue('tipoVerificacionOtro', '');
                                     }
                                   }}
-                                  value={field.value || ''}
+                                  value={field.value}
                                 >
                                   <FormControl>
                                     <SelectTrigger>
@@ -2925,7 +2925,7 @@ export function AddLimpiezaRecordModal({
                                       return { ...prev, [tomaActivaIndex]: false };
                                     });
                                   }}
-                                  value={field.value || ''}
+                                  value={field.value}
                                 >
                                   <FormControl>
                                     <SelectTrigger>
@@ -2971,7 +2971,7 @@ export function AddLimpiezaRecordModal({
                                       return { ...prev, [tomaActivaIndex]: newValue };
                                     });
                                   }}
-                                  value={field.value || ''}
+                                  value={field.value}
                                 >
                                   <FormControl>
                                     <SelectTrigger>
@@ -2996,7 +2996,7 @@ export function AddLimpiezaRecordModal({
                               <FormField control={form.control} name={`tomas.${tomaActivaIndex}.superficieOtro`} render={({ field }) => (
                                 <FormItem>
                                   <FormLabel>Especificar Superficie</FormLabel>
-                                  <Input disabled={effectiveViewOnlyMode} placeholder="Escriba el nombre de la superficie..." {...field} value={field.value || ''} />
+                                  <Input disabled={effectiveViewOnlyMode} placeholder="Escriba el nombre de la superficie..." {...field} value={field.value} />
                                   <FormMessage />
                                 </FormItem>
                               )} />
@@ -3006,7 +3006,7 @@ export function AddLimpiezaRecordModal({
                               <FormField control={form.control} name="tipoVerificacionOtro" render={({ field }) => (
                                 <FormItem>
                                   <FormLabel>Especificar Tipo de Verificación</FormLabel>
-                                  <Input disabled={effectiveViewOnlyMode} placeholder="Escriba el tipo de verificación..." {...field} />
+                                  <Input disabled={effectiveViewOnlyMode} placeholder="Escriba el tipo de verificación..." {...field} value={field.value} />
                                   <FormMessage />
                                 </FormItem>
                               )} />
@@ -3028,7 +3028,7 @@ export function AddLimpiezaRecordModal({
                                     form.setValue(`tomas.${tomaActivaIndex}.correccionesFiltro`, '');
                                   }
                                 }}
-                                value={field.value || ''}
+                                value={field.value}
                               >
                                 <FormControl>
                                   <SelectTrigger>
@@ -3071,7 +3071,7 @@ export function AddLimpiezaRecordModal({
                           <FormField control={form.control} name={`tomas.${tomaActivaIndex}.presenciaElementosExtranos`} render={({ field }) => (
                             <FormItem>
                               <FormLabel>Presencia de Elementos Extraños</FormLabel>
-                              <Select disabled={effectiveViewOnlyMode} onValueChange={field.onChange} value={field.value || ''}>
+                              <Select disabled={effectiveViewOnlyMode} onValueChange={field.onChange} value={field.value || undefined}>
                                 <FormControl>
                                   <SelectTrigger>
                                     <SelectValue placeholder="Seleccione..." />
@@ -3152,7 +3152,7 @@ export function AddLimpiezaRecordModal({
                                           form.setValue(`tomas.${tomaActivaIndex}.parteAtpOtro`, '');
                                         }
                                       }}
-                                      value={field.value || ''}
+                                      value={field.value}
                                     >
                                       <FormControl>
                                         <SelectTrigger>
@@ -3255,7 +3255,7 @@ export function AddLimpiezaRecordModal({
                                           form.setValue(`tomas.${tomaActivaIndex}.parteAlergenosOtro`, '');
                                         }
                                       }}
-                                      value={field.value || ''}
+                                      value={field.value}
                                     >
                                       <FormControl>
                                         <SelectTrigger>
@@ -3317,7 +3317,7 @@ export function AddLimpiezaRecordModal({
                               render={({ field }) => (
                                 <FormItem>
                                   <FormLabel>Resultado</FormLabel>
-                                  <Select disabled={effectiveViewOnlyMode} onValueChange={field.onChange} value={field.value || ''}>
+                                  <Select disabled={effectiveViewOnlyMode} onValueChange={field.onChange} value={field.value || undefined}>
                                     <FormControl>
                                       <SelectTrigger>
                                         <SelectValue placeholder="Seleccione..." />
@@ -3369,7 +3369,7 @@ export function AddLimpiezaRecordModal({
                           <FormField control={form.control} name={`tomas.${tomaActivaIndex}.verificacionVisual`} render={({ field }) => (
                             <FormItem>
                               <FormLabel>Verificación Visual</FormLabel>
-                              <Select disabled={effectiveViewOnlyMode} onValueChange={field.onChange} value={field.value || ''}>
+                              <Select disabled={effectiveViewOnlyMode} onValueChange={field.onChange} value={field.value || undefined}>
                                 <FormControl>
                                   <SelectTrigger>
                                     <SelectValue placeholder="Seleccione verificación visual" />

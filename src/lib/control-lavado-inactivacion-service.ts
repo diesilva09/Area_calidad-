@@ -14,6 +14,7 @@ export interface ControlLavadoInactivacion {
   sustancia_desinfeccion_2_cantidad_sustancia: string;
   realizado_por: string;
   observaciones?: string;
+  estado?: 'pendiente' | 'completado';
   created_at?: string;
   updated_at?: string;
 }

@@ -3800,7 +3800,7 @@ const createAutomaticLimpiezaRecord = async (
                             <FormItem>
                               <FormLabel>Envase para Temperatura de Envasado</FormLabel>
                               <FormControl>
-                                <Select value={field.value} onValueChange={(value) => {
+                                <Select value={field.value || undefined} onValueChange={(value) => {
                                   field.onChange(value);
                                   handleEnvaseTemperaturaChange(value);
                                 }}>
@@ -4024,7 +4024,7 @@ const createAutomaticLimpiezaRecord = async (
                             Análisis Sensorial (1) C - (0) NC
                           </FormLabel>
                           <FormControl>
-                            <Select value={field.value} onValueChange={field.onChange}>
+                            <Select value={field.value || undefined} onValueChange={field.onChange}>
                               <SelectTrigger>
                                 <SelectValue placeholder="Seleccione..." />
                               </SelectTrigger>
@@ -4085,7 +4085,7 @@ const createAutomaticLimpiezaRecord = async (
                             Prueba de Hermeticidad (1) C - (0) NC
                           </FormLabel>
                           <FormControl>
-                            <Select value={field.value} onValueChange={field.onChange}>
+                            <Select value={field.value || undefined} onValueChange={field.onChange}>
                               <SelectTrigger>
                                 <SelectValue placeholder="Seleccione..." />
                               </SelectTrigger>
@@ -4146,7 +4146,7 @@ const createAutomaticLimpiezaRecord = async (
                             Inspección Micropesaje No. Mezcla
                           </FormLabel>
                           <FormControl>
-                            <Select value={field.value} onValueChange={field.onChange}>
+                            <Select value={field.value || undefined} onValueChange={field.onChange}>
                               <SelectTrigger>
                                 <SelectValue placeholder="Seleccione..." />
                               </SelectTrigger>
@@ -4207,7 +4207,7 @@ const createAutomaticLimpiezaRecord = async (
                             Inspección Micropesaje (1) C - (0) NC
                           </FormLabel>
                           <FormControl>
-                            <Select value={field.value} onValueChange={field.onChange}>
+                            <Select value={field.value || undefined} onValueChange={field.onChange}>
                               <SelectTrigger>
                                 <SelectValue placeholder="Seleccione..." />
                               </SelectTrigger>
@@ -4268,7 +4268,7 @@ const createAutomaticLimpiezaRecord = async (
                             Observaciones
                           </FormLabel>
                           <FormControl>
-                            <Select value={field.value || 'No'} onValueChange={field.onChange}>
+                            <Select value={field.value || undefined} onValueChange={field.onChange}>
                               <SelectTrigger>
                                 <SelectValue placeholder="Seleccione..." />
                               </SelectTrigger>
@@ -4506,7 +4506,7 @@ const createAutomaticLimpiezaRecord = async (
                             Observaciones
                           </FormLabel>
                           <FormControl>
-                            <Select value={field.value || 'No'} onValueChange={field.onChange}>
+                            <Select value={field.value || undefined} onValueChange={field.onChange}>
                               <SelectTrigger>
                                 <SelectValue placeholder="Seleccione..." />
                               </SelectTrigger>
@@ -4707,7 +4707,7 @@ const createAutomaticLimpiezaRecord = async (
                             Observaciones
                           </FormLabel>
                           <FormControl>
-                            <Select value={field.value || 'No'} onValueChange={field.onChange}>
+                            <Select value={field.value || undefined} onValueChange={field.onChange}>
                               <SelectTrigger>
                                 <SelectValue placeholder="Seleccione..." />
                               </SelectTrigger>
@@ -5125,7 +5125,7 @@ const createAutomaticLimpiezaRecord = async (
                                 <FormItem>
                                   <FormLabel>Tapado y Cierre</FormLabel>
                                   <FormControl>
-                                    <Select value={field.value} onValueChange={field.onChange}>
+                                    <Select value={field.value || undefined} onValueChange={field.onChange}>
                                       <SelectTrigger>
                                         <SelectValue placeholder="Seleccione..." />
                                       </SelectTrigger>
@@ -5146,7 +5146,7 @@ const createAutomaticLimpiezaRecord = async (
                                 <FormItem>
                                   <FormLabel>Etiqueta</FormLabel>
                                   <FormControl>
-                                    <Select value={field.value} onValueChange={field.onChange}>
+                                    <Select value={field.value || undefined} onValueChange={field.onChange}>
                                       <SelectTrigger>
                                         <SelectValue placeholder="Seleccione..." />
                                       </SelectTrigger>
@@ -5180,7 +5180,7 @@ const createAutomaticLimpiezaRecord = async (
                                 <FormItem>
                                   <FormLabel>Estado</FormLabel>
                                   <FormControl>
-                                    <Select value={field.value} onValueChange={field.onChange}>
+                                    <Select value={field.value || undefined} onValueChange={field.onChange}>
                                       <SelectTrigger>
                                         <SelectValue placeholder="Seleccione estado..." />
                                       </SelectTrigger>

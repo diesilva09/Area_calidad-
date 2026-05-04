@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     const lote = searchParams.get('lote');
     const tipo = searchParams.get('tipo');
     const cumple = searchParams.get('cumple');
+    const cronogramaTaskId = searchParams.get('cronograma_task_id');
 
     let query = `
       SELECT
@@ -25,6 +26,8 @@ export async function GET(request: NextRequest) {
         tipo,
         area,
         muestra,
+        tipo_muestra,
+        valor_muestra,
         lote,
         fecha_produccion,
         fecha_vencimiento,
@@ -50,6 +53,7 @@ export async function GET(request: NextRequest) {
         medio_diluyente,
         factor_dilucion,
         responsable,
+        cronograma_task_id,
         created_at,
         updated_at
       FROM ${getMicroTable('resultados_microbiologicos')}
@@ -88,13 +92,23 @@ export async function GET(request: NextRequest) {
       params.push(cumple === 'true');
     }
 
+    if (cronogramaTaskId) {
+      conditions.push('cronograma_task_id = $' + (conditions.length + 1));
+      params.push(parseInt(cronogramaTaskId, 10));
+      console.log('🔍 API GET: Buscando por cronograma_task_id =', cronogramaTaskId);
+    }
+
     if (conditions.length > 0) {
       query += ' WHERE ' + conditions.join(' AND ');
     }
 
     query += ' ORDER BY fecha DESC, created_at DESC';
 
+    console.log('🔍 API GET: Query SQL:', query);
+    console.log('🔍 API GET: Params:', params);
+
     const result = await pool.query(query, params);
+    console.log('🔍 API GET: Rows encontradas:', result.rows.length);
 
     return NextResponse.json(result.rows);
   } catch (error) {
@@ -118,6 +132,8 @@ export async function POST(request: NextRequest) {
       tipo,
       area,
       muestra,
+      tipo_muestra,
+      valor_muestra,
       lote,
       fecha_produccion,
       fecha_vencimiento,
@@ -142,8 +158,11 @@ export async function POST(request: NextRequest) {
       codigo,
       medio_diluyente,
       factor_dilucion,
-      responsable
+      responsable,
+      cronograma_task_id
     } = body;
+
+    console.log(' API POST: Creando registro con cronograma_task_id:', cronograma_task_id);
 
     // Validación básica
     if (!fecha || !mes_muestreo || !hora_muestreo || !interno_externo || 
@@ -164,6 +183,8 @@ export async function POST(request: NextRequest) {
         tipo,
         area,
         muestra,
+        tipo_muestra,
+        valor_muestra,
         lote,
         fecha_produccion,
         fecha_vencimiento,
@@ -188,8 +209,9 @@ export async function POST(request: NextRequest) {
         codigo,
         medio_diluyente,
         factor_dilucion,
-        responsable
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)
+        responsable,
+        cronograma_task_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
       RETURNING *
     `;
 
@@ -201,6 +223,8 @@ export async function POST(request: NextRequest) {
       tipo,
       area,
       muestra,
+      tipo_muestra || null,
+      valor_muestra || null,
       lote,
       fecha_produccion,
       fecha_vencimiento,
@@ -225,10 +249,12 @@ export async function POST(request: NextRequest) {
       codigo,
       medio_diluyente || null,
       factor_dilucion || null,
-      responsable
+      responsable,
+      cronograma_task_id || null
     ];
 
     const result = await pool.query(query, values);
+    console.log('✅ API POST: Registro creado con ID:', result.rows[0]?.id, 'cronograma_task_id:', result.rows[0]?.cronograma_task_id);
 
     return NextResponse.json(result.rows[0], { status: 201 });
   } catch (error) {

@@ -8,6 +8,7 @@ export interface RegistrosRecepcionFormatos {
   nombre_quien_entrega: string;
   nombre_quien_recibe: string;
   observaciones?: string;
+  estado?: 'pendiente' | 'completado';
   created_at?: string;
   updated_at?: string;
 }

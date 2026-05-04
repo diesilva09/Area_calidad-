@@ -188,10 +188,8 @@ function DashboardLayoutContent({
                   href={item.href}
                   onClick={() => {
                     setActiveModule(item.title.toLowerCase().replace(/\s+/g, ' ').trim());
-                    // Close mobile menu after navigation
-                    if (window.innerWidth < 640) {
-                      setSidebarOpen(false);
-                    }
+                    // Auto-close sidebar after module selection for better UX
+                    setSidebarOpen(false);
                   }}
                   className={`
                     flex items-center px-2 sm:px-3 py-2 text-xs sm:text-sm font-medium rounded-md transition-colors
@@ -230,7 +228,7 @@ function DashboardLayoutContent({
 
 
       {/* Main Content */}
-      <div className={`flex-1 overflow-auto overflow-x-hidden transition-all duration-300 ease-in-out ${sidebarOpen ? 'ml-0 sm:ml-0 pt-16 sm:pt-20' : 'ml-0 pt-16 sm:pt-20'}`}>
+      <div className={`flex-1 overflow-auto overflow-x-hidden transition-all duration-300 ease-in-out ${sidebarOpen ? 'ml-0 sm:ml-0' : 'ml-0'} ${pathname.includes('lab-microbiologia') ? '' : 'pt-16 sm:pt-20'}`}>
         {children}
       </div>
       

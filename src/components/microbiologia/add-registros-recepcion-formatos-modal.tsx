@@ -29,22 +29,31 @@ import { useToast } from '@/hooks/use-toast';
 import { registrosRecepcionFormatosService } from '@/lib/registros-recepcion-formatos-service';
 
 // Esquema de validación para el formulario
+// Todos los campos son opcionales para permitir guardar como pendiente
 const registrosRecepcionFormatosSchema = z.object({
-  fechaEntrega: z.string().min(1, 'Campo requerido'),
-  fechaRegistros: z.string().min(1, 'Campo requerido'),
-  codigoVersionRegistros: z.string().min(1, 'Campo requerido'),
-  numeroFolios: z.string().min(1, 'Campo requerido'),
-  nombreQuienEntrega: z.string().min(1, 'Campo requerido'),
-  nombreQuienRecibe: z.string().min(1, 'Campo requerido'),
+  fechaEntrega: z.string().optional(),
+  fechaRegistros: z.string().optional(),
+  codigoVersionRegistros: z.string().optional(),
+  numeroFolios: z.string().optional(),
+  nombreQuienEntrega: z.string().optional(),
+  nombreQuienRecibe: z.string().optional(),
   observaciones: z.string().optional(),
 });
 
 type RegistrosRecepcionFormatosFormValues = z.infer<typeof registrosRecepcionFormatosSchema>;
 
+// Helper para convertir fechas al formato de input
+const toDateInput = (value: any, fallback: string) => {
+  if (!value) return fallback;
+  const d = new Date(value);
+  if (!Number.isNaN(d.getTime())) return format(d, 'yyyy-MM-dd');
+  return fallback;
+};
+
 interface AddRegistrosRecepcionFormatosModalProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onSuccessfulSubmit?: (values: RegistrosRecepcionFormatosFormValues) => void;
+  onSuccessfulSubmit?: (values: RegistrosRecepcionFormatosFormValues, estado: 'pendiente' | 'completado') => void;
   editingRecord?: any | null;
   onEditingRecordChange?: (record: any | null) => void;
 }
@@ -77,8 +86,8 @@ export function AddRegistrosRecepcionFormatosModal({
     if (!editingRecord) return;
 
     form.reset({
-      fechaEntrega: editingRecord.fecha_entrega ?? format(new Date(), 'yyyy-MM-dd'),
-      fechaRegistros: editingRecord.fecha_registros ?? format(new Date(), 'yyyy-MM-dd'),
+      fechaEntrega: toDateInput(editingRecord.fecha_entrega, ''),
+      fechaRegistros: toDateInput(editingRecord.fecha_registros, ''),
       codigoVersionRegistros: editingRecord.codigo_version_registros ?? '',
       numeroFolios: editingRecord.numero_folios ?? '',
       nombreQuienEntrega: editingRecord.nombre_quien_entrega ?? '',
@@ -87,11 +96,11 @@ export function AddRegistrosRecepcionFormatosModal({
     });
   }, [editingRecord, form, isOpen]);
 
-  async function onSubmit(values: RegistrosRecepcionFormatosFormValues) {
+  async function handleSave(values: RegistrosRecepcionFormatosFormValues, estado: 'pendiente' | 'completado') {
     setIsSubmitting(true);
     
     try {
-      console.log('🔍 DEBUG: Valores del formulario:', values);
+      console.log('🔍 DEBUG: Valores del formulario:', values, 'Estado:', estado);
       
       // Transformar los datos para la API
       const transformedValues = {
@@ -102,6 +111,7 @@ export function AddRegistrosRecepcionFormatosModal({
         nombre_quien_entrega: values.nombreQuienEntrega,
         nombre_quien_recibe: values.nombreQuienRecibe,
         observaciones: values.observaciones || undefined,
+        estado: estado,
       };
       
       console.log('🔍 DEBUG: Valores transformados para API:', transformedValues);
@@ -115,11 +125,13 @@ export function AddRegistrosRecepcionFormatosModal({
       console.log('✅ Registro de recepción de formatos guardado exitosamente');
       
       toast({
-        title: "Registro guardado",
-        description: "El registro de recepción de formatos ha sido guardado exitosamente.",
+        title: estado === 'pendiente' ? "Registro guardado como pendiente" : "Registro completado",
+        description: estado === 'pendiente' 
+          ? "El registro ha sido guardado como pendiente. Puedes completarlo más tarde."
+          : "El registro de recepción de formatos ha sido guardado exitosamente.",
       });
       
-      onSuccessfulSubmit?.(values);
+      onSuccessfulSubmit?.(values, estado);
       onOpenChange(false);
       form.reset();
       onEditingRecordChange?.(null);
@@ -161,7 +173,7 @@ export function AddRegistrosRecepcionFormatosModal({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+          <form className="space-y-8">
             
             {/* Sección 1: Información de Recepción */}
             <div className="border rounded-lg p-4 bg-gray-50">
@@ -309,7 +321,7 @@ export function AddRegistrosRecepcionFormatosModal({
               />
             </div>
 
-            <DialogFooter className="pt-4">
+            <DialogFooter className="pt-4 gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -319,11 +331,21 @@ export function AddRegistrosRecepcionFormatosModal({
                 Cancelar
               </Button>
               <Button
-                type="submit"
+                type="button"
+                variant="outline"
                 disabled={isSubmitting}
+                onClick={form.handleSubmit((values) => handleSave(values, 'pendiente'))}
+                className="border-orange-400 text-orange-700 hover:bg-orange-50"
+              >
+                {isSubmitting ? 'Guardando...' : 'Guardar como Pendiente'}
+              </Button>
+              <Button
+                type="button"
+                disabled={isSubmitting}
+                onClick={form.handleSubmit((values) => handleSave(values, 'completado'))}
                 className="bg-amber-600 hover:bg-amber-700"
               >
-                {isSubmitting ? 'Guardando...' : 'Guardar Registro'}
+                {isSubmitting ? 'Guardando...' : 'Guardar Completado'}
               </Button>
             </DialogFooter>
           </form>

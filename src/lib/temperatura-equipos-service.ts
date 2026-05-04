@@ -8,6 +8,7 @@ export interface TemperaturaEquipos {
   nevera: string;
   realizado_por: string;
   observaciones?: string;
+  estado?: 'pendiente' | 'completado';
   created_at?: string;
   updated_at?: string;
 }

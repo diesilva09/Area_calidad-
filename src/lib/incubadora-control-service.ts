@@ -8,6 +8,7 @@ export interface IncubadoraControl {
   hora_salida: string;
   responsable: string;
   observaciones?: string;
+  estado?: 'pendiente' | 'completado';
   created_at?: string;
   updated_at?: string;
 }

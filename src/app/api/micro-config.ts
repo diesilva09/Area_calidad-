@@ -13,6 +13,7 @@ export const MICRO_SCHEMA = 'lab_microbiologia';
 export const MICRO_TABLES = {
   condiciones_ambientales: `${MICRO_SCHEMA}.condiciones_ambientales`,
   control_lavado_inactivacion: `${MICRO_SCHEMA}.control_lavado_inactivacion`,
+  cronograma: `${MICRO_SCHEMA}.microbiologia_cronograma`,
   custodia_muestras: `${MICRO_SCHEMA}.custodia_muestras`,
   esterilizacion_autoclave: `${MICRO_SCHEMA}.esterilizacion_autoclave`,
   incubadora_control: `${MICRO_SCHEMA}.incubadora_control`,

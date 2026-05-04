@@ -12,6 +12,7 @@ export interface MediosCultivo {
   accion_correctiva: string;
   observaciones?: string;
   responsable: string;
+  estado?: 'pendiente' | 'completado';
   created_at?: string;
   updated_at?: string;
 }

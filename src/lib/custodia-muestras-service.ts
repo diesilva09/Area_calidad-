@@ -5,9 +5,12 @@ export interface CustodiaMuestras {
   tipo: string;
   muestra_id: string;
   area: string;
+  tipo_muestra?: string;
+  valor_muestra?: string;
   temperatura: string;
   cantidad: string;
   motivo: string;
+  motivo_personalizado?: string;
   tipo_analisis_sl?: string;
   tipo_analisis_bc?: string;
   tipo_analisis_ym?: string;
@@ -23,6 +26,8 @@ export interface CustodiaMuestras {
   medio_transporte: string;
   responsable: string;
   observaciones?: string;
+  cronograma_task_id?: number;
+  estado?: 'pendiente' | 'completado';
   created_at?: string;
   updated_at?: string;
 }
@@ -127,6 +132,64 @@ class CustodiaMuestrasService {
       }
     } catch (error) {
       console.error(`Error en CustodiaMuestrasService.delete(${id}):`, error);
+      throw error;
+    }
+  }
+
+  // Obtener registro por cronograma task ID
+  async getByCronogramaTaskId(taskId: number): Promise<CustodiaMuestras | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}?cronograma_task_id=${taskId}`, {
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        if (response.status === 404) {
+          return null;
+        }
+        throw new Error('Error al obtener el registro por task ID');
+      }
+      const data = await response.json();
+      // Si devuelve un array, tomamos el primero
+      if (Array.isArray(data) && data.length > 0) {
+        return data[0];
+      }
+      return null;
+    } catch (error) {
+      console.error(`Error en CustodiaMuestrasService.getByCronogramaTaskId(${taskId}):`, error);
+      throw error;
+    }
+  }
+
+  // Generar registros pendientes desde tareas del cronograma
+  async generarDesdeCronograma(mes: number, anio: number): Promise<{ creados: number; tareas: CustodiaMuestras[] }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/generar-desde-cronograma?mes=${mes}&anio=${anio}`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Error al generar registros: ${response.status} ${errorText}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error en CustodiaMuestrasService.generarDesdeCronograma():', error);
+      throw error;
+    }
+  }
+
+  // Obtener registros pendientes del mes actual
+  async getPendientesDelMes(mes: number, anio: number): Promise<CustodiaMuestras[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}?estado=pendiente&mes=${mes}&anio=${anio}`, {
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        throw new Error('Error al obtener registros pendientes del mes');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error en CustodiaMuestrasService.getPendientesDelMes():', error);
       throw error;
     }
   }

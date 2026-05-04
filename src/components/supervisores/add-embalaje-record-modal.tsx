@@ -1087,17 +1087,17 @@ export function AddEmbalajeRecordModal({
             </span>
           </DialogTitle>
           <DialogDescription className="text-sm">
-            <div className="space-y-1">
-              <div><strong>Formato:</strong> RE-CAL-093</div>
-              <div><strong>Tipo:</strong> CONSOLIDADO CALIDAD DE PRODUCTO TERMINADO-EMBALAJE</div>
-              <div><strong>Versión:</strong> 6</div>
-              <div><strong>Fecha Aprobación:</strong> 21 DE MARZO DE 2023</div>
-              <div className="pt-2 text-gray-600">
+            <span className="block space-y-1">
+              <span className="block"><strong>Formato:</strong> RE-CAL-093</span>
+              <span className="block"><strong>Tipo:</strong> CONSOLIDADO CALIDAD DE PRODUCTO TERMINADO-EMBALAJE</span>
+              <span className="block"><strong>Versión:</strong> 6</span>
+              <span className="block"><strong>Fecha Aprobación:</strong> 21 DE MARZO DE 2023</span>
+              <span className="block pt-2 text-gray-600">
                 {editMode
                   ? 'Complete la información del registro pendiente. Los campos marcados como "Pendiente" deben ser completados.'
                   : 'Complete todos los campos del formulario para crear un nuevo registro.'}
-              </div>
-            </div>
+              </span>
+            </span>
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -1228,10 +1228,10 @@ export function AddEmbalajeRecordModal({
                           <FormItem>
                             <FormLabel>Producto</FormLabel>
                             <FormControl>
-                              <>
+                              <div>
                                 <Input {...field} type="hidden" />
                                 <Input value={productName} readOnly />
-                              </>
+                              </div>
                             </FormControl>
                             <FormMessage />
                           </FormItem>

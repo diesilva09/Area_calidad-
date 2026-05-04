@@ -4,8 +4,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { Microscope, Plus, FileText, Calendar, Beaker, Pencil, Trash2, Thermometer, Clock, Settings, BarChart3, Menu, X, ChevronLeft, LayoutDashboard } from 'lucide-react';
+import { Microscope, Plus, FileText, Calendar, Beaker, Pencil, Trash2, Thermometer, Clock, Settings, BarChart3, Menu, X, ChevronLeft, LayoutDashboard, Download, Package, Building, Truck } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { CronogramaCalendar } from '@/components/microbiologia/cronograma-calendar';
 import { ChartContainer } from '@/components/ui/chart';
 import { Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
@@ -39,6 +43,7 @@ import { AddEsterilizacionAutoclaveModal } from '@/components/microbiologia/add-
 import { AddCustodiaMuestrasModal } from '@/components/microbiologia/add-custodia-muestras-modal';
 import { AddIncubadoraControlModal } from '@/components/microbiologia/add-incubadora-control-modal';
 import { AddResultadosMicrobiologicosModal } from '@/components/microbiologia/add-resultados-microbiologicos-modal';
+import { ViewResultadosMicrobiologicosModal } from '@/components/microbiologia/view-resultados-microbiologicos-modal';
 import { AddControlLavadoInactivacionModal } from '@/components/microbiologia/add-control-lavado-inactivacion-modal';
 import { AddRegistrosRecepcionFormatosModal } from '@/components/microbiologia/add-registros-recepcion-formatos-modal';
 import { condicionesAmbientalesService, type CondicionesAmbientales } from '@/lib/condiciones-ambientales-service';
@@ -50,6 +55,9 @@ import { incubadoraControlService, type IncubadoraControl } from '@/lib/incubado
 import { resultadosMicrobiologicosService, type ResultadosMicrobiologicos } from '@/lib/resultados-microbiologicos-service';
 import { controlLavadoInactivacionService, type ControlLavadoInactivacion } from '@/lib/control-lavado-inactivacion-service';
 import { registrosRecepcionFormatosService, type RegistrosRecepcionFormatos } from '@/lib/registros-recepcion-formatos-service';
+import { microbiologiaCronogramaService } from '@/lib/microbiologia-cronograma-service';
+import type { TareaCronograma } from '@/components/microbiologia/cronograma-calendar';
+import { CronogramaProductoTerminado } from '@/components/producto-terminado/cronograma-producto-terminado';
 import { useToast } from '@/hooks/use-toast';
 
 export default function LabMicrobiologiaPage() {
@@ -71,6 +79,288 @@ export default function LabMicrobiologiaPage() {
     { value: '11', label: 'Noviembre' },
     { value: '12', label: 'Diciembre' },
   ];
+
+  // Función para limpiar el tipo de muestra de valores duplicados/corruptos
+  const limpiarTipoMuestra = (tipo: string): string => {
+    if (!tipo) return '';
+    const tiposValidos = ['nombre', 'linea', 'producto', 'lote', 'envase', 'otro'];
+    if (tiposValidos.includes(tipo)) return tipo;
+    for (const tipoValido of tiposValidos) {
+      if (tipo.toLowerCase().includes(tipoValido)) {
+        return tipoValido;
+      }
+    }
+    return tipo;
+  };
+
+  // Función para limpiar el área de valores duplicados/corruptos
+  const limpiarArea = (area: string): string => {
+    if (!area) return '';
+    const areasValidas = [
+      'Conservas', 'Salsas', 'Preparación Conservas', 'Preparación Salsas',
+      'Embalaje', 'Frutos Secos', 'Micropesaje', 'BD MP (Bodega Materia Prima)',
+      'BD PT (Bodega Producto Terminado)', 'Personal de Aseo', 'Mantenimiento (MTTO)',
+      'Laboratorio Procesos', 'Laboratorio MP', 'Vestier Masculino 1',
+      'Vestier Masculino 2', 'Vestier Femenino 1', 'Vestier Femenino 2',
+      'Esclusa Ingreso Área de Preparación', 'Estación de Lavado de Manos Preparación de Salsas',
+      'Estación de Lavado de Manos Envasado de Salsas', 'Esclusa Ingreso Área de Producción',
+      'Envases (general)', 'Dispensadores', 'Secador Vestier Masculino 1',
+      'Secador Vestier Masculino 2', 'Secador Vestier Femenino 1', 'Secador Vestier Femenino 2',
+      'Otro'
+    ];
+    if (areasValidas.includes(area)) return area;
+    for (const areaValida of areasValidas) {
+      if (area.includes(areaValida)) {
+        return areaValida;
+      }
+    }
+    return area;
+  };
+
+  // ========== FUNCIONES DE EXPORTACIÓN RE-CAL-107 ==========
+
+  // Función auxiliar para obtener el label del tipo de muestra
+  const getTipoMuestraLabel = (tipo: string): string => {
+    const labels: Record<string, string> = {
+      'nombre': 'Nombre', 'linea': 'Línea', 'producto': 'Producto',
+      'lote': 'Lote', 'envase': 'Envase', 'otro': 'Otro'
+    };
+    return labels[tipo] || tipo;
+  };
+
+  // Función auxiliar para obtener el label del motivo
+  const getMotivoLabel = (motivo: string): string => {
+    const labels: Record<string, string> = {
+      'control_rutinario': 'Control Rutinario',
+      'validacion_proceso': 'Validación de Proceso',
+      'investigacion_incidente': 'Investigación de Incidente',
+      'otro': 'Otro'
+    };
+    return labels[motivo] || motivo;
+  };
+
+  // Preparar datos para exportación
+  const prepareExportData = (registro: CustodiaMuestras) => ({
+    'ID': registro.id || '', 'Código': registro.codigo || '', 'Estado': registro.estado || '',
+    'Tipo': registro.tipo || '', 'Muestra ID': registro.muestra_id || '',
+    'Tipo de Muestra': getTipoMuestraLabel(registro.tipo_muestra || ''),
+    'Valor Muestra': registro.valor_muestra || '', 'Área': registro.area || '',
+    'Motivo': getMotivoLabel(registro.motivo || ''), 'Motivo Personalizado': registro.motivo_personalizado || '',
+    'Temperatura': registro.temperatura || '', 'Cantidad': registro.cantidad || '',
+    'Toma Muestra Fecha': registro.toma_muestra_fecha || '', 'Toma Muestra Hora': registro.toma_muestra_hora || '',
+    'Recepción Lab Fecha': registro.recepcion_lab_fecha || '', 'Recepción Lab Hora': registro.recepcion_lab_hora || '',
+    'Medio Transporte': registro.medio_transporte || '', 'Responsable': registro.responsable || '',
+    'Observaciones': registro.observaciones || '', 'Tipo Análisis SL': registro.tipo_analisis_sl || '',
+    'Tipo Análisis BC': registro.tipo_analisis_bc || '', 'Tipo Análisis YM': registro.tipo_analisis_ym || '',
+    'Tipo Análisis TC': registro.tipo_analisis_tc || '', 'Tipo Análisis EC': registro.tipo_analisis_ec || '',
+    'Tipo Análisis LS': registro.tipo_analisis_ls || '', 'Tipo Análisis ETB': registro.tipo_analisis_etb || '',
+    'Tipo Análisis XSA': registro.tipo_analisis_xsa || '',
+    'Fecha Creación': registro.created_at || '', 'Fecha Actualización': registro.updated_at || '',
+  });
+
+  // Exportar a Excel (Individual)
+  const exportarExcelIndividual = (registro: CustodiaMuestras) => {
+    const data = [prepareExportData(registro)];
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Registro RE-CAL-107');
+    XLSX.writeFile(wb, `RE-CAL-107_${registro.codigo}_${registro.id}.xlsx`);
+  };
+
+  // Exportar a Excel (General)
+  const exportarExcelGeneral = () => {
+    if (custodiaMuestrasRegistros.length === 0) { alert('No hay registros para exportar'); return; }
+    const data = custodiaMuestrasRegistros.map(prepareExportData);
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Registros RE-CAL-107');
+    XLSX.writeFile(wb, `RE-CAL-107_General_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  // Exportar a PDF (Individual)
+  const exportarPdfIndividual = async (registro: CustodiaMuestras) => {
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF();
+    const data = prepareExportData(registro);
+    let y = 20;
+    doc.setFontSize(16); doc.setTextColor(0, 51, 102);
+    doc.text('RE-CAL-107 - Custodia de Muestras', 105, y, { align: 'center' });
+    y += 10; doc.setFontSize(12); doc.setTextColor(100, 100, 100);
+    doc.text(`Registro: ${registro.codigo} (ID: ${registro.id})`, 105, y, { align: 'center' });
+    y += 15; doc.setDrawColor(200, 200, 200); doc.line(20, y, 190, y); y += 10;
+    doc.setFontSize(10);
+    Object.entries(data).forEach(([key, value]) => {
+      if (y > 280) { doc.addPage(); y = 20; }
+      doc.setTextColor(0, 51, 102); doc.setFont('helvetica', 'bold');
+      doc.text(`${key}:`, 20, y); doc.setTextColor(50, 50, 50); doc.setFont('helvetica', 'normal');
+      const textValue = String(value || '-');
+      if (textValue.length > 80) { const splitText = doc.splitTextToSize(textValue, 120); doc.text(splitText, 70, y); y += splitText.length * 5; }
+      else { doc.text(textValue, 70, y); }
+      y += 7;
+    });
+    doc.save(`RE-CAL-107_${registro.codigo}_${registro.id}.pdf`);
+  };
+
+  // Exportar a PDF (General)
+  const exportarPdfGeneral = async () => {
+    if (custodiaMuestrasRegistros.length === 0) { alert('No hay registros para exportar'); return; }
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ orientation: 'landscape' });
+    const registros = custodiaMuestrasRegistros.slice(0, 50);
+    doc.setFontSize(16); doc.setTextColor(0, 51, 102);
+    doc.text('RE-CAL-107 - Custodia de Muestras (Reporte General)', 150, 20, { align: 'center' });
+    const headers = ['Código', 'Estado', 'Tipo', 'Área', 'Tipo Muestra', 'Valor', 'Responsable', 'Fecha'];
+    const rows = registros.map(r => [r.codigo || '', r.estado || '', r.tipo || '', r.area || '', getTipoMuestraLabel(r.tipo_muestra || ''), r.valor_muestra || '', r.responsable || '', r.toma_muestra_fecha || '']);
+    let y = 40; const colWidths = [25, 25, 25, 35, 25, 35, 35, 30];
+    doc.setFillColor(0, 51, 102); doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold');
+    let x = 15; headers.forEach((header, i) => { doc.rect(x, y, colWidths[i], 8, 'F'); doc.text(header, x + 2, y + 6); x += colWidths[i]; });
+    y += 8; doc.setTextColor(50, 50, 50); doc.setFont('helvetica', 'normal');
+    rows.forEach((row, rowIndex) => { if (y > 190) { doc.addPage(); y = 20; } x = 15; const fillColor = rowIndex % 2 === 0 ? 245 : 255; row.forEach((cell, i) => { doc.setFillColor(fillColor, fillColor, fillColor); doc.rect(x, y, colWidths[i], 7, 'F'); doc.text(String(cell || '-').substring(0, 20), x + 2, y + 5); x += colWidths[i]; }); y += 7; });
+    doc.save(`RE-CAL-107_General_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  // Exportar a Word (Individual)
+  const exportarWordIndividual = async (registro: CustodiaMuestras) => {
+    const { Document, Paragraph, Table, TableCell, TableRow, Packer } = await import('docx');
+    const { saveAs } = await import('file-saver');
+    const data = prepareExportData(registro);
+    const tableRows = Object.entries(data).map(([key, value]) => new TableRow({ children: [new TableCell({ children: [new Paragraph({ text: key, bold: true })], shading: { fill: '003366' }, width: { size: 40, type: 'pct' } }), new TableCell({ children: [new Paragraph({ text: String(value || '-') })], width: { size: 60, type: 'pct' } })] }));
+    const doc = new Document({ sections: [{ properties: {}, children: [new Paragraph({ text: 'RE-CAL-107 - Custodia de Muestras', heading: 'Heading1', alignment: 'center' }), new Paragraph({ text: `Registro: ${registro.codigo} (ID: ${registro.id})`, alignment: 'center', spacing: { after: 400 } }), new Table({ rows: tableRows, width: { size: 100, type: 'pct' } })] }] });
+    const blob = await Packer.toBlob(doc); saveAs(blob, `RE-CAL-107_${registro.codigo}_${registro.id}.docx`);
+  };
+
+  // Exportar a Word (General)
+  const exportarWordGeneral = async () => {
+    if (custodiaMuestrasRegistros.length === 0) { alert('No hay registros para exportar'); return; }
+    const { Document, Paragraph, Table, TableCell, TableRow, Packer } = await import('docx');
+    const { saveAs } = await import('file-saver');
+    const registros = custodiaMuestrasRegistros.slice(0, 100);
+    const headers = ['Código', 'Estado', 'Tipo', 'Área', 'Tipo Muestra', 'Valor', 'Responsable', 'Fecha'];
+    const tableHeader = new TableRow({ children: headers.map(h => new TableCell({ children: [new Paragraph({ text: h, bold: true })], shading: { fill: '003366' } })) });
+    const tableRows = registros.map(r => new TableRow({ children: [new TableCell({ children: [new Paragraph(r.codigo || '')] }), new TableCell({ children: [new Paragraph(r.estado || '')] }), new TableCell({ children: [new Paragraph(r.tipo || '')] }), new TableCell({ children: [new Paragraph(r.area || '')] }), new TableCell({ children: [new Paragraph(getTipoMuestraLabel(r.tipo_muestra || ''))] }), new TableCell({ children: [new Paragraph(r.valor_muestra || '')] }), new TableCell({ children: [new Paragraph(r.responsable || '')] }), new TableCell({ children: [new Paragraph(r.toma_muestra_fecha || '')] })] }));
+    const doc = new Document({ sections: [{ properties: {}, children: [new Paragraph({ text: 'RE-CAL-107 - Custodia de Muestras (Reporte General)', heading: 'Heading1', alignment: 'center' }), new Paragraph({ text: `Total de registros: ${registros.length}`, alignment: 'center', spacing: { after: 400 } }), new Table({ rows: [tableHeader, ...tableRows], width: { size: 100, type: 'pct' } })] }] });
+    const blob = await Packer.toBlob(doc); saveAs(blob, `RE-CAL-107_General_${new Date().toISOString().split('T')[0]}.docx`);
+  };
+
+  // ========== FUNCIONES GENÉRICAS DE EXPORTACIÓN PARA TODOS LOS REGISTROS ==========
+
+  // Exportar array genérico a Excel
+  const exportarArrayExcel = (registros: any[], titulo: string, fileName: string) => {
+    if (registros.length === 0) { alert('No hay registros para exportar'); return; }
+    const ws = XLSX.utils.json_to_sheet(registros);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, titulo);
+    XLSX.writeFile(wb, `${fileName}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  // Exportar array genérico a PDF
+  const exportarArrayPdf = async (registros: any[], titulo: string, fileName: string, columnas: string[]) => {
+    if (registros.length === 0) { alert('No hay registros para exportar'); return; }
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ orientation: 'landscape' });
+    const data = registros.slice(0, 50);
+    doc.setFontSize(16); doc.setTextColor(0, 51, 102);
+    doc.text(titulo, 150, 20, { align: 'center' });
+    const rows = data.map(r => columnas.map(col => String(r[col] || '-').substring(0, 25)));
+    const colWidths = columnas.map(() => 240 / columnas.length);
+    let y = 40;
+    doc.setFillColor(0, 51, 102); doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold');
+    let x = 15; columnas.forEach((header, i) => { doc.rect(x, y, colWidths[i], 8, 'F'); doc.text(header.substring(0, 15), x + 2, y + 6); x += colWidths[i]; });
+    y += 8; doc.setTextColor(50, 50, 50); doc.setFont('helvetica', 'normal');
+    rows.forEach((row, rowIndex) => { if (y > 190) { doc.addPage(); y = 20; } x = 15; const fillColor = rowIndex % 2 === 0 ? 245 : 255; row.forEach((cell, i) => { doc.setFillColor(fillColor, fillColor, fillColor); doc.rect(x, y, colWidths[i], 7, 'F'); doc.text(cell, x + 2, y + 5); x += colWidths[i]; }); y += 7; });
+    doc.save(`${fileName}_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  // Exportar array genérico a Word
+  const exportarArrayWord = async (registros: any[], titulo: string, fileName: string, columnas: string[]) => {
+    if (registros.length === 0) { alert('No hay registros para exportar'); return; }
+    const { Document, Paragraph, Table, TableCell, TableRow, Packer } = await import('docx');
+    const { saveAs } = await import('file-saver');
+    const data = registros.slice(0, 100);
+    const tableHeader = new TableRow({ children: columnas.map(h => new TableCell({ children: [new Paragraph({ text: h, bold: true })], shading: { fill: '003366' } })) });
+    const tableRows = data.map(r => new TableRow({ children: columnas.map(col => new TableCell({ children: [new Paragraph(String(r[col] || '-'))] })) }));
+    const doc = new Document({ sections: [{ properties: {}, children: [new Paragraph({ text: titulo, heading: 'Heading1', alignment: 'center' }), new Paragraph({ text: `Total de registros: ${data.length}`, alignment: 'center', spacing: { after: 400 } }), new Table({ rows: [tableHeader, ...tableRows], width: { size: 100, type: 'pct' } })] }] });
+    const blob = await Packer.toBlob(doc); saveAs(blob, `${fileName}_${new Date().toISOString().split('T')[0]}.docx`);
+  };
+
+  // Componente reutilizable de botones de exportación
+  const BotonesExportacion = ({ registros, titulo, fileName, columnas }: { registros: any[], titulo: string, fileName: string, columnas: string[] }) => {
+    if (registros.length === 0) return null;
+    return (
+      <>
+        <Button variant="outline" size="sm" onClick={() => exportarArrayExcel(registros, titulo, fileName)} title="Exportar Excel">
+          <Download className="w-4 h-4 mr-1" /> Excel
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => exportarArrayPdf(registros, titulo, fileName, columnas)} title="Exportar PDF">
+          <FileText className="w-4 h-4 mr-1" /> PDF
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => exportarArrayWord(registros, titulo, fileName, columnas)} title="Exportar Word">
+          <FileText className="w-4 h-4 mr-1" /> Word
+        </Button>
+      </>
+    );
+  };
+
+  // ========== FUNCIONES DE EXPORTACIÓN INDIVIDUAL ==========
+
+  // Exportar registro individual a Excel
+  const exportarIndividualExcel = (registro: any, fileName: string) => {
+    const ws = XLSX.utils.json_to_sheet([registro]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Registro');
+    XLSX.writeFile(wb, `${fileName}_${registro.id}.xlsx`);
+  };
+
+  // Exportar registro individual a PDF
+  const exportarIndividualPdf = async (registro: any, titulo: string, fileName: string) => {
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF();
+    let y = 20;
+    doc.setFontSize(16); doc.setTextColor(0, 51, 102);
+    doc.text(titulo, 105, y, { align: 'center' });
+    y += 10; doc.setFontSize(12); doc.setTextColor(100, 100, 100);
+    doc.text(`ID: ${registro.id}`, 105, y, { align: 'center' });
+    y += 15; doc.setDrawColor(200, 200, 200); doc.line(20, y, 190, y); y += 10;
+    doc.setFontSize(10);
+    Object.entries(registro).forEach(([key, value]) => {
+      if (y > 280) { doc.addPage(); y = 20; }
+      doc.setTextColor(0, 51, 102); doc.setFont('helvetica', 'bold');
+      doc.text(`${key}:`, 20, y); doc.setTextColor(50, 50, 50); doc.setFont('helvetica', 'normal');
+      const textValue = String(value || '-');
+      if (textValue.length > 80) { const splitText = doc.splitTextToSize(textValue, 120); doc.text(splitText, 70, y); y += splitText.length * 5; }
+      else { doc.text(textValue.substring(0, 50), 70, y); }
+      y += 7;
+    });
+    doc.save(`${fileName}_${registro.id}.pdf`);
+  };
+
+  // Exportar registro individual a Word
+  const exportarIndividualWord = async (registro: any, titulo: string, fileName: string) => {
+    const { Document, Paragraph, Table, TableCell, TableRow, Packer } = await import('docx');
+    const { saveAs } = await import('file-saver');
+    const tableRows = Object.entries(registro).map(([key, value]) => new TableRow({ children: [new TableCell({ children: [new Paragraph({ text: key, bold: true })], shading: { fill: '003366' }, width: { size: 40, type: 'pct' } }), new TableCell({ children: [new Paragraph({ text: String(value || '-') })], width: { size: 60, type: 'pct' } })] }));
+    const doc = new Document({ sections: [{ properties: {}, children: [new Paragraph({ text: titulo, heading: 'Heading1', alignment: 'center' }), new Paragraph({ text: `ID: ${registro.id}`, alignment: 'center', spacing: { after: 400 } }), new Table({ rows: tableRows, width: { size: 100, type: 'pct' } })] }] });
+    const blob = await Packer.toBlob(doc); saveAs(blob, `${fileName}_${registro.id}.docx`);
+  };
+
+  // Componente de botones de exportación individual
+  const BotonesExportacionIndividual = ({ registro, titulo, fileName }: { registro: any, titulo: string, fileName: string }) => {
+    if (!registro) return null;
+    return (
+      <>
+        <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); exportarIndividualExcel(registro, fileName); }} title="Exportar Excel">
+          <Download className="w-4 h-4" />
+        </Button>
+        <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); exportarIndividualPdf(registro, titulo, fileName); }} title="Exportar PDF">
+          <FileText className="w-4 h-4" />
+        </Button>
+        <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); exportarIndividualWord(registro, titulo, fileName); }} title="Exportar Word">
+          <FileText className="w-4 h-4" />
+        </Button>
+      </>
+    );
+  };
+
   const [isCondicionesModalOpen, setIsCondicionesModalOpen] = useState(false);
   const [isTemperaturaModalOpen, setIsTemperaturaModalOpen] = useState(false);
   const [isMediosCultivoModalOpen, setIsMediosCultivoModalOpen] = useState(false);
@@ -78,10 +368,15 @@ export default function LabMicrobiologiaPage() {
   const [isCustodiaMuestrasModalOpen, setIsCustodiaMuestrasModalOpen] = useState(false);
   const [isIncubadoraControlModalOpen, setIsIncubadoraControlModalOpen] = useState(false);
   const [isResultadosMicrobiologicosModalOpen, setIsResultadosMicrobiologicosModalOpen] = useState(false);
+  const [isViewResultadosMicrobiologicosModalOpen, setIsViewResultadosMicrobiologicosModalOpen] = useState(false);
+  const [viewingResultadosMicrobiologicos, setViewingResultadosMicrobiologicos] = useState<ResultadosMicrobiologicos | null>(null);
   const [isControlLavadoInactivacionModalOpen, setIsControlLavadoInactivacionModalOpen] = useState(false);
   const [isRegistrosRecepcionFormatosModalOpen, setIsRegistrosRecepcionFormatosModalOpen] = useState(false);
   const [isIndicadorModalOpen, setIsIndicadorModalOpen] = useState(false);
   const [indicadorMes, setIndicadorMes] = useState<'all' | string>('all');
+  // Búsqueda y filtro para RE-CAL-046
+  const [busquedaRecal046, setBusquedaRecal046] = useState('');
+  const [filtroTipoRecal046, setFiltroTipoRecal046] = useState<'all' | string>('all');
   const [condicionesRegistros, setCondicionesRegistros] = useState<CondicionesAmbientales[]>([]);
   const [temperaturaRegistros, setTemperaturaRegistros] = useState<TemperaturaEquipos[]>([]);
   const [mediosCultivoRegistros, setMediosCultivoRegistros] = useState<MediosCultivo[]>([]);
@@ -102,13 +397,21 @@ export default function LabMicrobiologiaPage() {
   const [editingRegistrosRecepcionFormatos, setEditingRegistrosRecepcionFormatos] = useState<RegistrosRecepcionFormatos | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [vistaActual, setVistaActual] = useState<'principal' | 'condiciones' | 'temperatura' | 'medios-cultivo' | 'esterilizacion-autoclave' | 'custodia-muestras' | 'incubadora-control' | 'resultados-microbiologicos' | 'control-lavado-inactivacion' | 'registros-recepcion-formatos' | 'detalle' | 'conograma' | 'indicadores'>('principal');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [detalle, setDetalle] = useState<{ tipo: string; titulo: string; record: any } | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [deleteConfirmContext, setDeleteConfirmContext] = useState<{
     label: string;
     run: () => Promise<void>;
   } | null>(null);
+  const [isCronogramaModalOpen, setIsCronogramaModalOpen] = useState(false);
+  const [cronogramaSeleccionado, setCronogramaSeleccionado] = useState<{
+    codigo: string;
+    titulo: string;
+    version: string;
+    fechaAprobacion: string;
+  } | null>(null);
+  const [pendingTaskToComplete, setPendingTaskToComplete] = useState<TareaCronograma | null>(null);
 
   const registrosResultadosConResultado = useMemo(() => {
     return resultadosMicrobiologicosRegistros.filter(
@@ -178,6 +481,52 @@ export default function LabMicrobiologiaPage() {
     loadRegistros();
   }, [user, router]);
 
+  // Generar automáticamente registros pendientes desde cronograma cuando se abre la vista
+  useEffect(() => {
+    if (vistaActual === 'custodia-muestras') {
+      // Solo generar registros automáticos si NO venimos del cronograma a completar una tarea específica
+      // Esto evita duplicados: si venimos del cronograma, el usuario creará el registro manualmente
+      if (!pendingTaskToComplete) {
+        generarRegistrosDesdeCronograma();
+      } else {
+        // Solo cargar los registros sin generar nuevos
+        loadRegistros();
+      }
+    }
+  }, [vistaActual, pendingTaskToComplete]);
+
+  // Función para generar registros automáticamente desde el cronograma
+  const generarRegistrosDesdeCronograma = async () => {
+    try {
+      setIsLoading(true);
+      const fechaActual = new Date();
+      const mes = fechaActual.getMonth() + 1; // getMonth() devuelve 0-11
+      const anio = fechaActual.getFullYear();
+      
+      console.log(`🔄 Generando registros para ${mes}/${anio}...`);
+      
+      // Generar registros desde el cronograma
+      const resultado = await custodiaMuestrasService.generarDesdeCronograma(mes, anio);
+      
+      if (resultado.creados > 0) {
+        toast({
+          title: "Registros generados",
+          description: `Se crearon ${resultado.creados} registros pendientes desde el cronograma PL-CAL-008`,
+        });
+      }
+      
+      // Recargar la lista completa de registros
+      const registrosActualizados = await custodiaMuestrasService.getAll();
+      setCustodiaMuestrasRegistros(registrosActualizados);
+      
+    } catch (error) {
+      console.error('Error al generar registros desde cronograma:', error);
+      // No mostrar toast de error para no molestar al usuario
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const loadRegistros = async () => {
     try {
       setIsLoading(true);
@@ -216,40 +565,81 @@ export default function LabMicrobiologiaPage() {
     }
   };
 
-  const handleCondicionesSuccessfulSubmit = () => {
-    loadRegistros(); // Recargar los registros después de agregar uno nuevo
+  const handleCondicionesSuccessfulSubmit = async (values?: any, estado?: 'pendiente' | 'completado') => {
+    await loadRegistros(); // Recargar los registros después de agregar/actualizar
   };
 
-  const handleTemperaturaSuccessfulSubmit = () => {
-    loadRegistros(); // Recargar los registros después de agregar uno nuevo
+  const handleTemperaturaSuccessfulSubmit = async (values?: any, estado?: 'pendiente' | 'completado') => {
+    await loadRegistros(); // Recargar los registros después de agregar/actualizar
   };
 
-  const handleMediosCultivoSuccessfulSubmit = () => {
-    loadRegistros(); // Recargar los registros después de agregar uno nuevo
+  const handleMediosCultivoSuccessfulSubmit = async (values?: any, estado?: 'pendiente' | 'completado') => {
+    await loadRegistros(); // Recargar los registros después de agregar/actualizar
   };
 
-  const handleEsterilizacionAutoclaveSuccessfulSubmit = () => {
-    loadRegistros(); // Recargar los registros después de agregar uno nuevo
+  const handleEsterilizacionAutoclaveSuccessfulSubmit = async (values?: any, estado?: 'pendiente' | 'completado') => {
+    await loadRegistros(); // Recargar los registros después de agregar/actualizar
   };
 
-  const handleCustodiaMuestrasSuccessfulSubmit = () => {
-    loadRegistros(); // Recargar los registros después de agregar uno nuevo
+  const handleCustodiaMuestrasSuccessfulSubmit = async (values?: any, estado?: 'pendiente' | 'completado') => {
+    await loadRegistros(); // Recargar los registros después de agregar/actualizar
+
+    // Si hay una tarea pendiente de completar y el registro fue completado, marcarla como completada
+    if (pendingTaskToComplete && estado === 'completado') {
+      try {
+        const tipoCronograma = (pendingTaskToComplete as any).cronogramaTipo;
+
+        if (tipoCronograma === 'agua-potable') {
+          // Marcar tarea de agua potable como completada
+          const response = await fetch(`/api/cronograma-agua-potable?id=${pendingTaskToComplete.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ estado: 'completed' }),
+          });
+
+          if (!response.ok) {
+            throw new Error('Error al marcar la tarea de agua potable como completada');
+          }
+
+          toast({
+            title: 'Éxito',
+            description: 'La tarea del cronograma de agua potable ha sido marcada como completada',
+          });
+        } else {
+          // Marcar tarea de microbiología como completada
+          await microbiologiaCronogramaService.markAsCompleted(pendingTaskToComplete.id);
+          toast({
+            title: 'Éxito',
+            description: 'La tarea del cronograma ha sido marcada como completada',
+          });
+        }
+
+        setPendingTaskToComplete(null);
+      } catch (error) {
+        console.error('Error al marcar la tarea como completada:', error);
+        toast({
+          title: 'Error',
+          description: 'No se pudo marcar la tarea como completada',
+          variant: 'destructive',
+        });
+      }
+    }
   };
 
-  const handleIncubadoraControlSuccessfulSubmit = () => {
-    loadRegistros(); // Recargar los registros después de agregar uno nuevo
+  const handleIncubadoraControlSuccessfulSubmit = async (values?: any, estado?: 'pendiente' | 'completado') => {
+    await loadRegistros(); // Recargar los registros después de agregar/actualizar
   };
 
-  const handleResultadosMicrobiologicosSuccessfulSubmit = () => {
-    loadRegistros(); // Recargar los registros después de agregar uno nuevo
+  const handleResultadosMicrobiologicosSuccessfulSubmit = async (values?: any, estado?: 'pendiente' | 'completado') => {
+    await loadRegistros(); // Recargar los registros después de agregar/actualizar
   };
 
-  const handleControlLavadoInactivacionSuccessfulSubmit = () => {
-    loadRegistros(); // Recargar los registros después de agregar uno nuevo
+  const handleControlLavadoInactivacionSuccessfulSubmit = async (values?: any, estado?: 'pendiente' | 'completado') => {
+    await loadRegistros(); // Recargar los registros después de agregar/actualizar
   };
 
-  const handleRegistrosRecepcionFormatosSuccessfulSubmit = () => {
-    loadRegistros(); // Recargar los registros después de agregar uno nuevo
+  const handleRegistrosRecepcionFormatosSuccessfulSubmit = async (values?: any, estado?: 'pendiente' | 'completado') => {
+    await loadRegistros(); // Recargar los registros después de agregar/actualizar
   };
 
   const handleVerCondiciones = () => {
@@ -320,11 +710,203 @@ export default function LabMicrobiologiaPage() {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {items.map((it) => (
-          <div key={it.label} className="rounded-lg border bg-white p-3">
+          <div key={it.label} className="rounded-lg border bg-white p-3 min-w-0">
             <p className="text-xs font-medium text-gray-500">{it.label}</p>
-            <p className="text-sm text-gray-900 mt-1 break-words">{renderDetalleValue(it.value)}</p>
+            <p className="text-sm text-gray-900 mt-1 break-words whitespace-pre-wrap overflow-wrap-anywhere">{renderDetalleValue(it.value)}</p>
           </div>
         ))}
+      </div>
+    );
+  };
+
+  // Función específica para mostrar detalle de Custodia de Muestras (RE-CAL-107)
+  const renderDetalleGridCustodia = (record: any) => {
+    // Mapeo de valores de motivo a etiquetas legibles
+    const motivoLabels: Record<string, string> = {
+      'control_rutinario': 'Control Rutinario',
+      'validacion_proceso': 'Validación de Proceso',
+      'investigacion_incidente': 'Investigación de Incidente',
+      'otro': 'Otro',
+    };
+
+    // Definir solo los campos que están en el modal, en orden lógico
+    const camposModal = [
+      { key: 'codigo', label: 'Código' },
+      { key: 'estado', label: 'Estado' },
+      { key: 'tipo', label: 'Tipo' },
+      { key: 'muestra_id', label: 'Muestra' },
+      { key: 'tipo_muestra', label: 'Tipo de Muestra', formatter: (v: string) => {
+        const labels: Record<string, string> = {
+          'nombre': 'Nombre',
+          'linea': 'Línea',
+          'producto': 'Producto',
+          'lote': 'Lote',
+          'envase': 'Envase',
+          'otro': 'Otro'
+        };
+        return labels[v] || v;
+      }},
+      { key: 'valor_muestra', label: 'Valor', formatter: (v: string, r: any) => {
+        const tipo = r?.tipo_muestra;
+        const tipoLabel: Record<string, string> = {
+          'nombre': 'Nombre:',
+          'linea': 'Línea:',
+          'producto': 'Producto:',
+          'lote': 'Lote:',
+          'envase': 'Envase:',
+          'otro': 'Otro:'
+        };
+        return tipo ? `${tipoLabel[tipo] || ''} ${v || '-'}` : (v || '-');
+      }},
+      { key: 'area', label: 'Área' },
+      { key: 'motivo', label: 'Motivo', formatter: (v: string) => motivoLabels[v] || v },
+      // motivo_personalizado se mostrará solo si motivo es "otro" y tiene valor
+      { key: 'motivo_personalizado', label: 'Motivo Personalizado', conditional: true },
+      { key: 'temperatura', label: 'Temperatura' },
+      { key: 'cantidad', label: 'Cantidad' },
+      { key: 'toma_muestra_fecha', label: 'Toma Muestra Fecha' },
+      { key: 'toma_muestra_hora', label: 'Toma Muestra Hora' },
+      { key: 'recepcion_lab_fecha', label: 'Recepción Lab Fecha' },
+      { key: 'recepcion_lab_hora', label: 'Recepción Lab Hora' },
+      { key: 'medio_transporte', label: 'Medio Transporte' },
+      { key: 'responsable', label: 'Responsable' },
+      { key: 'observaciones', label: 'Observaciones' },
+      { key: 'tipo_analisis_sl', label: 'Tipo Análisis SL' },
+      { key: 'tipo_analisis_bc', label: 'Tipo Análisis BC' },
+      { key: 'tipo_analisis_ym', label: 'Tipo Análisis YM' },
+      { key: 'tipo_analisis_tc', label: 'Tipo Análisis TC' },
+      { key: 'tipo_analisis_ec', label: 'Tipo Análisis EC' },
+      { key: 'tipo_analisis_ls', label: 'Tipo Análisis LS' },
+      { key: 'tipo_analisis_etb', label: 'Tipo Análisis ETB' },
+      { key: 'tipo_analisis_xsa', label: 'Tipo Análisis XSA' },
+      // cronograma_task_id excluido - es un ID interno
+    ];
+
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {camposModal.map((campo) => {
+          const value = record?.[campo.key];
+          // Mostrar campo solo si tiene valor (no nulo, vacío o guiones)
+          let hasValue = value !== null && value !== undefined && value !== '' && value !== '-';
+          
+          // Para motivo_personalizado, solo mostrar si motivo es "otro" y hay valor
+          if (campo.key === 'motivo_personalizado') {
+            const motivo = record?.motivo;
+            if (motivo !== 'otro' || !hasValue) {
+              return null; // No mostrar este campo
+            }
+          }
+          
+          // Para observaciones, ocultar texto automático del sistema
+          if (campo.key === 'observaciones' && typeof value === 'string' && value.toLowerCase().includes('generado automáticamente')) {
+            hasValue = false; // Tratar como vacío
+          }
+          
+          // Aplicar formatter si existe (pasar record para formatters que necesiten contexto)
+          const displayValue = hasValue && campo.formatter ? campo.formatter(value, record) : value;
+          
+          return (
+            <div key={campo.key} className="rounded-lg border bg-white p-3 min-w-0">
+              <p className="text-xs font-medium text-gray-500">{campo.label}</p>
+              <p className="text-sm text-gray-900 mt-1 break-words whitespace-pre-wrap overflow-wrap-anywhere">
+                {hasValue ? renderDetalleValue(displayValue) : ''}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // Función específica para mostrar detalle de Resultados Microbiológicos (RE-CAL-046)
+  const renderDetalleGridResultados = (record: any) => {
+    // Definir campos del modal en orden lógico
+    const camposModal = [
+      { key: 'codigo', label: 'Código' },
+      { key: 'fecha', label: 'Fecha' },
+      { key: 'mes_muestreo', label: 'Mes de Muestreo' },
+      { key: 'hora_muestreo', label: 'Hora de Muestreo' },
+      { key: 'interno_externo', label: 'Interno/Externo' },
+      { key: 'tipo', label: 'Tipo' },
+      { key: 'muestra', label: 'Muestra' },
+      { key: 'tipo_muestra', label: 'Tipo de Muestra', formatter: (v: string) => {
+        const labels: Record<string, string> = {
+          'nombre': 'Nombre',
+          'linea': 'Línea',
+          'producto': 'Producto',
+          'lote': 'Lote',
+          'envase': 'Envase',
+          'otro': 'Otro'
+        };
+        return labels[v] || v;
+      }},
+      { key: 'valor_muestra', label: 'Valor', formatter: (v: string, r: any) => v || '-', getLabel: (r: any) => {
+        // Label dinámico según el tipo de muestra
+        const tipo = r?.tipo_muestra;
+        const labels: Record<string, string> = {
+          'nombre': 'Nombre',
+          'linea': 'Línea',
+          'producto': 'Producto',
+          'lote': 'Lote',
+          'envase': 'Envase',
+          'otro': 'Otro'
+        };
+        return labels[tipo] || 'Valor';
+      }},
+      { key: 'area', label: 'Área' },
+      { key: 'fecha_produccion', label: 'Fecha de Producción' },
+      { key: 'fecha_vencimiento', label: 'Fecha de Vencimiento' },
+      { key: 'mesofilos', label: 'Mesófilos' },
+      { key: 'coliformes_totales', label: 'Coliformes Totales' },
+      { key: 'coliformes_fecales', label: 'Coliformes Fecales' },
+      { key: 'e_coli', label: 'E. Coli' },
+      { key: 'mohos', label: 'Mohos' },
+      { key: 'levaduras', label: 'Levaduras' },
+      { key: 'staphylococcus_aureus', label: 'Staphylococcus Aureus' },
+      { key: 'bacillus_cereus', label: 'Bacillus Cereus' },
+      { key: 'listeria', label: 'Listeria' },
+      { key: 'salmonella', label: 'Salmonella' },
+      { key: 'enterobacterias', label: 'Enterobacterias' },
+      { key: 'clostridium', label: 'Clostridium' },
+      { key: 'esterilidad_comercial', label: 'Esterilidad Comercial' },
+      { key: 'anaerobias', label: 'Anaerobias' },
+      { key: 'observaciones', label: 'Observaciones' },
+      { key: 'parametros_referencia', label: 'Parámetros de Referencia' },
+      { key: 'cumple', label: 'Cumple' },
+      { key: 'no_cumple', label: 'No Cumple' },
+      { key: 'medio_diluyente', label: 'Medio Diluyente' },
+      { key: 'factor_dilucion', label: 'Factor de Dilución' },
+      { key: 'responsable', label: 'Responsable' },
+      // cronograma_task_id excluido - es un ID interno
+    ];
+
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {camposModal.map((campo) => {
+          const value = record?.[campo.key];
+          // Mostrar campo solo si tiene valor (no nulo, vacío o guiones)
+          let hasValue = value !== null && value !== undefined && value !== '' && value !== '-';
+          
+          // Para observaciones, ocultar texto automático del sistema
+          if (campo.key === 'observaciones' && typeof value === 'string' && value.toLowerCase().includes('generado automáticamente')) {
+            hasValue = false; // Tratar como vacío
+          }
+          
+          // Aplicar formatter si existe (pasar record para formatters que necesiten contexto)
+          const displayValue = hasValue && campo.formatter ? campo.formatter(value, record) : value;
+          
+          // Obtener label dinámico si existe getLabel
+          const fieldLabel = campo.getLabel ? campo.getLabel(record) : campo.label;
+          
+          return (
+            <div key={campo.key} className="rounded-lg border bg-white p-3 min-w-0">
+              <p className="text-xs font-medium text-gray-500">{fieldLabel}</p>
+              <p className="text-sm text-gray-900 mt-1 break-words whitespace-pre-wrap overflow-wrap-anywhere">
+                {hasValue ? renderDetalleValue(displayValue) : ''}
+              </p>
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -448,14 +1030,14 @@ export default function LabMicrobiologiaPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Overlay móvil */}
+    <div className="h-screen bg-gray-50 flex overflow-hidden">
+      {/* Overlay */}
       {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* SIDEBAR */}
-      <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-72 bg-white border-r border-gray-200 flex flex-col transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+      <aside className={`${sidebarOpen ? 'flex' : 'hidden'} flex-col fixed lg:static inset-y-0 left-0 lg:relative z-50 w-72 bg-white border-r border-gray-200 h-screen lg:h-full`}>
         {/* Header */}
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center gap-3">
@@ -467,7 +1049,7 @@ export default function LabMicrobiologiaPage() {
               <p className="text-xs text-gray-500">Sistema de Gestión</p>
             </div>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="absolute top-4 right-4 lg:hidden p-1 rounded-md hover:bg-gray-100">
+          <button onClick={() => setSidebarOpen(false)} className="absolute top-4 right-4 p-1 rounded-md hover:bg-gray-100">
             <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
@@ -495,13 +1077,22 @@ export default function LabMicrobiologiaPage() {
 
       {/* CONTENIDO PRINCIPAL */}
       <main className="flex-1 flex flex-col min-w-0">
-        {/* Header móvil */}
-        <header className="lg:hidden bg-white border-b border-gray-200 p-4 flex items-center justify-between">
+        {/* Header con menú hamburguesa */}
+        <header className="bg-white border-b border-gray-200 p-4 flex items-center justify-between lg:hidden">
           <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-md hover:bg-gray-100">
             <Menu className="w-5 h-5" />
           </button>
           <h1 className="font-semibold text-gray-900">{getVistaTitulo()}</h1>
           <div className="w-10" />
+        </header>
+
+        {/* Header escritorio - también con menú hamburguesa para colapsar sidebar */}
+        <header className="hidden lg:flex bg-white border-b border-gray-200 p-4 items-center justify-between">
+          <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-md hover:bg-gray-100 mr-3">
+            <Menu className="w-5 h-5" />
+          </button>
+          <h1 className="font-semibold text-gray-900 text-lg">{getVistaTitulo()}</h1>
+          <div className="flex-1" />
         </header>
 
         {/* Área de contenido */}
@@ -537,22 +1128,15 @@ export default function LabMicrobiologiaPage() {
             </AlertDialogContent>
           </AlertDialog>
 
-          {/* Header Desktop */}
-          <div className="hidden lg:flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">{getVistaTitulo()}</h1>
-              <p className="text-sm text-gray-500 mt-1">
-                {vistaActual === 'principal' && 'Gestión de formatos RE-CAL'}
-                {vistaActual === 'conograma' && 'Planificación de actividades'}
-              </p>
-            </div>
-            {vistaActual !== 'principal' && vistaActual !== 'detalle' && (
+          {/* Header Desktop - Botón Volver */}
+          {vistaActual !== 'principal' && vistaActual !== 'detalle' && (
+            <div className="hidden lg:flex items-center justify-end mb-6">
               <Button variant="outline" onClick={() => setVistaActual('principal')}>
                 <ChevronLeft className="w-4 h-4 mr-2" />
                 Volver a Registros
               </Button>
-            )}
-          </div>
+            </div>
+          )}
 
       {vistaActual === 'detalle' && detalle && (
         <>
@@ -569,22 +1153,47 @@ export default function LabMicrobiologiaPage() {
             </Button>
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Información</CardTitle>
-              <CardDescription>Campos del registro seleccionado</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {renderDetalleGrid(
-                Object.entries(detalle.record ?? {})
-                  .sort(([a], [b]) => a.localeCompare(b))
-                  .map(([key, value]) => ({
-                    label: formatDetalleLabel(key),
-                    value,
-                  }))
-              )}
-            </CardContent>
-          </Card>
+          {detalle.tipo === 'custodia-muestras' ? (
+            // Vista específica para RE-CAL-107 - solo campos del modal
+            <Card>
+              <CardHeader>
+                <CardTitle>Información</CardTitle>
+                <CardDescription>Campos del registro seleccionado</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {renderDetalleGridCustodia(detalle.record)}
+              </CardContent>
+            </Card>
+          ) : detalle.tipo === 'resultados-microbiologicos' ? (
+            // Vista específica para RE-CAL-046 - solo campos del modal
+            <Card>
+              <CardHeader>
+                <CardTitle>Información</CardTitle>
+                <CardDescription>Campos del registro seleccionado</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {renderDetalleGridResultados(detalle.record)}
+              </CardContent>
+            </Card>
+          ) : (
+            // Vista genérica para otros tipos
+            <Card>
+              <CardHeader>
+                <CardTitle>Información</CardTitle>
+                <CardDescription>Campos del registro seleccionado</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {renderDetalleGrid(
+                  Object.entries(detalle.record ?? {})
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([key, value]) => ({
+                      label: formatDetalleLabel(key),
+                      value,
+                    }))
+                )}
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
 
@@ -1040,13 +1649,13 @@ export default function LabMicrobiologiaPage() {
 
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>Registros de Condiciones Ambientales</CardTitle>
-                  <CardDescription>
-                    Todos los registros de condiciones ambientales del laboratorio
-                  </CardDescription>
-                </div>
+              <div className="flex justify-end items-center gap-2">
+                <BotonesExportacion 
+                  registros={condicionesRegistros} 
+                  titulo="RE-CAL-021 - Condiciones Ambientales" 
+                  fileName="RE-CAL-021_Condiciones_Ambientales"
+                  columnas={['fecha', 'hora', 'temperatura', 'humedad', 'responsable']}
+                />
                 <Button onClick={() => {
                   setEditingCondiciones(null);
                   setIsCondicionesModalOpen(true);
@@ -1089,18 +1698,39 @@ export default function LabMicrobiologiaPage() {
                       onClick={() => openDetalle('condiciones', 'RE-CAL-021 - Condiciones Ambientales', registro)}
                     >
                       <div className="flex items-center justify-end gap-2 mb-3">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingCondiciones(registro);
-                            setIsCondicionesModalOpen(true);
-                          }}
-                        >
-                          <Pencil className="w-4 h-4 mr-1" />
-                          Editar
-                        </Button>
+                        {registro.estado === 'pendiente' ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingCondiciones(registro);
+                              setIsCondicionesModalOpen(true);
+                            }}
+                            className="border-orange-400 text-orange-700 hover:bg-orange-50"
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Completar
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingCondiciones(registro);
+                              setIsCondicionesModalOpen(true);
+                            }}
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Editar
+                          </Button>
+                        )}
+                        <BotonesExportacionIndividual 
+                          registro={registro} 
+                          titulo="RE-CAL-021 - Condiciones Ambientales" 
+                          fileName="RE-CAL-021_Condiciones_Ambientales"
+                        />
                         <Button
                           size="sm"
                           variant="destructive"
@@ -1176,13 +1806,13 @@ export default function LabMicrobiologiaPage() {
 
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>Registros de Temperatura Equipos</CardTitle>
-                  <CardDescription>
-                    Todos los registros de temperatura de equipos del laboratorio
-                  </CardDescription>
-                </div>
+              <div className="flex justify-end items-center gap-2">
+                <BotonesExportacion 
+                  registros={temperaturaRegistros} 
+                  titulo="RE-CAL-016 - Temperatura Equipos" 
+                  fileName="RE-CAL-016_Temperatura_Equipos"
+                  columnas={['fecha', 'equipo', 'temperatura', 'responsable']}
+                />
                 <Button onClick={() => {
                   setEditingTemperatura(null);
                   setIsTemperaturaModalOpen(true);
@@ -1225,18 +1855,39 @@ export default function LabMicrobiologiaPage() {
                       onClick={() => openDetalle('temperatura', 'RE-CAL-016 - Temperatura Equipos', registro)}
                     >
                       <div className="flex items-center justify-end gap-2 mb-3">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingTemperatura(registro);
-                            setIsTemperaturaModalOpen(true);
-                          }}
-                        >
-                          <Pencil className="w-4 h-4 mr-1" />
-                          Editar
-                        </Button>
+                        {registro.estado === 'pendiente' ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingTemperatura(registro);
+                              setIsTemperaturaModalOpen(true);
+                            }}
+                            className="border-orange-400 text-orange-700 hover:bg-orange-50"
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Completar
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingTemperatura(registro);
+                              setIsTemperaturaModalOpen(true);
+                            }}
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Editar
+                          </Button>
+                        )}
+                        <BotonesExportacionIndividual 
+                          registro={registro} 
+                          titulo="RE-CAL-016 - Temperatura Equipos" 
+                          fileName="RE-CAL-016_Temperatura_Equipos"
+                        />
                         <Button
                           size="sm"
                           variant="destructive"
@@ -1328,13 +1979,13 @@ export default function LabMicrobiologiaPage() {
 
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>Registros de Medios de Cultivo</CardTitle>
-                  <CardDescription>
-                    Todos los registros de preparación de medios de cultivo
-                  </CardDescription>
-                </div>
+              <div className="flex justify-end items-center gap-2">
+                <BotonesExportacion 
+                  registros={mediosCultivoRegistros} 
+                  titulo="RE-CAL-022 - Medios de Cultivo" 
+                  fileName="RE-CAL-022_Medios_Cultivo"
+                  columnas={['fecha', 'lote', 'medio_cultivo', 'volumen_preparado', 'ph', 'responsable']}
+                />
                 <Button onClick={() => {
                   setEditingMediosCultivo(null);
                   setIsMediosCultivoModalOpen(true);
@@ -1377,18 +2028,39 @@ export default function LabMicrobiologiaPage() {
                       onClick={() => openDetalle('medios-cultivo', 'RE-CAL-022 - Medios de Cultivo', registro)}
                     >
                       <div className="flex items-center justify-end gap-2 mb-3">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingMediosCultivo(registro);
-                            setIsMediosCultivoModalOpen(true);
-                          }}
-                        >
-                          <Pencil className="w-4 h-4 mr-1" />
-                          Editar
-                        </Button>
+                        {registro.estado === 'pendiente' ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingMediosCultivo(registro);
+                              setIsMediosCultivoModalOpen(true);
+                            }}
+                            className="border-orange-400 text-orange-700 hover:bg-orange-50"
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Completar
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingMediosCultivo(registro);
+                              setIsMediosCultivoModalOpen(true);
+                            }}
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Editar
+                          </Button>
+                        )}
+                        <BotonesExportacionIndividual 
+                          registro={registro} 
+                          titulo="RE-CAL-022 - Medios de Cultivo" 
+                          fileName="RE-CAL-022_Medios_Cultivo"
+                        />
                         <Button
                           size="sm"
                           variant="destructive"
@@ -1484,13 +2156,13 @@ export default function LabMicrobiologiaPage() {
 
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>Registros de Esterilización en Autoclave</CardTitle>
-                  <CardDescription>
-                    Todos los registros de esterilización en autoclave del laboratorio
-                  </CardDescription>
-                </div>
+              <div className="flex justify-end items-center gap-2">
+                <BotonesExportacion 
+                  registros={esterilizacionAutoclaveRegistros} 
+                  titulo="RE-CAL-017 - Esterilización en Autoclave" 
+                  fileName="RE-CAL-017_Esterilizacion_Autoclave"
+                  columnas={['fecha', 'carga', 'inicio_ciclo_hora', 'fin_ciclo_hora', 'realizado_por']}
+                />
                 <Button onClick={() => {
                   setEditingEsterilizacionAutoclave(null);
                   setIsEsterilizacionAutoclaveModalOpen(true);
@@ -1533,18 +2205,39 @@ export default function LabMicrobiologiaPage() {
                       onClick={() => openDetalle('esterilizacion-autoclave', 'RE-CAL-017 - Esterilización en Autoclave', registro)}
                     >
                       <div className="flex items-center justify-end gap-2 mb-3">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingEsterilizacionAutoclave(registro);
-                            setIsEsterilizacionAutoclaveModalOpen(true);
-                          }}
-                        >
-                          <Pencil className="w-4 h-4 mr-1" />
-                          Editar
-                        </Button>
+                        {registro.estado === 'pendiente' ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingEsterilizacionAutoclave(registro);
+                              setIsEsterilizacionAutoclaveModalOpen(true);
+                            }}
+                            className="border-orange-400 text-orange-700 hover:bg-orange-50"
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Completar
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingEsterilizacionAutoclave(registro);
+                              setIsEsterilizacionAutoclaveModalOpen(true);
+                            }}
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Editar
+                          </Button>
+                        )}
+                        <BotonesExportacionIndividual 
+                          registro={registro} 
+                          titulo="RE-CAL-017 - Esterilización Autoclave" 
+                          fileName="RE-CAL-017_Esterilizacion_Autoclave"
+                        />
                         <Button
                           size="sm"
                           variant="destructive"
@@ -1622,13 +2315,34 @@ export default function LabMicrobiologiaPage() {
 
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>Registros de Custodia de Muestras</CardTitle>
-                  <CardDescription>
-                    Todos los registros de custodia de muestras del laboratorio
-                  </CardDescription>
-                </div>
+              <div className="flex justify-end items-center gap-2">
+                {custodiaMuestrasRegistros.length > 0 && (
+                  <>
+                    <Button variant="outline" size="sm" onClick={exportarExcelGeneral} title="Exportar Excel">
+                      <Download className="w-4 h-4 mr-1" /> Excel
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={exportarPdfGeneral} title="Exportar PDF">
+                      <FileText className="w-4 h-4 mr-1" /> PDF
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={exportarWordGeneral} title="Exportar Word">
+                      <FileText className="w-4 h-4 mr-1" /> Word
+                    </Button>
+                  </>
+                )}
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setCronogramaSeleccionado({
+                      codigo: 'PL-CAL-008',
+                      titulo: 'Plan de Muestreo Microbiológico - Cronograma Toma de Muestras internas',
+                      version: '5',
+                      fechaAprobacion: '16 de diciembre de 2022',
+                    });
+                    setIsCronogramaModalOpen(true);
+                  }}
+                >
+                  Cronograma
+                </Button>
                 <Button onClick={() => {
                   setEditingCustodiaMuestras(null);
                   setIsCustodiaMuestrasModalOpen(true);
@@ -1667,21 +2381,95 @@ export default function LabMicrobiologiaPage() {
                   {custodiaMuestrasRegistros.map((registro: any) => (
                     <div
                       key={registro.id}
-                      className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50"
+                      className={`border rounded-xl shadow-sm p-4 cursor-pointer transition-all duration-200 hover:shadow-md ${registro.estado === 'pendiente' ? 'border-orange-400 bg-gradient-to-r from-orange-50 to-white' : 'border-green-200 bg-white hover:border-green-300'}`}
                       onClick={() => openDetalle('custodia-muestras', 'RE-CAL-107 - Custodia de Muestras', registro)}
                     >
-                      <div className="flex items-center justify-end gap-2 mb-3">
+                      {/* Badge de estado */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          {registro.estado === 'pendiente' ? (
+                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700 border border-orange-200">
+                              Pendiente
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 border border-green-200">
+                              Completado
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                        {registro.estado === 'pendiente' ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Limpiar datos corruptos antes de editar
+                              const registroLimpio = {
+                                ...registro,
+                                area: limpiarArea(registro.area || ''),
+                                tipo_muestra: limpiarTipoMuestra(registro.tipo_muestra || ''),
+                              };
+                              setEditingCustodiaMuestras(registroLimpio);
+                              setIsCustodiaMuestrasModalOpen(true);
+                            }}
+                            className="border-orange-400 text-orange-700 hover:bg-orange-50"
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Completar
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Limpiar datos corruptos antes de editar
+                              const registroLimpio = {
+                                ...registro,
+                                area: limpiarArea(registro.area || ''),
+                                tipo_muestra: limpiarTipoMuestra(registro.tipo_muestra || ''),
+                              };
+                              setEditingCustodiaMuestras(registroLimpio);
+                              setIsCustodiaMuestrasModalOpen(true);
+                            }}
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Editar
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setEditingCustodiaMuestras(registro);
-                            setIsCustodiaMuestrasModalOpen(true);
+                            exportarExcelIndividual(registro);
                           }}
+                          title="Exportar Excel"
                         >
-                          <Pencil className="w-4 h-4 mr-1" />
-                          Editar
+                          <Download className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            exportarPdfIndividual(registro);
+                          }}
+                          title="Exportar PDF"
+                        >
+                          <FileText className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            exportarWordIndividual(registro);
+                          }}
+                          title="Exportar Word"
+                        >
+                          <FileText className="w-4 h-4" />
                         </Button>
                         <Button
                           size="sm"
@@ -1698,8 +2486,9 @@ export default function LabMicrobiologiaPage() {
                           <Trash2 className="w-4 h-4 mr-1" />
                           Eliminar
                         </Button>
+                        </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                         <div>
                           <p className="text-sm font-medium text-gray-700">Código</p>
                           <p className="text-sm text-gray-900">{registro.codigo}</p>
@@ -1709,7 +2498,7 @@ export default function LabMicrobiologiaPage() {
                           <p className="text-sm text-gray-900">{registro.tipo}</p>
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-700">ID Muestra</p>
+                          <p className="text-sm font-medium text-gray-700">Muestra</p>
                           <p className="text-sm text-gray-900">{registro.muestra_id}</p>
                         </div>
                         <div>
@@ -1717,36 +2506,14 @@ export default function LabMicrobiologiaPage() {
                           <p className="text-sm text-gray-900">{registro.area}</p>
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-700">Temperatura</p>
-                          <p className="text-sm text-gray-900">{registro.temperatura}</p>
-                        </div>
-                        <div>
                           <p className="text-sm font-medium text-gray-700">Cantidad</p>
                           <p className="text-sm text-gray-900">{registro.cantidad}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Toma Muestra</p>
-                          <p className="text-sm text-gray-900">
-                            {new Date(registro.toma_muestra_fecha).toLocaleDateString('es-ES')} {registro.toma_muestra_hora}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Recepción Lab</p>
-                          <p className="text-sm text-gray-900">
-                            {new Date(registro.recepcion_lab_fecha).toLocaleDateString('es-ES')} {registro.recepcion_lab_hora}
-                          </p>
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-700">Responsable</p>
                           <p className="text-sm text-gray-900">{registro.responsable}</p>
                         </div>
                       </div>
-                      {registro.observaciones && (
-                        <div className="mt-3 pt-3 border-t">
-                          <p className="text-sm font-medium text-gray-700">Observaciones</p>
-                          <p className="text-sm text-gray-900">{registro.observaciones}</p>
-                        </div>
-                      )}
                     </div>
                   ))}
                 </div>
@@ -1776,13 +2543,13 @@ export default function LabMicrobiologiaPage() {
 
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>Registros de Control de Incubadora</CardTitle>
-                  <CardDescription>
-                    Todos los registros de operación y control de incubadora del laboratorio
-                  </CardDescription>
-                </div>
+              <div className="flex justify-end items-center gap-2">
+                <BotonesExportacion 
+                  registros={incubadoraControlRegistros} 
+                  titulo="RE-CAL-089 - Control de Incubadora" 
+                  fileName="RE-CAL-089_Control_Incubadora"
+                  columnas={['fecha', 'temperatura_1', 'temperatura_2', 'diferencia', 'responsable']}
+                />
                 <Button onClick={() => {
                   setEditingIncubadoraControl(null);
                   setIsIncubadoraControlModalOpen(true);
@@ -1825,18 +2592,39 @@ export default function LabMicrobiologiaPage() {
                       onClick={() => openDetalle('incubadora-control', 'RE-CAL-089 - Operación y Control de Incubadora', registro)}
                     >
                       <div className="flex items-center justify-end gap-2 mb-3">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingIncubadoraControl(registro);
-                            setIsIncubadoraControlModalOpen(true);
-                          }}
-                        >
-                          <Pencil className="w-4 h-4 mr-1" />
-                          Editar
-                        </Button>
+                        {registro.estado === 'pendiente' ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingIncubadoraControl(registro);
+                              setIsIncubadoraControlModalOpen(true);
+                            }}
+                            className="border-orange-400 text-orange-700 hover:bg-orange-50"
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Completar
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingIncubadoraControl(registro);
+                              setIsIncubadoraControlModalOpen(true);
+                            }}
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Editar
+                          </Button>
+                        )}
+                        <BotonesExportacionIndividual 
+                          registro={registro} 
+                          titulo="RE-CAL-089 - Control Incubadora" 
+                          fileName="RE-CAL-089_Control_Incubadora"
+                        />
                         <Button
                           size="sm"
                           variant="destructive"
@@ -2020,19 +2808,32 @@ export default function LabMicrobiologiaPage() {
 
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>Registros de Resultados Microbiológicos</CardTitle>
-                  <CardDescription>
-                    Todos los registros de resultados microbiológicos del laboratorio
-                  </CardDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsIndicadorModalOpen(true)}
+              <div className="flex justify-end items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsIndicadorModalOpen(true)}
+                >
+                  Indicador
+                </Button>
+                <BotonesExportacion 
+                  registros={resultadosMicrobiologicosRegistros} 
+                  titulo="RE-CAL-046 - Resultados Microbiológicos" 
+                  fileName="RE-CAL-046_Resultados_Microbiologicos"
+                  columnas={['codigo', 'fecha', 'muestra', 'area', 'responsable', 'estado']}
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setCronogramaSeleccionado({
+                      codigo: 'PL-CAL-008',
+                      titulo: 'Plan de Muestreo Microbiológico - Cronograma Toma de Muestras internas',
+                        version: '5',
+                        fechaAprobacion: '16 de diciembre de 2022',
+                      });
+                      setIsCronogramaModalOpen(true);
+                    }}
                   >
-                    Indicador
+                    Cronograma
                   </Button>
                   <Button onClick={() => {
                     setEditingResultadosMicrobiologicos(null);
@@ -2042,9 +2843,31 @@ export default function LabMicrobiologiaPage() {
                     Nuevo Registro
                   </Button>
                 </div>
-              </div>
             </CardHeader>
             <CardContent>
+              {/* Barra de búsqueda y filtro */}
+              <div className="mb-4 flex flex-col sm:flex-row gap-3">
+                <div className="flex-1">
+                  <Input
+                    placeholder="Buscar por labor..."
+                    value={busquedaRecal046}
+                    onChange={(e) => setBusquedaRecal046(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
+                <Select value={filtroTipoRecal046} onValueChange={setFiltroTipoRecal046}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Filtrar por tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los tipos</SelectItem>
+                    <SelectItem value="manipuladores">Manipuladores</SelectItem>
+                    <SelectItem value="superficies">Superficies</SelectItem>
+                    <SelectItem value="ambientes">Ambientes</SelectItem>
+                    <SelectItem value="otro">Otro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               {isLoading ? (
                 <div className="text-center py-8">
                   <p className="text-gray-500">Cargando registros...</p>
@@ -2070,25 +2893,75 @@ export default function LabMicrobiologiaPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {resultadosMicrobiologicosRegistros.map((registro: any) => (
+                  {resultadosMicrobiologicosRegistros
+                    .filter((registro: any) => {
+                      // Filtro por búsqueda (labor/muestra)
+                      const searchMatch = !busquedaRecal046 || 
+                        (registro.muestra?.toLowerCase() || '').includes(busquedaRecal046.toLowerCase()) ||
+                        (registro.area?.toLowerCase() || '').includes(busquedaRecal046.toLowerCase());
+                      
+                      // Filtro por tipo
+                      const tipoMatch = filtroTipoRecal046 === 'all' || 
+                        (registro.tipo?.toLowerCase() || '') === filtroTipoRecal046.toLowerCase();
+                      
+                      return searchMatch && tipoMatch;
+                    })
+                    .map((registro: any) => (
                     <div
                       key={registro.id}
                       className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50"
-                      onClick={() => openDetalle('resultados-microbiologicos', 'RE-CAL-046 - Resultados Microbiológicos', registro)}
+                      onClick={() => {
+                        setViewingResultadosMicrobiologicos(registro);
+                        setIsViewResultadosMicrobiologicosModalOpen(true);
+                      }}
                     >
                       <div className="flex items-center justify-end gap-2 mb-3">
                         <Button
                           size="sm"
                           variant="outline"
+                          className="border-blue-600 text-blue-600 hover:bg-blue-50"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setEditingResultadosMicrobiologicos(registro);
-                            setIsResultadosMicrobiologicosModalOpen(true);
+                            setViewingResultadosMicrobiologicos(registro);
+                            setIsViewResultadosMicrobiologicosModalOpen(true);
                           }}
                         >
-                          <Pencil className="w-4 h-4 mr-1" />
-                          Editar
+                          <FileText className="w-4 h-4 mr-1" />
+                          Ver detalles
                         </Button>
+                        {registro.estado === 'pendiente' ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingResultadosMicrobiologicos(registro);
+                              setIsResultadosMicrobiologicosModalOpen(true);
+                            }}
+                            className="border-orange-400 text-orange-700 hover:bg-orange-50"
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Completar
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingResultadosMicrobiologicos(registro);
+                              setIsResultadosMicrobiologicosModalOpen(true);
+                            }}
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Editar
+                          </Button>
+                        )}
+                        <BotonesExportacionIndividual 
+                          registro={registro} 
+                          titulo="RE-CAL-046 - Resultados Microbiológicos" 
+                          fileName="RE-CAL-046_Resultados_Microbiologicos"
+                        />
                         <Button
                           size="sm"
                           variant="destructive"
@@ -2105,66 +2978,40 @@ export default function LabMicrobiologiaPage() {
                           Eliminar
                         </Button>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Fecha</p>
-                          <p className="text-sm text-gray-900">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-gray-500">Fecha</p>
+                          <p className="text-sm font-medium text-gray-900 truncate">
                             {new Date(registro.fecha).toLocaleDateString('es-ES')}
                           </p>
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Muestra</p>
-                          <p className="text-sm text-gray-900">{registro.muestra}</p>
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-gray-500">Muestra</p>
+                          <p className="text-sm font-medium text-gray-900 truncate">{registro.muestra}</p>
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Lote</p>
-                          <p className="text-sm text-gray-900">{registro.lote}</p>
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-gray-500">Lote</p>
+                          <p className="text-sm font-medium text-gray-900 truncate">{registro.lote}</p>
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Tipo</p>
-                          <p className="text-sm text-gray-900">{registro.tipo}</p>
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-gray-500">Área</p>
+                          <p className="text-sm font-medium text-gray-900 truncate">{registro.area}</p>
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Interno/Externo</p>
-                          <p className="text-sm text-gray-900">{registro.interno_externo}</p>
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-gray-500">Mesófilos</p>
+                          <p className="text-sm font-medium text-gray-900">{registro.mesofilos || '-'}</p>
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Área</p>
-                          <p className="text-sm text-gray-900">{registro.area}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Mesófilos</p>
-                          <p className="text-sm text-gray-900">{registro.mesofilos || '-'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Coliformes</p>
-                          <p className="text-sm text-gray-900">{registro.coliformes_totales || '-'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">E. coli</p>
-                          <p className="text-sm text-gray-900">{registro.e_coli || '-'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Salmonella</p>
-                          <p className="text-sm text-gray-900">{registro.salmonella || '-'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Cumple</p>
-                          <p className="text-sm text-gray-900">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-gray-500">Cumple</p>
+                          <p className="text-sm font-medium text-gray-900">
                             {registro.cumple ? '✅ Sí' : registro.no_cumple ? '❌ No' : '-'}
                           </p>
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Responsable</p>
-                          <p className="text-sm text-gray-900">{registro.responsable}</p>
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-gray-500">Responsable</p>
+                          <p className="text-sm font-medium text-gray-900 truncate">{registro.responsable}</p>
                         </div>
                       </div>
-                      {registro.observaciones && (
-                        <div className="mt-3 pt-3 border-t">
-                          <p className="text-sm font-medium text-gray-700">Observaciones</p>
-                          <p className="text-sm text-gray-900">{registro.observaciones}</p>
-                        </div>
-                      )}
                     </div>
                   ))}
                 </div>
@@ -2194,13 +3041,13 @@ export default function LabMicrobiologiaPage() {
 
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>Registros de Control de Lavado e Inactivación</CardTitle>
-                  <CardDescription>
-                    Todos los registros de control de lavado e inactivación del laboratorio
-                  </CardDescription>
-                </div>
+              <div className="flex justify-end items-center gap-2">
+                <BotonesExportacion 
+                  registros={controlLavadoInactivacionRegistros} 
+                  titulo="RE-CAL-045 - Control Lavado e Inactivación" 
+                  fileName="RE-CAL-045_Control_Lavado_Inactivacion"
+                  columnas={['fecha', 'producto', 'lote', 'responsable']}
+                />
                 <Button onClick={() => {
                   setEditingControlLavadoInactivacion(null);
                   setIsControlLavadoInactivacionModalOpen(true);
@@ -2243,18 +3090,39 @@ export default function LabMicrobiologiaPage() {
                       onClick={() => openDetalle('control-lavado-inactivacion', 'RE-CAL-111 - Control Lavado e Inactivación', registro)}
                     >
                       <div className="flex items-center justify-end gap-2 mb-3">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingControlLavadoInactivacion(registro);
-                            setIsControlLavadoInactivacionModalOpen(true);
-                          }}
-                        >
-                          <Pencil className="w-4 h-4 mr-1" />
-                          Editar
-                        </Button>
+                        {registro.estado === 'pendiente' ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingControlLavadoInactivacion(registro);
+                              setIsControlLavadoInactivacionModalOpen(true);
+                            }}
+                            className="border-orange-400 text-orange-700 hover:bg-orange-50"
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Completar
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingControlLavadoInactivacion(registro);
+                              setIsControlLavadoInactivacionModalOpen(true);
+                            }}
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Editar
+                          </Button>
+                        )}
+                        <BotonesExportacionIndividual 
+                          registro={registro} 
+                          titulo="RE-CAL-045 - Control Lavado e Inactivación" 
+                          fileName="RE-CAL-045_Control_Lavado_Inactivacion"
+                        />
                         <Button
                           size="sm"
                           variant="destructive"
@@ -2334,13 +3202,13 @@ export default function LabMicrobiologiaPage() {
 
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>Registros de Recepción de Formatos</CardTitle>
-                  <CardDescription>
-                    Todos los registros de recepción de formatos diligenciados en proceso
-                  </CardDescription>
-                </div>
+              <div className="flex justify-end items-center gap-2">
+                <BotonesExportacion 
+                  registros={registrosRecepcionFormatosRegistros} 
+                  titulo="RE-CAL-100 - Registros Recepción Formatos" 
+                  fileName="RE-CAL-100_Recepcion_Formatos"
+                  columnas={['fecha', 'formato', 'area', 'responsable']}
+                />
                 <Button onClick={() => {
                   setEditingRegistrosRecepcionFormatos(null);
                   setIsRegistrosRecepcionFormatosModalOpen(true);
@@ -2383,18 +3251,39 @@ export default function LabMicrobiologiaPage() {
                       onClick={() => openDetalle('registros-recepcion-formatos', 'RE-CAL-100 - Recepción de Formatos', registro)}
                     >
                       <div className="flex items-center justify-end gap-2 mb-3">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingRegistrosRecepcionFormatos(registro);
-                            setIsRegistrosRecepcionFormatosModalOpen(true);
-                          }}
-                        >
-                          <Pencil className="w-4 h-4 mr-1" />
-                          Editar
-                        </Button>
+                        {registro.estado === 'pendiente' ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingRegistrosRecepcionFormatos(registro);
+                              setIsRegistrosRecepcionFormatosModalOpen(true);
+                            }}
+                            className="border-orange-400 text-orange-700 hover:bg-orange-50"
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Completar
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="variant"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingRegistrosRecepcionFormatos(registro);
+                              setIsRegistrosRecepcionFormatosModalOpen(true);
+                            }}
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Editar
+                          </Button>
+                        )}
+                        <BotonesExportacionIndividual 
+                          registro={registro} 
+                          titulo="RE-CAL-100 - Registros Recepción Formatos" 
+                          fileName="RE-CAL-100_Recepcion_Formatos"
+                        />
                         <Button
                           size="sm"
                           variant="destructive"
@@ -2459,60 +3348,465 @@ export default function LabMicrobiologiaPage() {
       {/* Vista de Cronogramas */}
       {vistaActual === 'conograma' && (
         <>
-          <div className="mb-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Cronogramas Disponibles</h2>
+          {/* Header Principal */}
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Cronogramas de Muestreo</h2>
             <p className="text-gray-600">Planificación y seguimiento de actividades microbiológicas</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* PL-CAL-008 - Plan de Muestreo Microbiológico */}
-            <Card 
-              className="group border-violet-200 bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
-              onClick={() => {
-                // TODO: Abrir modal con el cronograma
-                toast({
-                  title: 'Próximamente',
-                  description: 'El cronograma se abrirá en un modal',
-                });
-              }}
-            >
-              <CardHeader className="p-4">
-                <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 bg-violet-100 rounded-full flex items-center justify-center">
-                    <Microscope className="w-6 h-6 text-violet-600" />
+          {/* Sección: Cronogramas Internos */}
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
+                <Building className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Cronogramas Internos</h3>
+                <p className="text-sm text-gray-500">Muestreos realizados dentro de la organización</p>
+              </div>
+              <Badge className="ml-auto bg-blue-100 text-blue-700 hover:bg-blue-100">2 activos</Badge>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* PL-CAL-008 - Plan de Muestreo Microbiológico */}
+              <Card 
+                className="group border-violet-200 bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer overflow-hidden"
+                onClick={() => {
+                  setCronogramaSeleccionado({
+                    codigo: 'PL-CAL-008',
+                    titulo: 'Plan de Muestreo Microbiológico - Cronograma Toma de Muestras internas',
+                    version: '5',
+                    fechaAprobacion: '16 de diciembre de 2022',
+                  });
+                  setIsCronogramaModalOpen(true);
+                }}
+              >
+                <div className="h-1 bg-violet-500" />
+                <CardHeader className="p-4 pb-2">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-violet-100 rounded-xl flex items-center justify-center">
+                        <Microscope className="w-6 h-6 text-violet-600" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base font-semibold text-gray-900">PL-CAL-008</CardTitle>
+                        <CardDescription className="text-xs text-gray-500">
+                          Plan de Muestreo Microbiológico
+                        </CardDescription>
+                      </div>
+                    </div>
+                    <Badge className="bg-violet-100 text-violet-700 hover:bg-violet-100 text-xs">V5</Badge>
                   </div>
-                  <div>
-                    <CardTitle className="text-base">PL-CAL-009 - Plan de Calidad</CardTitle>
-                    <CardDescription className="text-xs">
-                      Plan de Calidad
-                    </CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="p-4 pt-0">
-                <div className="space-y-2">
-                  <p className="text-sm text-gray-600 line-clamp-2">
-                    Cronograma Toma de Muestras internas
+                </CardHeader>
+                <CardContent className="p-4 pt-2">
+                  <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                    Cronograma Toma de Muestras internas para análisis microbiológico
                   </p>
-                  <div className="text-xs text-gray-500 space-y-1">
-                    <p><strong>Versión:</strong> 5</p>
-                    <p><strong>Aprobación:</strong> 16 dic 2022</p>
-                  </div>
-                  <div className="pt-2 flex items-center justify-between">
-                    <span className="text-xs text-violet-600 font-medium bg-violet-50 px-2 py-1 rounded">
-                      Activo
-                    </span>
-                    <Button size="sm" variant="ghost" className="text-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-green-500" />
+                      <span className="text-xs text-gray-500">Activo</span>
+                    </div>
+                    <Button size="sm" variant="ghost" className="text-xs text-violet-600 hover:text-violet-700 hover:bg-violet-50">
                       <FileText className="w-3 h-3 mr-1" />
-                      Ver
+                      Ver Cronograma
                     </Button>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+
+              {/* PL-CAL-009 - Plan de Muestreo Producto Terminado */}
+              <Card
+                className="group border-emerald-200 bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer overflow-hidden"
+                onClick={() => {
+                  setCronogramaSeleccionado({
+                    codigo: 'PL-CAL-009',
+                    titulo: 'Plan de Muestreo Producto Terminado - Cronograma Toma de Muestras',
+                    version: '4',
+                    fechaAprobacion: '16 de diciembre de 2022',
+                  });
+                  setIsCronogramaModalOpen(true);
+                }}
+              >
+                <div className="h-1 bg-emerald-500" />
+                <CardHeader className="p-4 pb-2">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
+                        <Package className="w-6 h-6 text-emerald-600" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base font-semibold text-gray-900">PL-CAL-009</CardTitle>
+                        <CardDescription className="text-xs text-gray-500">
+                          Plan de Muestreo Producto Terminado
+                        </CardDescription>
+                      </div>
+                    </div>
+                    <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 text-xs">V4</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-4 pt-2">
+                  <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                    Cronograma Toma de Muestras Producto Terminado
+                  </p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-green-500" />
+                      <span className="text-xs text-gray-500">Activo</span>
+                    </div>
+                    <Button size="sm" variant="ghost" className="text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50">
+                      <FileText className="w-3 h-3 mr-1" />
+                      Ver Cronograma
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
+          {/* Sección: Cronogramas Externos */}
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
+                <Truck className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Cronogramas Externos</h3>
+                <p className="text-sm text-gray-500">Muestreos realizados por laboratorios externos</p>
+              </div>
+              <Badge className="ml-auto bg-blue-100 text-blue-700 hover:bg-blue-100">2 activos</Badge>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* PL-CAL-009 - Cronograma Agua Potable (Externo) */}
+              <Card
+                className="group border-blue-200 bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer overflow-hidden"
+                onClick={() => {
+                  setCronogramaSeleccionado({
+                    codigo: 'PL-CAL-009',
+                    titulo: 'Cronograma Agua Potable - Muestreo Externo',
+                    version: '5',
+                    fechaAprobacion: '16 de diciembre de 2022',
+                  });
+                  setIsCronogramaModalOpen(true);
+                }}
+              >
+                <div className="h-1 bg-blue-500" />
+                <CardHeader className="p-4 pb-2">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                        <Beaker className="w-6 h-6 text-blue-600" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base font-semibold text-gray-900">PL-CAL-009</CardTitle>
+                        <CardDescription className="text-xs text-gray-500">
+                          Cronograma Agua Potable
+                        </CardDescription>
+                      </div>
+                    </div>
+                    <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 text-xs">V5</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-4 pt-2">
+                  <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                    Muestreo y análisis de agua potable realizado por laboratorios externos certificados
+                  </p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-green-500" />
+                      <span className="text-xs text-gray-500">Activo</span>
+                    </div>
+                    <Button size="sm" variant="ghost" className="text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50">
+                      <FileText className="w-3 h-3 mr-1" />
+                      Ver Cronograma
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+<Card
+                className="group border-orange-200 bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer overflow-hidden"
+                onClick={()=>{
+                  setCronogramaSeleccionado({
+                    codigo: 'PL-CAL-009',
+                    titulo: 'Plan de Muestreo Producto Terminado - Muestreo Externo',
+                    version: '4',
+                    fechaAprobacion: '16 de diciembre de 2022'
+                  });
+                  setIsCronogramaModalOpen(true);
+                }}
+              >
+                <div className="h-1 bg-orange-500" />
+                <CardHeader className="p-4 pb-2">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
+                        <Package className="w-6 h-6 text-orange-600" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base font-semibold text-gray-900">PL-CAL-009</CardTitle>
+                        <CardDescription className="text-xs text-gray-500">
+                          Producto Terminado Externo
+                        </CardDescription>
+                      </div>
+                    </div>
+                    <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 text-xs">V4</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-4 pt-2">
+                  <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                    Muestreo externo de producto terminado realizado por laboratorios certificados
+                  </p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-green-500" />
+                      <span className="text-xs text-gray-500">Activo</span>
+                    </div>
+                    <Button size="sm" variant="ghost" className="text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-50">
+                      <FileText className="w-3 h-3 mr-1" />
+                      Ver Cronograma
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+
+          {/* Leyenda */}
+          <div className="mt-8 p-4 bg-gray-50 rounded-xl border border-gray-100">
+            <h4 className="text-sm font-medium text-gray-700 mb-3">Leyenda de Estados</h4>
+            <div className="flex flex-wrap gap-4 text-xs">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-green-500" />
+                <span className="text-gray-600">Cronograma Activo</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded bg-violet-100 border border-violet-200" />
+                <span className="text-gray-600">Microbiológico</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded bg-emerald-100 border border-emerald-200" />
+                <span className="text-gray-600">Producto Terminado</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded bg-orange-100 border border-orange-200" />
+                <span className="text-gray-600">PT Externo</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded bg-blue-100 border border-blue-200" />
+                <span className="text-gray-600">Agua Potable (Externo)</span>
+              </div>
+            </div>
           </div>
         </>
       )}
+
+      {/* Modal del Cronograma con Calendario */}
+      <Dialog open={isCronogramaModalOpen} onOpenChange={setIsCronogramaModalOpen}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {cronogramaSeleccionado?.codigo === 'PL-CAL-009' ? (
+                <Package className="w-5 h-5 text-emerald-600" />
+              ) : (
+                <Microscope className="w-5 h-5 text-violet-600" />
+              )}
+              {cronogramaSeleccionado?.codigo} - {cronogramaSeleccionado?.titulo}
+            </DialogTitle>
+            <DialogDescription>
+              Versión {cronogramaSeleccionado?.version} | Aprobado: {cronogramaSeleccionado?.fechaAprobacion}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4">
+            {cronogramaSeleccionado?.codigo === 'PL-CAL-009' ? (
+              <CronogramaProductoTerminado
+                tipoCronograma={
+                  cronogramaSeleccionado?.titulo?.includes('Agua Potable') ? 'agua-potable' :
+                  cronogramaSeleccionado?.titulo?.includes('Externo') ? 'pt-externo' :
+                  'producto-terminado'
+                }
+                onViewTask={async (task) => {
+                  console.log('Ver tarea PT:', task);
+                  // Cerrar modal del cronograma
+                  setIsCronogramaModalOpen(false);
+                  
+                  // Si la tarea tiene registro107, navegar directamente a RE-CAL-107
+                  if (task.registro107) {
+                    console.log('📋 Navegando a RE-CAL-107 desde botón Ver 107:', task.registro107);
+                    // Limpiar datos corruptos antes de mostrar
+                    const registroLimpio = {
+                      ...task.registro107,
+                      area: limpiarArea(task.registro107.area || ''),
+                      tipo_muestra: limpiarTipoMuestra(task.registro107.tipo_muestra || ''),
+                    };
+                    // Navegar a la vista de Custodia de Muestras y mostrar el detalle
+                    setVistaActual('custodia-muestras');
+                    setTimeout(() => {
+                      openDetalle('custodia-muestras', 'RE-CAL-107 - Custodia de Muestras', registroLimpio);
+                    }, 100);
+                    return;
+                  }
+                  
+                  // Fallback: buscar el registro por cronograma_task_id
+                  try {
+                    const registro = await custodiaMuestrasService.getByCronogramaTaskId(task.id);
+                    if (registro) {
+                      const registroLimpio = {
+                        ...registro,
+                        area: limpiarArea(registro.area || ''),
+                        tipo_muestra: limpiarTipoMuestra(registro.tipo_muestra || ''),
+                      };
+                      setVistaActual('custodia-muestras');
+                      setTimeout(() => {
+                        openDetalle('custodia-muestras', 'RE-CAL-107 - Custodia de Muestras', registroLimpio);
+                      }, 100);
+                    } else {
+                      toast({
+                        title: 'Registro no encontrado',
+                        description: 'No se encontró el registro RE-CAL-107 asociado a esta tarea.',
+                        variant: 'destructive',
+                      });
+                    }
+                  } catch (error) {
+                    console.error('Error al obtener registro:', error);
+                    toast({
+                      title: 'Error',
+                      description: 'No se pudo cargar el registro de custodia.',
+                      variant: 'destructive',
+                    });
+                  }
+                }}
+                onCompleteTask={async (task) => {
+                  console.log('Completar tarea PT/Agua Potable:', task);
+                  // Guardar la tarea pendiente con el tipo de cronograma
+                  setPendingTaskToComplete({
+                    ...task,
+                    cronogramaTipo: 'agua-potable' // Marcar como tarea de agua potable
+                  } as any);
+                  // Cerrar modal del cronograma
+                  setIsCronogramaModalOpen(false);
+                  
+                  // Abrir directamente el modal de edición del RE-CAL-107 para completar la tarea
+                  if (task.registro107) {
+                    console.log('📋 Abriendo modal RE-CAL-107 para completar:', task.registro107);
+                    // Limpiar datos corruptos antes de mostrar
+                    const registroLimpio = {
+                      ...task.registro107,
+                      area: limpiarArea(task.registro107.area || ''),
+                      tipo_muestra: limpiarTipoMuestra(task.registro107.tipo_muestra || ''),
+                    };
+                    // Abrir el modal de edición con el registro existente
+                    setEditingCustodiaMuestras(registroLimpio);
+                    setIsCustodiaMuestrasModalOpen(true);
+                    return;
+                  }
+                  
+                  // Fallback: buscar el registro por cronograma_task_id
+                  try {
+                    const registro = await custodiaMuestrasService.getByCronogramaTaskId(task.id);
+                    if (registro) {
+                      const registroLimpio = {
+                        ...registro,
+                        area: limpiarArea(registro.area || ''),
+                        tipo_muestra: limpiarTipoMuestra(registro.tipo_muestra || ''),
+                      };
+                      // Abrir el modal de edición con el registro existente
+                      setEditingCustodiaMuestras(registroLimpio);
+                      setIsCustodiaMuestrasModalOpen(true);
+                    } else {
+                      toast({
+                        title: 'Registro no encontrado',
+                        description: 'No se encontró el registro RE-CAL-107 asociado a esta tarea.',
+                        variant: 'destructive',
+                      });
+                    }
+                  } catch (error) {
+                    console.error('Error al obtener registro:', error);
+                    toast({
+                      title: 'Error',
+                      description: 'No se pudo cargar el registro de custodia.',
+                      variant: 'destructive',
+                    });
+                  }
+                }}
+              />
+            ) : (
+              <CronogramaCalendar 
+              onViewTask={async (task) => {
+                // Cerrar modal del cronograma
+                setIsCronogramaModalOpen(false);
+                console.log('🔍 Buscando registro RE-CAL-107 para task.id:', task.id);
+                try {
+                  // Buscar el registro de Custodia de Muestras asociado a esta tarea
+                  const registro = await custodiaMuestrasService.getByCronogramaTaskId(task.id);
+                  console.log('📋 Registro RE-CAL-107 encontrado:', registro);
+                  if (registro) {
+                    // Limpiar datos corruptos antes de mostrar
+                    const registroLimpio = {
+                      ...registro,
+                      area: limpiarArea(registro.area || ''),
+                      tipo_muestra: limpiarTipoMuestra(registro.tipo_muestra || ''),
+                    };
+                    // Navegar a la vista de Custodia de Muestras y mostrar el detalle
+                    setVistaActual('custodia-muestras');
+                    setTimeout(() => {
+                      openDetalle('custodia-muestras', 'RE-CAL-107 - Custodia de Muestras', registroLimpio);
+                    }, 100);
+                  } else {
+                    toast({
+                      title: 'Registro no encontrado',
+                      description: 'No se encontró el registro de custodia asociado a esta tarea.',
+                      variant: 'destructive',
+                    });
+                  }
+                } catch (error) {
+                  console.error('Error al obtener registro:', error);
+                  toast({
+                    title: 'Error',
+                    description: 'No se pudo cargar el registro de custodia asociado.',
+                    variant: 'destructive',
+                  });
+                }
+              }}
+              onCompleteTask={async (task) => {
+                // Guardar la tarea pendiente para completar después con el tipo de cronograma
+                setPendingTaskToComplete({
+                  ...task,
+                  cronogramaTipo: 'microbiologia' // Marcar como tarea de microbiología
+                } as any);
+                // Cerrar modal del cronograma
+                setIsCronogramaModalOpen(false);
+                // Navegar a RE-CAL-107 (Custodia de Muestras)
+                setVistaActual('custodia-muestras');
+
+                // Verificar si ya existe un registro para esta tarea del cronograma
+                try {
+                  const existing = await custodiaMuestrasService.getByCronogramaTaskId(task.id);
+                  if (existing) {
+                    // Si existe, limpiar datos corruptos y cargarlo para edición
+                    const registroLimpio = {
+                      ...existing,
+                      area: limpiarArea(existing.area || ''),
+                      tipo_muestra: limpiarTipoMuestra(existing.tipo_muestra || ''),
+                    };
+                    setEditingCustodiaMuestras(registroLimpio);
+                  } else {
+                    // Si no existe, crear nuevo registro
+                    setEditingCustodiaMuestras(null);
+                  }
+                } catch {
+                  // Si hay error al buscar, asumir que no existe y crear nuevo
+                  setEditingCustodiaMuestras(null);
+                }
+
+                setIsCustodiaMuestrasModalOpen(true);
+              }}
+            />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Modales para agregar registros */}
       <AddCondicionesAmbientalesModal
@@ -2549,10 +3843,22 @@ export default function LabMicrobiologiaPage() {
       
       <AddCustodiaMuestrasModal
         isOpen={isCustodiaMuestrasModalOpen}
-        onOpenChange={setIsCustodiaMuestrasModalOpen}
+        onOpenChange={(open) => {
+          setIsCustodiaMuestrasModalOpen(open);
+          if (!open) {
+            // Limpiar pendingTaskToComplete cuando se cierra el modal
+            setPendingTaskToComplete(null);
+          }
+        }}
         onSuccessfulSubmit={handleCustodiaMuestrasSuccessfulSubmit}
         editingRecord={editingCustodiaMuestras}
         onEditingRecordChange={setEditingCustodiaMuestras}
+        initialTask={pendingTaskToComplete ? {
+          id: pendingTaskToComplete.id,
+          tipo: pendingTaskToComplete.tipo === 'otro' ? (pendingTaskToComplete.tipoPersonalizado || 'Otro') : pendingTaskToComplete.tipo,
+          area: pendingTaskToComplete.area === 'Otro' ? (pendingTaskToComplete.areaPersonalizada || 'Otro') : pendingTaskToComplete.area,
+          responsable: pendingTaskToComplete.responsable,
+        } : null}
       />
       
       <AddIncubadoraControlModal
@@ -2569,6 +3875,12 @@ export default function LabMicrobiologiaPage() {
         onSuccessfulSubmit={handleResultadosMicrobiologicosSuccessfulSubmit}
         editingRecord={editingResultadosMicrobiologicos}
         onEditingRecordChange={setEditingResultadosMicrobiologicos}
+      />
+      
+      <ViewResultadosMicrobiologicosModal
+        isOpen={isViewResultadosMicrobiologicosModalOpen}
+        onOpenChange={setIsViewResultadosMicrobiologicosModalOpen}
+        registro={viewingResultadosMicrobiologicos}
       />
       
       <AddControlLavadoInactivacionModal

@@ -108,7 +108,7 @@ export function EditLimpiezaRegistroModal({
 
             <div className="space-y-2">
               <Label>Turno</Label>
-              <Select value={turno} onValueChange={(v) => setTurno((v || '') as any)}>
+              <Select value={turno || undefined} onValueChange={(v) => setTurno(v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecciona turno" />
                 </SelectTrigger>
