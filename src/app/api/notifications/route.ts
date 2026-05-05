@@ -27,6 +27,9 @@ export async function GET(request: NextRequest) {
        FROM notificaciones.notifications n
        LEFT JOIN notificaciones.notification_reads nr
          ON nr.notification_id = n.id AND nr.user_id = $1
+       LEFT JOIN notificaciones.notification_hidden nh
+         ON nh.notification_id = n.id AND nh.user_id = $1
+       WHERE nh.notification_id IS NULL
        ORDER BY n.created_at DESC
        LIMIT $2`,
       [user.id, limit]
@@ -37,7 +40,9 @@ export async function GET(request: NextRequest) {
        FROM notificaciones.notifications n
        LEFT JOIN notificaciones.notification_reads nr
          ON nr.notification_id = n.id AND nr.user_id = $1
-       WHERE nr.notification_id IS NULL`,
+       LEFT JOIN notificaciones.notification_hidden nh
+         ON nh.notification_id = n.id AND nh.user_id = $1
+       WHERE nr.notification_id IS NULL AND nh.notification_id IS NULL`,
       [user.id]
     );
 
@@ -77,5 +82,35 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error al marcar notificación como leída:', error);
     return NextResponse.json({ error: 'Error al marcar notificación como leída' }, { status: 500 });
+  }
+}
+
+// DELETE - Ocultar notificación para el usuario (no la elimina de la BD)
+export async function DELETE(request: NextRequest) {
+  try {
+    const user = await getAuthedUser(request);
+
+    if (!user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const notificationId = Number(searchParams.get('id'));
+
+    if (!Number.isFinite(notificationId)) {
+      return NextResponse.json({ error: 'notificationId inválido' }, { status: 400 });
+    }
+
+    await pool.query(
+      `INSERT INTO notificaciones.notification_hidden (user_id, notification_id)
+       VALUES ($1, $2)
+       ON CONFLICT (user_id, notification_id) DO NOTHING`,
+      [user.id, notificationId]
+    );
+
+    return NextResponse.json({ success: true, message: 'Notificación oculta' });
+  } catch (error) {
+    console.error('Error al ocultar notificación:', error);
+    return NextResponse.json({ error: 'Error al ocultar notificación' }, { status: 500 });
   }
 }

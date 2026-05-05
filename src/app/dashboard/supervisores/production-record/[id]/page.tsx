@@ -1052,7 +1052,7 @@ export default function ProductionRecordDetailPage({
   };
 
   return (
-    <div className="min-h-screen bg-white p-4 md:p-8">
+    <div className="min-h-screen bg-white p-2 sm:p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <Button variant="ghost" asChild className="mb-4 hover:bg-gray-100 transition-colors">
@@ -1069,30 +1069,30 @@ export default function ProductionRecordDetailPage({
                 {record.producto_nombre || record.producto}
               </p>
             </div>
-            <div className="flex items-center gap-3">
-              <Badge variant="outline" className="bg-white px-3 py-1 text-sm border-gray-300 shadow-sm">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <Badge variant="outline" className="bg-white px-2 sm:px-3 py-1 text-xs sm:text-sm border-gray-300 shadow-sm">
                 <Calendar className="mr-1 h-3 w-3" />
                 {formatDate(record.fechaproduccion)}
               </Badge>
-              <Badge variant="outline" className="bg-white px-3 py-1 text-sm border-gray-300 shadow-sm">
+              <Badge variant="outline" className="bg-white px-2 sm:px-3 py-1 text-xs sm:text-sm border-gray-300 shadow-sm">
                 <Hash className="mr-1 h-3 w-3" />
                 Lote: {record.lote}
               </Badge>
               <Button
                 variant="outline"
                 onClick={() => setIsHistoryPanelOpen(true)}
-                className="flex items-center gap-2 text-blue-600 border-blue-200 hover:bg-blue-50"
+                className="flex items-center gap-1 sm:gap-2 text-blue-600 border-blue-200 hover:bg-blue-50 text-xs sm:text-sm px-2 sm:px-3 h-8 sm:h-9"
               >
-                <Clock className="h-4 w-4" />
-                Ver Historial
+                <Clock className="h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Ver</span> Historial
               </Button>
               {canEditCompleted && (
                 <Button
                   onClick={() => setIsEditModalOpen(true)}
                   variant="outline"
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-3 h-8 sm:h-9"
                 >
-                  <Pencil className="h-4 w-4" />
+                  <Pencil className="h-3 w-3 sm:h-4 sm:w-4" />
                   Editar
                 </Button>
               )}
@@ -1100,10 +1100,10 @@ export default function ProductionRecordDetailPage({
                 <Button
                   onClick={() => setConfirmDeleteOpen(true)}
                   variant="outline"
-                  className="flex items-center gap-2 text-red-700 border-red-200 hover:bg-red-50"
+                  className="flex items-center gap-1 sm:gap-2 text-red-700 border-red-200 hover:bg-red-50 text-xs sm:text-sm px-2 sm:px-3 h-8 sm:h-9"
                   disabled={isDeleting}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
                   Eliminar
                 </Button>
               )}
@@ -1111,10 +1111,10 @@ export default function ProductionRecordDetailPage({
                 <Button
                   onClick={completarRegistro}
                   disabled={isCompleting}
-                  className="bg-orange-600 hover:bg-orange-700 text-white"
+                  className="bg-orange-600 hover:bg-orange-700 text-white text-xs sm:text-sm px-2 sm:px-3 h-8 sm:h-9"
                 >
-                  <CheckCircle className="mr-2 h-4 w-4" />
-                  {isCompleting ? 'Completando...' : 'Completar'}
+                  <CheckCircle className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                  {isCompleting ? '...' : 'Completar'}
                 </Button>
               )}
             </div>

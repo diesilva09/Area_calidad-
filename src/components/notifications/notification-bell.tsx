@@ -16,6 +16,7 @@ type NotificationItem = {
   dedupe_key?: string | null;
   created_at?: string | null;
   is_read?: boolean;
+  is_hidden?: boolean;
 };
 
 type NotificationsResponse = {
@@ -83,20 +84,44 @@ export default function NotificationBell() {
         credentials: 'include',
         body: JSON.stringify({ notificationId }),
       });
-      
+
       if (res.status === 401) {
         // Usuario no autenticado, ignorar silenciosamente
         return;
       }
-      
+
       if (!res.ok) {
         const errorText = await res.text().catch(() => 'Error desconocido');
         throw new Error(errorText);
       }
-      
+
       await load();
     } catch (e) {
       console.error('Error marcando notificación como leída:', e);
+    }
+  };
+
+  const hideNotification = async (notificationId: number) => {
+    try {
+      const res = await fetch(`/api/notifications?id=${notificationId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (res.status === 401) {
+        // Usuario no autenticado, ignorar silenciosamente
+        return;
+      }
+
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => 'Error desconocido');
+        throw new Error(errorText);
+      }
+
+      // Actualizar lista local sin recargar
+      setItems(prev => prev.filter(n => n.id !== notificationId));
+    } catch (e) {
+      console.error('Error ocultando notificación:', e);
     }
   };
 
@@ -265,25 +290,46 @@ export default function NotificationBell() {
           ) : (
             <div className="divide-y">
               {topItems.map((n) => (
-                <button
+                <div
                   key={String(n.id)}
-                  type="button"
-                  onClick={() => markRead(n.id)}
-                  className={`w-full text-left px-2 py-2.5 hover:bg-gray-50 ${n.is_read ? '' : 'bg-blue-50/40'}`}
+                  className={`group flex items-start gap-1 px-2 py-2.5 hover:bg-gray-50 ${n.is_read ? '' : 'bg-blue-50/40'}`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium break-words">{n.title}</div>
-                      <div className="text-xs text-muted-foreground break-words mt-0.5">{n.message}</div>
+                  <button
+                    type="button"
+                    onClick={() => markRead(n.id)}
+                    className="flex-1 text-left min-w-0"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium break-words">{n.title}</div>
+                        <div className="text-xs text-muted-foreground break-words mt-0.5">{n.message}</div>
+                      </div>
+                      {!n.is_read && (
+                        <Badge className="shrink-0 bg-blue-100 text-blue-800 hover:bg-blue-100">Nuevo</Badge>
+                      )}
                     </div>
-                    {!n.is_read && (
-                      <Badge className="shrink-0 bg-blue-100 text-blue-800 hover:bg-blue-100">Nuevo</Badge>
-                    )}
-                  </div>
-                </button>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      hideNotification(n.id);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 shrink-0 p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-all"
+                    title="Eliminar mensaje"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                  </button>
+                </div>
               ))}
             </div>
           )}
+        </div>
+
+        <div className="px-2 py-1.5 border-t border-gray-100">
+          <p className="text-[10px] text-muted-foreground text-center">
+            Los mensajes eliminados solo se ocultan para ti, no se borran del sistema.
+          </p>
         </div>
       </PopoverContent>
     </Popover>
