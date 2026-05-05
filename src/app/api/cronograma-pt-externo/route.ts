@@ -149,7 +149,7 @@ export async function PUT(request: NextRequest) {
     const values: any[] = [];
     let paramCount = 0;
 
-    const fields = ['producto_id', 'producto_nombre', 'fecha_programada', 'area', 'responsable', 'estado', 'descripcion'];
+    const fields = ['producto_id', 'producto_nombre', 'fecha_programada', 'area', 'responsable', 'estado', 'descripcion', 'marca_manual'];
     for (const field of fields) {
       if (body[field] !== undefined) {
         paramCount++;

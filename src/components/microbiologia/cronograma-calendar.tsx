@@ -488,6 +488,7 @@ export function CronogramaCalendar({ onViewTask, onCompleteTask }: CronogramaCal
       return eventDateStr === dateStr;
     });
     
+    
     if (tasksOnDate.length === 0) return {};
     
     // Verificar si hay tareas pendientes

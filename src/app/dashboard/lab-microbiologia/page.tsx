@@ -605,6 +605,22 @@ export default function LabMicrobiologiaPage() {
             title: 'Éxito',
             description: 'La tarea del cronograma de agua potable ha sido marcada como completada',
           });
+        } else if (tipoCronograma === 'materia-prima') {
+          // Marcar tarea de materia prima como completada
+          const response = await fetch(`/api/cronograma-materia-prima?id=${pendingTaskToComplete.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ estado: 'completed' }),
+          });
+
+          if (!response.ok) {
+            throw new Error('Error al marcar la tarea de materia prima como completada');
+          }
+
+          toast({
+            title: 'Éxito',
+            description: 'La tarea del cronograma de materia prima ha sido marcada como completada',
+          });
         } else {
           // Marcar tarea de microbiología como completada
           await microbiologiaCronogramaService.markAsCompleted(pendingTaskToComplete.id);
@@ -3474,7 +3490,7 @@ export default function LabMicrobiologiaPage() {
                 <h3 className="text-lg font-semibold text-gray-900">Cronogramas Externos</h3>
                 <p className="text-sm text-gray-500">Muestreos realizados por laboratorios externos</p>
               </div>
-              <Badge className="ml-auto bg-blue-100 text-blue-700 hover:bg-blue-100">2 activos</Badge>
+              <Badge className="ml-auto bg-blue-100 text-blue-700 hover:bg-blue-100">3 activos</Badge>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -3569,6 +3585,53 @@ export default function LabMicrobiologiaPage() {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Card: PL-CAL-010 - Materia Prima */}
+              <Card
+                className="group border-purple-200 bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer overflow-hidden"
+                onClick={()=>{
+                  setCronogramaSeleccionado({
+                    codigo: 'PL-CAL-010',
+                    titulo: 'Plan de Muestreo Materia Prima',
+                    version: '1',
+                    fechaAprobacion: ''
+                  });
+                  setIsCronogramaModalOpen(true);
+                }}
+              >
+                <div className="h-1 bg-purple-500" />
+                <CardHeader className="p-4 pb-2">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-purple-100 rounded-lg">
+                        <Beaker className="w-4 h-4 text-purple-600" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-sm font-semibold text-gray-900">PL-CAL-010</CardTitle>
+                        <p className="text-xs text-gray-500">Materia Prima</p>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+                      V1
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-4 pt-2">
+                  <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                    Muestreo de materia prima fresca e insumos de proveedores
+                  </p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-green-500" />
+                      <span className="text-xs text-gray-500">Activo</span>
+                    </div>
+                    <Button size="sm" variant="ghost" className="text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-50">
+                      <FileText className="w-3 h-3 mr-1" />
+                      Ver Cronograma
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </div>
 
@@ -3596,6 +3659,10 @@ export default function LabMicrobiologiaPage() {
                 <div className="w-4 h-4 rounded bg-blue-100 border border-blue-200" />
                 <span className="text-gray-600">Agua Potable (Externo)</span>
               </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded bg-purple-100 border border-purple-200" />
+                <span className="text-gray-600">Materia Prima</span>
+              </div>
             </div>
           </div>
         </>
@@ -3619,9 +3686,10 @@ export default function LabMicrobiologiaPage() {
           </DialogHeader>
 
           <div className="mt-4">
-            {cronogramaSeleccionado?.codigo === 'PL-CAL-009' ? (
+            {['PL-CAL-009', 'PL-CAL-010'].includes(cronogramaSeleccionado?.codigo || '') ? (
               <CronogramaProductoTerminado
                 tipoCronograma={
+                  cronogramaSeleccionado?.codigo === 'PL-CAL-010' ? 'materia-prima' :
                   cronogramaSeleccionado?.titulo?.includes('Agua Potable') ? 'agua-potable' :
                   cronogramaSeleccionado?.titulo?.includes('Externo') ? 'pt-externo' :
                   'producto-terminado'
@@ -3679,10 +3747,16 @@ export default function LabMicrobiologiaPage() {
                 }}
                 onCompleteTask={async (task) => {
                   console.log('Completar tarea PT/Agua Potable:', task);
+                  // Determinar el tipo de cronograma basado en el cronograma seleccionado
+                  const cronogramaTipo =
+                    cronogramaSeleccionado?.codigo === 'PL-CAL-010' ? 'materia-prima' :
+                    cronogramaSeleccionado?.titulo?.includes('Agua Potable') ? 'agua-potable' :
+                    cronogramaSeleccionado?.titulo?.includes('Externo') ? 'pt-externo' :
+                    'producto-terminado';
                   // Guardar la tarea pendiente con el tipo de cronograma
                   setPendingTaskToComplete({
                     ...task,
-                    cronogramaTipo: 'agua-potable' // Marcar como tarea de agua potable
+                    cronogramaTipo // Usar el tipo determinado dinámicamente
                   } as any);
                   // Cerrar modal del cronograma
                   setIsCronogramaModalOpen(false);

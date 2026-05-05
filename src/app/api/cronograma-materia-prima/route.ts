@@ -49,7 +49,7 @@ async function getNextCodigoMuestra(fecha: string): Promise<string> {
   }
 }
 
-// GET - Obtener todas las tareas del cronograma de agua potable
+// GET - Obtener todas las tareas del cronograma de materia prima
 export async function GET(request: NextRequest) {
   try {
     const user = await getAuthedUser(request);
@@ -140,16 +140,17 @@ export async function POST(request: NextRequest) {
     try {
       await client.query('BEGIN');
 
-      // 1. Crear la tarea en cronograma_agua_potable
+      // 1. Crear la tarea en cronograma_materia_prima
       const result = await client.query(
-        `INSERT INTO lab_microbiologia.cronograma_agua_potable (
-          area, ubicacion, fecha_programada, responsable, estado, descripcion,
+        `INSERT INTO lab_microbiologia.cronograma_materia_prima (
+          producto_id, producto_nombre, tipo_materia, fecha_programada, responsable, estado, descripcion,
           creado_por, actualizado_por
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING *`,
         [
-          area,
-          ubicacion,
+          producto_id,
+          producto_nombre || null,
+          tipo_materia,
           fecha_programada,
           responsable || null,
           estado || 'pending',
@@ -178,19 +179,19 @@ export async function POST(request: NextRequest) {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
         [
           codigoMuestra,                           // $1: código M-X
-          'Agua Potable',                          // $2: tipo
-          `${area} - ${ubicacion}`,                // $3: muestra_id (descripción del punto)
-          area || 'Planta Agua Potable',           // $4: área
+          'Materia Prima',                         // $2: tipo
+          producto_nombre || producto_id,            // $3: muestra_id (nombre del producto)
+          tipo_materia || 'Materia Prima',         // $4: área (tipo de materia)
           'N/A',                                   // $5: temperatura
           '1',                                     // $6: cantidad
-          'control_rutinario',                     // $7: motivo
-          fecha_programada,                       // $8: fecha toma muestra
+          'control_rutinario',                   // $7: motivo
+          fecha_programada,                        // $8: fecha toma muestra
           horaActual,                              // $9: hora toma muestra
           fechaActual,                             // $10: fecha recepción lab
           horaActual,                              // $11: hora recepción lab
           'N/A',                                   // $12: medio transporte
-          responsable || 'PENDIENTE',              // $13: responsable
-          'Generado automáticamente desde cronograma PL-CAL-009 Agua Potable', // $14: observaciones
+          responsable || 'PENDIENTE',            // $13: responsable
+          `Generado automáticamente desde cronograma PL-CAL-010 Materia Prima - ${tipo_materia}`, // $14: observaciones
           nuevaTarea.id,                           // $15: cronograma_task_id
           'pendiente',                             // $16: estado
           now,                                     // $17: created_at
@@ -246,13 +247,14 @@ export async function PUT(request: NextRequest) {
 
     // Campos permitidos para actualizar
     const fields = [
-      'area',
-      'ubicacion',
+      'producto_id',
+      'producto_nombre',
+      'tipo_materia',
       'fecha_programada',
       'responsable',
       'estado',
-      'marca_manual',
       'descripcion',
+      'marca_manual',
     ];
 
     const updates: string[] = [];
@@ -261,6 +263,7 @@ export async function PUT(request: NextRequest) {
 
     for (const field of fields) {
       if (body[field] !== undefined) {
+        console.log(`✅ Campo detectado: ${field} = ${body[field]}`);
         updates.push(`${field} = $${paramCount}`);
         values.push(body[field]);
         paramCount++;
@@ -275,7 +278,11 @@ export async function PUT(request: NextRequest) {
 
     values.push(id);
 
+    console.log(`🔍 Updates detectados: ${updates.length - 2}, Total updates: ${updates.length}`);
+    console.log(`🔍 Query construida:`, updates.join(', '));
+
     if (updates.length === 2) {
+      console.log('❌ No hay campos para actualizar (solo updated_at y actualizado_por)');
       return NextResponse.json(
         { error: 'No hay campos para actualizar' },
         { status: 400 }
@@ -284,7 +291,7 @@ export async function PUT(request: NextRequest) {
 
     // FIX: Usar values.length para obtener el índice correcto del ID
     const query = `
-      UPDATE lab_microbiologia.cronograma_agua_potable
+      UPDATE lab_microbiologia.cronograma_materia_prima
       SET ${updates.join(', ')}
       WHERE id = $${values.length}
       RETURNING *
@@ -298,9 +305,18 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json(result.rows[0]);
   } catch (error: any) {
-    console.error('Error al actualizar tarea de agua potable:', error);
-    console.error('Error detalles:', error.message);
-    console.error('Error stack:', error.stack);
+    console.error('❌ Error al actualizar tarea de materia prima:', error);
+    console.error('❌ Error detalles:', error.message);
+    console.error('❌ Error stack:', error.stack);
+    
+    // Error específico si la columna no existe
+    if (error.message?.includes('column "marca_manual" does not exist')) {
+      return NextResponse.json(
+        { error: 'La columna marca_manual no existe en la tabla. Ejecute la migración SQL.' },
+        { status: 500 }
+      );
+    }
+    
     return NextResponse.json(
       { error: 'Error al actualizar la tarea', details: error.message },
       { status: 500 }
@@ -327,7 +343,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const result = await pool.query(
-      `DELETE FROM lab_microbiologia.cronograma_agua_potable WHERE id = $1 RETURNING *`,
+      `DELETE FROM lab_microbiologia.cronograma_materia_prima WHERE id = $1 RETURNING *`,
       [id]
     );
 
@@ -337,7 +353,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ message: 'Tarea eliminada correctamente' });
   } catch (error) {
-    console.error('Error al eliminar tarea de agua potable:', error);
+    console.error('Error al eliminar tarea de materia prima:', error);
     return NextResponse.json(
       { error: 'Error al eliminar la tarea' },
       { status: 500 }

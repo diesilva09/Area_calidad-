@@ -918,10 +918,10 @@ export default function ProductionRecordDetailPage({
     };
 
     return (
-      <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
         {values.map((v, idx) => (
           <div key={idx} className={getCellClass(v)} title={`Muestra ${idx + 1}`}>
-            {v}
+            <span className="text-xs sm:text-sm">{v}</span>
           </div>
         ))}
       </div>
@@ -1286,7 +1286,7 @@ export default function ProductionRecordDetailPage({
                     {typeof temperaturaRangoActual.max === 'number' ? `${temperaturaRangoActual.max}°C` : 'Sin máximo'}
                   </div>
                 )}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <div className="text-center">
                     <label className="text-xs font-medium text-gray-500">T AM 1 Envasado (°C)</label>
                     <p className={temperatureClass(record.tempam1)}>{record.tempam1}</p>
@@ -1579,7 +1579,7 @@ export default function ProductionRecordDetailPage({
                   <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha Análisis PT</label>
                   <p className="mt-1 text-sm font-medium text-gray-800">{formatDate(record.fechaanalisispt)}</p>
                 </div>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
                     <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                       <Hash className="h-3 w-3" /> No. Mezcla
@@ -1629,7 +1629,7 @@ export default function ProductionRecordDetailPage({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
                     <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                       <Droplet className="h-3 w-3" /> Acidez
@@ -1674,7 +1674,7 @@ export default function ProductionRecordDetailPage({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
                     <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                       <Gauge className="h-3 w-3" /> Consistencia
@@ -1718,7 +1718,7 @@ export default function ProductionRecordDetailPage({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
                     <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                       <Award className="h-3 w-3" /> Presentación Final
@@ -1784,7 +1784,7 @@ export default function ProductionRecordDetailPage({
                       </div>
 
                       {/* Fila 1: No. Mezcla, Vacío, °Brix, pH */}
-                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div>
                           <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                             <Hash className="h-3 w-3" /> No. Mezcla
@@ -1835,7 +1835,7 @@ export default function ProductionRecordDetailPage({
                       </div>
 
                       {/* Fila 2: Acidez, PPM-SO2, Peso Neto Real PT, Peso Drenado Real PT */}
-                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div>
                           <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                             <Droplet className="h-3 w-3" /> Acidez
@@ -1881,7 +1881,7 @@ export default function ProductionRecordDetailPage({
                       </div>
 
                       {/* Fila 3: Consistencia, Tapado/Cierre, Etiqueta, Estado */}
-                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div>
                           <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                             <Gauge className="h-3 w-3" /> Consistencia

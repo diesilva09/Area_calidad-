@@ -155,6 +155,7 @@ interface TareaCronogramaPT extends CalendarEvent {
   productoNombre?: string;
   codigoMuestra?: string; // Código RE-CAL-107 generado automáticamente
   registro107?: any; // Datos del registro RE-CAL-107 (para navegación)
+  tipoMateria?: string; // Solo para cronograma de materia prima
 }
 
 // Props del componente
@@ -193,6 +194,7 @@ export function CronogramaProductoTerminado({
     area: tipoCronograma === 'agua-potable' ? AREAS_AGUA_POTABLE[0] : AREAS_PT[0],
     areaPersonalizada: '',
     ubicacion: tipoCronograma === 'agua-potable' ? UBICACIONES_AGUA_POTABLE[0] : '',
+    tipoMateria: TIPOS_MATERIA_LIST[0],
     frecuencia: FRECUENCIAS[0],
     fecha: moment().format('YYYY-MM-DD'),
     descripcion: '',
@@ -242,7 +244,7 @@ export function CronogramaProductoTerminado({
     if (isCreateModalOpen && productos.length === 0) {
       loadProductos();
     }
-  }, [isCreateModalOpen]);
+  }, [isCreateModalOpen, tipoCronograma]);
 
   // Cargar tareas del cronograma al iniciar
   useEffect(() => {
@@ -252,8 +254,23 @@ export function CronogramaProductoTerminado({
   async function loadProductos() {
     try {
       setProductosLoading(true);
-      const data = await productsAPI.getAll();
-      setProductos(data);
+
+      // Usar endpoint diferente según el tipo de cronograma
+      if (tipoCronograma === 'materia-prima') {
+        const response = await fetch('/api/materia-prima-productos');
+        if (!response.ok) throw new Error('Error al cargar productos de materia prima');
+        const data = await response.json();
+        // Transformar datos al formato esperado por el componente
+        const productosFormateados = data.map((p: any) => ({
+          id: p.id.toString(),
+          name: p.nombre,
+          category_id: 'materia-prima'
+        }));
+        setProductos(productosFormateados);
+      } else {
+        const data = await productsAPI.getAll();
+        setProductos(data);
+      }
     } catch (error) {
       console.error('Error al cargar productos:', error);
       toast({
@@ -304,6 +321,7 @@ export function CronogramaProductoTerminado({
           status: tarea.estado || 'pending',
           productoId: tarea.producto_id,
           productoNombre: tarea.producto_nombre,
+          tipoMateria: tarea.tipo_materia,
           responsable: tarea.responsable,
           codigoMuestra: tarea.codigo_muestra,
           marcaManual: tarea.marca_manual || null,
@@ -364,8 +382,8 @@ export function CronogramaProductoTerminado({
 
   // Crear nueva tarea
   const handleCreateTask = useCallback(async () => {
-    // Validar producto solo para cronograma de producto terminado (interno y externo)
-    if ((tipoCronograma === 'producto-terminado' || tipoCronograma === 'pt-externo') && !formData.productoId) {
+    // Validar producto solo para cronograma de producto terminado (interno y externo) y materia prima
+    if ((tipoCronograma === 'producto-terminado' || tipoCronograma === 'pt-externo' || tipoCronograma === 'materia-prima') && !formData.productoId) {
       toast({
         title: 'Producto requerido',
         description: 'Debe seleccionar un producto para crear la muestra',
@@ -388,13 +406,22 @@ export function CronogramaProductoTerminado({
       const endpoint = getApiEndpoint();
 
       // Datos según tipo de cronograma
-      const requestBody = tipoCronograma === 'agua-potable' 
+      const requestBody = tipoCronograma === 'agua-potable'
         ? {
             area: formData.area === 'Otro' ? formData.areaPersonalizada : formData.area,
             ubicacion: formData.ubicacion,
             fecha_programada: formData.fecha,
             responsable: formData.responsable,
             descripcion: formData.descripcion || '',
+            estado: 'pending',
+          }
+        : tipoCronograma === 'materia-prima'
+        ? {
+            producto_id: formData.productoId,
+            producto_nombre: formData.productoNombre,
+            tipo_materia: formData.tipoMateria,
+            fecha_programada: formData.fecha,
+            responsable: formData.responsable,
             estado: 'pending',
           }
         : {
@@ -440,6 +467,7 @@ export function CronogramaProductoTerminado({
         productoId: nuevaTareaDB.producto_id,
         productoNombre: formData.productoNombre,
         codigoMuestra: nuevaTareaDB.codigo_muestra,
+        marcaManual: null,
       };
 
       setEventos(prev => [...prev, nuevaTarea]);
@@ -665,7 +693,9 @@ export function CronogramaProductoTerminado({
       });
 
       if (!response.ok) {
-        throw new Error('Error al actualizar marca');
+        const errorData = await response.json().catch(() => ({ error: 'Error desconocido' }));
+        console.error('Error response from API:', response.status, errorData);
+        throw new Error(errorData.error || `Error ${response.status}: ${response.statusText}`);
       }
 
       // Actualizar estado local
@@ -1179,7 +1209,9 @@ export function CronogramaProductoTerminado({
                               />
                               <div className="flex flex-col">
                                 <span className="font-medium text-sm">{producto.name}</span>
-                                <span className="text-xs text-gray-500">ID: {producto.id}</span>
+                                {tipoCronograma !== 'materia-prima' && (
+                                  <span className="text-xs text-gray-500">ID: {producto.id}</span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1195,15 +1227,39 @@ export function CronogramaProductoTerminado({
                         <Package className="w-3 h-3 mr-1" />
                         {formData.productoNombre}
                       </Badge>
-                      <span className="text-xs text-gray-500">ID: {formData.productoId}</span>
+                      {tipoCronograma !== 'materia-prima' && (
+                        <span className="text-xs text-gray-500">ID: {formData.productoId}</span>
+                      )}
                     </div>
                   )}
                 </div>
               </div>
             )}
 
-            {/* Campo Área - Visible (condicional según tipo) */}
-            {tipoCronograma === 'agua-potable' ? (
+            {/* Campo Área/Tipo de Materia - Visible (condicional según tipo) */}
+            {tipoCronograma === 'materia-prima' ? (
+              <>
+                {/* Tipo de Materia para Materia Prima */}
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="tipoMateria" className="text-right text-sm">Tipo de Materia *</Label>
+                  <Select
+                    value={formData.tipoMateria}
+                    onValueChange={(v) => setFormData({ ...formData, tipoMateria: v })}
+                  >
+                    <SelectTrigger className="col-span-3 w-full overflow-hidden text-ellipsis whitespace-nowrap">
+                      <span className="truncate block w-full overflow-hidden text-ellipsis whitespace-nowrap">
+                        <SelectValue placeholder="Seleccionar tipo de material o insumo..." />
+                      </span>
+                    </SelectTrigger>
+                    <SelectContent className="min-w-[280px] max-w-[400px]">
+                      {TIPOS_MATERIA_LIST.map((tipo) => (
+                        <SelectItem key={tipo} value={tipo} className="truncate">{tipo}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            ) : tipoCronograma === 'agua-potable' ? (
               <>
                 {/* Área para Agua Potable - Usando el mismo listado que otros cronogramas */}
                 <div className="grid grid-cols-4 items-center gap-4">
@@ -1461,15 +1517,15 @@ export function CronogramaProductoTerminado({
                     <p className="font-medium">
                       {viewingTask.productoNombre || 'Sin producto asignado'}
                     </p>
-                    {viewingTask.productoId && (
+                    {viewingTask.productoId && tipoCronograma !== 'materia-prima' && (
                       <p className="text-xs text-gray-500">ID: {viewingTask.productoId}</p>
                     )}
                   </div>
                 </div>
               )}
 
-              {/* Área - Punto de Agua (para agua potable) */}
-              {viewingTask.area && (
+              {/* Área / Tipo de Materia según cronograma */}
+              {viewingTask.area && tipoCronograma !== 'materia-prima' && (
                 <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
                   <Building className="w-5 h-5 text-gray-400" />
                   <div>
@@ -1477,6 +1533,17 @@ export function CronogramaProductoTerminado({
                       {tipoCronograma === 'agua-potable' ? 'Punto de Agua' : 'Área'}
                     </p>
                     <p className="font-medium">{viewingTask.area}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Tipo de Materia - Solo para Materia Prima */}
+              {tipoCronograma === 'materia-prima' && (
+                <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                  <Package className="w-5 h-5 text-gray-400" />
+                  <div>
+                    <p className="text-sm text-gray-600">Tipo de Materia</p>
+                    <p className="font-medium">{viewingTask.tipoMateria || 'Sin tipo'}</p>
                   </div>
                 </div>
               )}

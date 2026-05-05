@@ -394,7 +394,7 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
           <h2 className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-semibold mb-3 flex items-center gap-2">
             <Calendar className="h-3.5 w-3.5" /> Información General
           </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {[
               { label: 'Fecha', value: formatFechaSinDesfase(record.fecha) },
               { label: 'Mes de Corte', value: record.mescorte },
