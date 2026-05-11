@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -38,6 +39,7 @@ function urlBase64ToUint8Array(base64String: string) {
 }
 
 export default function NotificationBell() {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -73,6 +75,25 @@ export default function NotificationBell() {
       setUnreadCount(0);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const getNotificationUrl = (n: NotificationItem): string | null => {
+    if (n.entity_type === 'production_record' && n.entity_id) {
+      return `/dashboard/supervisores/production-record/${n.entity_id}`;
+    }
+    if (n.entity_type === 'bpm_verification') {
+      return '/dashboard/verificacion-bpm';
+    }
+    return null;
+  };
+
+  const handleNotificationClick = async (n: NotificationItem) => {
+    await markRead(n.id);
+    const url = getNotificationUrl(n);
+    if (url) {
+      setOpen(false);
+      router.push(url);
     }
   };
 
@@ -268,12 +289,7 @@ export default function NotificationBell() {
           {pushStatus === 'unsupported' ? (
             <div className="text-xs text-muted-foreground">Tu navegador no soporta Web Push.</div>
           ) : pushStatus === 'enabled' ? (
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-xs text-muted-foreground">Notificaciones del navegador: activas</div>
-              <Button type="button" variant="outline" size="sm" onClick={sendTestPush} className="h-7 px-2 text-xs">
-                Probar
-              </Button>
-            </div>
+            <div className="text-xs text-muted-foreground">Notificaciones del navegador: activas</div>
           ) : (
             <div className="flex items-center justify-between gap-2">
               <div className="text-xs text-muted-foreground">Notificaciones del navegador: desactivadas</div>
@@ -296,11 +312,11 @@ export default function NotificationBell() {
                 >
                   <button
                     type="button"
-                    onClick={() => markRead(n.id)}
+                    onClick={() => handleNotificationClick(n)}
                     className="flex-1 text-left min-w-0"
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium break-words">{n.title}</div>
                         <div className="text-xs text-muted-foreground break-words mt-0.5">{n.message}</div>
                       </div>

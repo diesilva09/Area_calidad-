@@ -28,9 +28,9 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon } from 'lucide-react';
+import { CalendarIcon, Beaker } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { mediosCultivoService } from '@/lib/medios-cultivo-service';
+import { mediosCultivoService, MediosCultivo } from '@/lib/medios-cultivo-service';
 
 // Esquema de validación para el formulario
 const mediosCultivoSchema = z.object({
@@ -131,18 +131,18 @@ export function AddMediosCultivoModal({
       console.log('🔍 DEBUG: Valores del formulario:', values, 'Estado:', estado);
       
       // Transformar los datos para la API
-      const transformedValues = {
-        fecha: values.fecha,
-        medio_cultivo: values.medioCultivo,
-        cantidad_ml: values.cantidadMl,
-        cantidad_medio_cultivo_g: values.cantidadMedioCultivoG,
-        control_negativo_inicio: values.controlNegativoInicio,
-        control_negativo_final: values.controlNegativoFinal,
-        control_negativo_cumple: values.controlNegativoCumple,
-        control_negativo_no_cumple: values.controlNegativoNoCumple,
-        accion_correctiva: values.accionCorrectiva,
-        observaciones: values.observaciones || undefined,
-        responsable: values.responsable,
+      const transformedValues: Omit<MediosCultivo, 'id' | 'created_at' | 'updated_at'> = {
+        fecha: values.fecha || '',
+        medio_cultivo: values.medioCultivo || '',
+        cantidad_ml: values.cantidadMl || '',
+        cantidad_medio_cultivo_g: values.cantidadMedioCultivoG || '',
+        control_negativo_inicio: values.controlNegativoInicio || '',
+        control_negativo_final: values.controlNegativoFinal || '',
+        control_negativo_cumple: values.controlNegativoCumple || '',
+        control_negativo_no_cumple: values.controlNegativoNoCumple || '',
+        accion_correctiva: values.accionCorrectiva || '',
+        observaciones: values.observaciones || '',
+        responsable: values.responsable || '',
         estado: estado,
       };
       
@@ -193,21 +193,25 @@ export function AddMediosCultivoModal({
       }}
     >
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-blue-900">
-            RE-CAL-022 REGISTRO DE PREPARACIÓN DE MEDIOS DE CULTIVO Y CONTROL NEGATIVO
-          </DialogTitle>
-          <DialogDescription asChild className="text-gray-600">
-            <div className="mt-2 space-y-1">
-              <p><strong>Código:</strong> RE-CAL-022</p>
-              <p><strong>Versión:</strong> 2</p>
-              <p><strong>Fecha de Aprobación:</strong> FEBRERO 28 DE 2020</p>
+        <DialogHeader className="pb-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 flex-shrink-0">
+              <Beaker className="w-5 h-5 text-emerald-600" />
             </div>
-          </DialogDescription>
+            <div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">RE-CAL-022</span>
+                <span className="text-[10px] text-gray-400">v.2 · 28/02/2020</span>
+              </div>
+              <DialogTitle className="text-base font-semibold text-gray-900 leading-snug">
+                Preparación de Medios de Cultivo
+              </DialogTitle>
+            </div>
+          </div>
         </DialogHeader>
 
         <Form {...form}>
-          <form className="space-y-6">
+          <form className="space-y-5 mt-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               
               {/* FECHA */}
@@ -239,7 +243,7 @@ export function AddMediosCultivoModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Ej: TSA, McConkey, SSA"
+                        placeholder=""
                       />
                     </FormControl>
                     <FormMessage />
@@ -257,7 +261,7 @@ export function AddMediosCultivoModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Ej: 500"
+                        placeholder=""
                         type="number"
                         step="0.1"
                       />
@@ -277,7 +281,7 @@ export function AddMediosCultivoModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Ej: 25"
+                        placeholder=""
                         type="number"
                         step="0.1"
                       />
@@ -297,7 +301,7 @@ export function AddMediosCultivoModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Ej: E. coli ATCC 25922"
+                        placeholder=""
                       />
                     </FormControl>
                     <FormMessage />
@@ -315,7 +319,7 @@ export function AddMediosCultivoModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Ej: E. coli ATCC 25922"
+                        placeholder=""
                       />
                     </FormControl>
                     <FormMessage />
@@ -333,7 +337,7 @@ export function AddMediosCultivoModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Ej: Sí / No"
+                        placeholder=""
                       />
                     </FormControl>
                     <FormMessage />
@@ -351,7 +355,7 @@ export function AddMediosCultivoModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Ej: Sí / No"
+                        placeholder=""
                       />
                     </FormControl>
                     <FormMessage />
@@ -369,7 +373,7 @@ export function AddMediosCultivoModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Describir acción correctiva"
+                        placeholder=""
                       />
                     </FormControl>
                     <FormMessage />
@@ -387,7 +391,7 @@ export function AddMediosCultivoModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Nombre completo del responsable"
+                        placeholder=""
                       />
                     </FormControl>
                     <FormMessage />

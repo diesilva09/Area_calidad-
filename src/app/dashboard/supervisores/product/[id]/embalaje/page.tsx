@@ -331,11 +331,29 @@ export default function ProductEmbalajeRecordsPage({ params }: { params: Promise
     XLSX.writeFile(wb, `RE-CAL-093_lote-`+String(record?.lote ?? 'sin-lote').replace(/[^a-zA-Z0-9_-]/g, '_')+`.xlsx`);
   };
 
+  const exportAllRecords = () => {
+    if (!filteredRecords.length) {
+      toast({ title: 'Sin registros', description: 'No hay registros para exportar.', variant: 'destructive' });
+      return;
+    }
+    const data = filteredRecords.map((record) => {
+      const row: Record<string, any> = {};
+      for (const [key, value] of Object.entries(record)) {
+        row[key] = value;
+      }
+      return row;
+    });
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Registros');
+    XLSX.writeFile(wb, `RE-CAL-093_${product?.name ?? 'todos'}_registros.xlsx`);
+  };
+
   return (
-    <div className="min-h-screen bg-white p-3 sm:p-4 md:p-6 lg:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-white via-white to-white p-3 sm:p-4 md:p-6 lg:p-8">
       <div className="max-w-6xl mx-auto">
       <div className="mb-4 sm:mb-6">
-        <Button variant="ghost" asChild className="mb-3 sm:mb-4">
+        <Button variant="ghost" asChild className="mb-3 sm:mb-4 hover:bg-gray-100 transition-colors">
           <Link href={`/dashboard/supervisores?tab=embalaje&highlight=${encodeURIComponent(`${category?.id || ''}_${product?.id || ''}`)}`}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Volver a Supervisores
@@ -344,16 +362,70 @@ export default function ProductEmbalajeRecordsPage({ params }: { params: Promise
       </div>
 
       <div className="mb-6 sm:mb-8">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-green-600">Registros de Embalaje</h1>
-            <p className="text-gray-600 mt-1 text-sm sm:text-base">
-              {product.name}
-            </p>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+      {/* Header Section - Estilo como en la imagen */}
+<div className="bg-white rounded-2xl border border-gray-200 p-6 sm:p-8 mb-8 shadow-sm">
+  
+  {/* Icon + Title */}
+  <div className="flex items-start gap-4">
+    <div className="bg-gradient-to-br from-green-500 to-green-600 p-4 rounded-2xl shadow-lg shrink-0">
+      <Package className="h-9 w-9 text-white" />
+    </div>
+
+    <div className="flex-1">
+      <h1 className="text-2xl sm:text-3xl font-bold text-green-700 tracking-tight leading-tight">
+        RE-CAL-093 CONSOLIDADO CALIDAD DE PRODUCTO TERMINADO-EMBALAJE
+      </h1>
+      <p className="text-gray-500 mt-1 text-sm sm:text-base">
+        Gestión y seguimiento de la producción
+      </p>
+    </div>
+  </div>
+
+ {/* Product Badge (solo producto) */}
+  <div className="mt-6">
+    <Badge 
+      variant="secondary" 
+      className="bg-green-50 text-green-700 border border-green-200 px-5 py-2.5 text-sm font-medium rounded-xl"
+    >
+      {product.name}
+    </Badge>
+  </div>
+
+  {/* Stats Cards - Estilo como en la imagen */}
+  <div className="grid grid-cols-3 gap-4 mt-8">
+    
+    {/* Total */}
+    <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 text-center hover:shadow-sm transition-shadow">
+      <p className="text-xs font-medium text-gray-500 uppercase tracking-widest">Total</p>
+      <p className="text-4xl font-semibold text-gray-800 mt-2 tabular-nums">
+        {records.length}
+      </p>
+    </div>
+
+    {/* Pendientes */}
+    <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-4 text-center hover:shadow-sm transition-shadow">
+      <p className="text-xs font-medium text-yellow-600 uppercase tracking-widest">Pendientes</p>
+      <p className="text-4xl font-semibold text-yellow-700 mt-2 tabular-nums">
+        {records.filter(r => isPending(r)).length}
+      </p>
+    </div>
+
+    {/* Completados */}
+    <div className="bg-green-50 border border-green-100 rounded-xl p-4 text-center hover:shadow-sm transition-shadow">
+      <p className="text-xs font-medium text-green-600 uppercase tracking-widest">Completados</p>
+      <p className="text-4xl font-semibold text-green-700 mt-2 tabular-nums">
+        {records.filter(r => !isPending(r)).length}
+      </p>
+    </div>
+
+  </div>
+</div>
+
+        {/* Controls Section */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6 shadow-sm">
+          <div className="flex flex-col sm:flex-row gap-3">
             <Select value={statusFilter} onValueChange={(value: 'all' | 'pending' | 'completed') => setStatusFilter(value)}>
-              <SelectTrigger className="w-full sm:w-[160px]">
+              <SelectTrigger className="w-full sm:w-[200px]">
                 <SelectValue placeholder="Filtrar por estado" />
               </SelectTrigger>
               <SelectContent>
@@ -362,35 +434,47 @@ export default function ProductEmbalajeRecordsPage({ params }: { params: Promise
                 <SelectItem value="completed">Completados</SelectItem>
               </SelectContent>
             </Select>
-            <Button 
-              onClick={() => setIsAnalysisOpen(true)}
-              variant="outline"
-              className="border-blue-600 text-blue-600 hover:bg-blue-50 w-full sm:w-auto"
-            >
-              <BarChart3 className="mr-2 h-4 w-4" />
-              Análisis
-            </Button>
-            <Button
-              onClick={() => setIsModalOpen(true)}
-              className="w-full sm:w-auto text-white"
-              style={{ backgroundColor: '#2f6e29ff' }}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Agregar Registro
-            </Button>
+            <div className="flex-1">
+              <UniversalSearch
+                data={records}
+                searchFields={['lote', 'observaciones_generales', 'presentacion', 'nivel_inspeccion', 'responsable_embalaje']}
+                onRecordSelect={handleRecordSelect}
+                placeholder="Buscar por lote, presentación, inspección..."
+                displayField="lote"
+                secondaryField="presentacion"
+                className="w-full"
+              />
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="mb-4 sm:mb-6">
-        <UniversalSearch
-          data={records}
-          searchFields={['lote', 'observaciones_generales', 'presentacion', 'nivel_inspeccion', 'responsable_embalaje']}
-          onRecordSelect={handleRecordSelect}
-          placeholder="Buscar por lote, presentación, inspección..."
-          displayField="lote"
-          secondaryField="presentacion"
-        />
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+          <Button
+            onClick={() => setIsAnalysisOpen(true)}
+            variant="outline"
+            className="border-blue-600 text-blue-600 hover:bg-blue-50 w-full sm:w-auto bg-white"
+          >
+            <BarChart3 className="mr-2 h-4 w-4" />
+            Análisis
+          </Button>
+          <Button
+            onClick={exportAllRecords}
+            variant="outline"
+            className="border-green-600 text-green-600 hover:bg-green-50 w-full sm:w-auto bg-white"
+            disabled={filteredRecords.length === 0}
+          >
+            <FileDown className="mr-2 h-4 w-4" />
+            Exportar Todo ({filteredRecords.length})
+          </Button>
+          <Button
+            onClick={() => setIsModalOpen(true)}
+            className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white w-full sm:w-auto shadow-md transition-all"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Agregar Registro
+          </Button>
+        </div>
       </div>
 
       {filteredRecords.length > 0 ? (
@@ -516,23 +600,7 @@ export default function ProductEmbalajeRecordsPage({ params }: { params: Promise
               ESTE ES EL ESTADO VACÍO DE EMBALAJE
             </p>
             <div className="flex justify-center gap-2">
-              <Button 
-                onClick={() => setIsAnalysisOpen(true)}
-                variant="outline"
-                className="border-blue-600 text-blue-600 hover:bg-blue-50"
-                disabled={records.length === 0}
-              >
-                <BarChart3 className="mr-2 h-4 w-4" />
-                Análisis
-              </Button>
-              <button 
-                onClick={() => setIsModalOpen(true)} 
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md flex items-center"
-                style={{ backgroundColor: '#2563eb', color: 'white', padding: '8px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer' }}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Agregar Primer Registro de EMBALAJE
-              </button>
+             
             </div>
           </CardContent>
         </Card>

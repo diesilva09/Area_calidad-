@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { FileText } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -104,13 +105,13 @@ export function AddRegistrosRecepcionFormatosModal({
       
       // Transformar los datos para la API
       const transformedValues = {
-        fecha_entrega: values.fechaEntrega,
-        fecha_registros: values.fechaRegistros,
-        codigo_version_registros: values.codigoVersionRegistros,
-        numero_folios: values.numeroFolios,
-        nombre_quien_entrega: values.nombreQuienEntrega,
-        nombre_quien_recibe: values.nombreQuienRecibe,
-        observaciones: values.observaciones || undefined,
+        fecha_entrega: values.fechaEntrega || '',
+        fecha_registros: values.fechaRegistros || '',
+        codigo_version_registros: values.codigoVersionRegistros || '',
+        numero_folios: values.numeroFolios || '',
+        nombre_quien_entrega: values.nombreQuienEntrega || '',
+        nombre_quien_recibe: values.nombreQuienRecibe || '',
+        observaciones: values.observaciones || '',
         estado: estado,
       };
       
@@ -159,17 +160,21 @@ export function AddRegistrosRecepcionFormatosModal({
       }}
     >
       <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-amber-900">
-            RE-CAL-100 - REGISTROS RECEPCIÓN DE FORMATOS DILIGENCIADOS EN PROCESO
-          </DialogTitle>
-          <DialogDescription asChild className="text-gray-600">
-            <div className="mt-2 space-y-1">
-              <p><strong>Código:</strong> RE-CAL-100</p>
-              <p><strong>Versión:</strong> 1</p>
-              <p><strong>Fecha de Aprobación:</strong> Abril 24 de 2020</p>
+        <DialogHeader className="pb-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-amber-50 border border-amber-100 flex-shrink-0">
+              <FileText className="w-5 h-5 text-amber-600" />
             </div>
-          </DialogDescription>
+            <div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">RE-CAL-100</span>
+                <span className="text-[10px] text-gray-400">v.1 · 24/04/2020</span>
+              </div>
+              <DialogTitle className="text-base font-semibold text-gray-900 leading-snug">
+                Recepción de Formatos
+              </DialogTitle>
+            </div>
+          </div>
         </DialogHeader>
 
         <Form {...form}>
@@ -228,7 +233,7 @@ export function AddRegistrosRecepcionFormatosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: RE-CAL-021 V1, RE-CAL-016 V2"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -246,7 +251,7 @@ export function AddRegistrosRecepcionFormatosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: 5, 10, 15"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -271,7 +276,7 @@ export function AddRegistrosRecepcionFormatosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Nombre completo de quien entrega los formatos"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -289,7 +294,7 @@ export function AddRegistrosRecepcionFormatosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Nombre completo de quien recibe los formatos"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -311,7 +316,7 @@ export function AddRegistrosRecepcionFormatosModal({
                     <FormControl>
                       <textarea
                         className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        placeholder="Notas adicionales sobre la recepción de formatos, pendientes por resolver, etc..."
+                        placeholder=""
                         {...field}
                       />
                     </FormControl>

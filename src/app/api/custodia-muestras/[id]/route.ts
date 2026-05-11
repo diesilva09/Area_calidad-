@@ -38,6 +38,9 @@ export async function GET(
         medio_transporte,
         responsable,
         observaciones,
+        cronograma_task_id,
+        cronograma_codigo,
+        estado,
         created_at,
         updated_at
       FROM ${getMicroTable('custodia_muestras')}
@@ -96,6 +99,7 @@ export async function PUT(
       medio_transporte,
       responsable,
       observaciones,
+      cronograma_codigo,
       estado
     } = body;
 
@@ -126,9 +130,10 @@ export async function PUT(
         medio_transporte = COALESCE($22, medio_transporte),
         responsable = COALESCE($23, responsable),
         observaciones = COALESCE($24, observaciones),
-        estado = COALESCE($25, estado),
+        cronograma_codigo = COALESCE($25, cronograma_codigo),
+        estado = COALESCE($26, estado),
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = $26
+      WHERE id = $27
       RETURNING *
     `;
 
@@ -157,6 +162,7 @@ export async function PUT(
       medio_transporte,
       responsable,
       observaciones || null,
+      cronograma_codigo,
       estado,
       id
     ];

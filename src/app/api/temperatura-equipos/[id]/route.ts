@@ -21,6 +21,7 @@ export async function GET(
         nevera,
         realizado_por,
         observaciones,
+        estado,
         created_at,
         updated_at
       FROM ${getMicroTable('temperatura_equipos')}
@@ -61,7 +62,8 @@ export async function PUT(
       incubadora_038,
       nevera,
       realizado_por,
-      observaciones
+      observaciones,
+      estado
     } = body;
 
     const query = `
@@ -74,8 +76,9 @@ export async function PUT(
         nevera = CASE WHEN NULLIF($5, '') IS NULL THEN nevera ELSE CAST($5 AS DECIMAL(5,2)) END,
         realizado_por = CASE WHEN NULLIF($6, '') IS NULL THEN realizado_por ELSE $6 END,
         observaciones = NULLIF($7, ''),
+        estado = COALESCE(NULLIF($8, ''), estado),
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = $8
+      WHERE id = $9
       RETURNING *
     `;
 
@@ -87,6 +90,7 @@ export async function PUT(
       nevera || '',
       realizado_por || '',
       observaciones || '',
+      estado || '',
       id
     ];
 

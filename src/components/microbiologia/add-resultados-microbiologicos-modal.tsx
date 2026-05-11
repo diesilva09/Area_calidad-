@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { Microscope } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -34,7 +35,7 @@ import {
   SelectValue 
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { resultadosMicrobiologicosService } from '@/lib/resultados-microbiologicos-service';
+import { resultadosMicrobiologicosService, ResultadosMicrobiologicos } from '@/lib/resultados-microbiologicos-service';
 
 // Esquema de validación para el formulario
 const resultadosMicrobiologicosSchema = z.object({
@@ -365,42 +366,42 @@ export function AddResultadosMicrobiologicosModal({
       
       // Transformar los datos para la API
       const transformedValues = {
-        fecha: values.fecha,
-        mes_muestreo: values.mesMuestreo,
-        hora_muestreo: values.horaMuestreo,
-        interno_externo: values.internoExterno,
-        tipo: values.tipo,
-        area: values.area,
-        muestra: values.muestra,
+        fecha: values.fecha || '',
+        mes_muestreo: values.mesMuestreo || '',
+        hora_muestreo: values.horaMuestreo || '',
+        interno_externo: values.internoExterno || '',
+        tipo: values.tipo || '',
+        area: values.area || '',
+        muestra: values.muestra || '',
         // Nuevos campos para especificar el tipo de muestra
         tipo_muestra: values.tipoMuestra || '',
         valor_muestra: values.valorMuestra || '',
         // Si el tipo es 'lote', usar el valor_muestra como lote también
         lote: values.tipoMuestra === 'lote' ? values.valorMuestra || '' : '',
-        fecha_produccion: values.fechaProduccion,
-        fecha_vencimiento: values.fechaVencimiento,
-        mesofilos: values.mesofilos || null,
-        coliformes_totales: values.coliformesTotales || null,
-        coliformes_fecales: values.coliformesFecales || null,
-        e_coli: values.eColi || null,
-        mohos: values.mohos || null,
-        levaduras: values.levaduras || null,
-        staphylococcus_aureus: values.staphylococcusAureus || null,
-        bacillus_cereus: values.bacillusCereus || null,
-        listeria: values.listeria || null,
-        salmonella: values.salmonella || null,
-        enterobacterias: values.enterobacterias || null,
-        clostridium: values.clostridium || null,
-        esterilidad_comercial: values.esterilidadComercial || null,
-        anaerobias: values.anaerobias || null,
+        fecha_produccion: values.fechaProduccion || '',
+        fecha_vencimiento: values.fechaVencimiento || '',
+        mesofilos: values.mesofilos || undefined,
+        coliformes_totales: values.coliformesTotales || undefined,
+        coliformes_fecales: values.coliformesFecales || undefined,
+        e_coli: values.eColi || undefined,
+        mohos: values.mohos || undefined,
+        levaduras: values.levaduras || undefined,
+        staphylococcus_aureus: values.staphylococcusAureus || undefined,
+        bacillus_cereus: values.bacillusCereus || undefined,
+        listeria: values.listeria || undefined,
+        salmonella: values.salmonella || undefined,
+        enterobacterias: values.enterobacterias || undefined,
+        clostridium: values.clostridium || undefined,
+        esterilidad_comercial: values.esterilidadComercial || undefined,
+        anaerobias: values.anaerobias || undefined,
         observaciones: values.observaciones || undefined,
         parametros_referencia: values.parametrosReferencia || undefined,
         cumple: values.cumple || false,
         no_cumple: values.noCumple || false,
-        codigo: values.codigo,
+        codigo: values.codigo || '',
         medio_diluyente: values.medioDiluyente || undefined,
         factor_dilucion: values.factorDilucion || undefined,
-        responsable: values.responsable,
+        responsable: values.responsable || '',
         estado: estado,
       };
       
@@ -410,10 +411,11 @@ export function AddResultadosMicrobiologicosModal({
       if (editingRecord?.id) {
         await resultadosMicrobiologicosService.update(editingRecord.id, transformedValues);
       } else {
-        // Si hay cronogramaTaskId, incluirlo al crear
-        const createValues = cronogramaTaskId 
-          ? { ...transformedValues, cronograma_task_id: cronogramaTaskId }
-          : transformedValues;
+        // Incluir cronograma_task_id si existe, sino undefined
+        const createValues: Omit<ResultadosMicrobiologicos, 'id' | 'created_at' | 'updated_at'> = {
+          ...transformedValues,
+          cronograma_task_id: cronogramaTaskId ?? undefined,
+        };
         console.log('📋 Creando registro con values:', createValues);
         console.log('🔗 cronograma_task_id:', cronogramaTaskId);
         await resultadosMicrobiologicosService.create(createValues);
@@ -457,22 +459,24 @@ export function AddResultadosMicrobiologicosModal({
       }}
     >
       <DialogContent className="max-w-7xl max-h-[95vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-blue-900">
-            RE-CAL-046 RESULTADOS MICROBIOLÓGICOS
-            {isViewOnly && (
-              <span className="ml-2 text-sm font-normal text-amber-600 bg-amber-100 px-2 py-1 rounded">
-                SOLO LECTURA
-              </span>
-            )}
-          </DialogTitle>
-          <DialogDescription asChild className="text-gray-600">
-            <div className="mt-2 space-y-1">
-              <p><strong>Código:</strong> RE-CAL-046</p>
-              <p><strong>Versión:</strong> 2</p>
-              <p><strong>Fecha de Aprobación:</strong> 03 de mayo de 2021</p>
+        <DialogHeader className="pb-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex-shrink-0">
+              <Microscope className="w-5 h-5 text-blue-600" />
             </div>
-          </DialogDescription>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">RE-CAL-046</span>
+                <span className="text-[10px] text-gray-400">v.2 · 03/05/2021</span>
+                {isViewOnly && (
+                  <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">SOLO LECTURA</span>
+                )}
+              </div>
+              <DialogTitle className="text-base font-semibold text-gray-900 leading-snug">
+                Resultados Microbiológicos
+              </DialogTitle>
+            </div>
+          </div>
         </DialogHeader>
 
         <Form {...form}>
@@ -512,7 +516,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: Enero, Febrero, Marzo"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -571,7 +575,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: Agua, Alimento, Superficie"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -589,7 +593,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: Producción, Empaque, Bodega"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -607,7 +611,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: M-001, AGUA-001"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -758,7 +762,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: RM-001, RM-002"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -776,7 +780,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Nombre completo del responsable"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -801,7 +805,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: <10, 25, 1000"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -819,7 +823,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: <3, 10, 100"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -837,7 +841,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: <3, 5, 50"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -855,7 +859,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: <3, 0, 10"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -873,7 +877,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: <50, 100, 500"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -891,7 +895,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: <50, 80, 300"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -909,7 +913,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: <10, 5, 100"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -927,7 +931,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: <100, 50, 1000"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -945,7 +949,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: <100, 200, 5000"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -963,7 +967,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: <10, 5, 100"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -981,7 +985,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: <10, 20, 200"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -1079,7 +1083,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: Agua peptonada, PBS"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -1097,7 +1101,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: 1:10, 1:100, 1:1000"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -1115,7 +1119,7 @@ export function AddResultadosMicrobiologicosModal({
                       <FormControl>
                         <textarea
                           className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                          placeholder="Especificar los parámetros de referencia utilizados..."
+                          placeholder=""
                           {...field}
                         />
                       </FormControl>

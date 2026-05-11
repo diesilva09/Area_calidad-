@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
         hora_salida,
         responsable,
         observaciones,
+        estado,
         created_at,
         updated_at
       FROM ${getMicroTable('incubadora_control')}
@@ -80,16 +81,9 @@ export async function POST(request: NextRequest) {
       fecha_salida,
       hora_salida,
       responsable,
-      observaciones
+      observaciones,
+      estado
     } = body;
-
-    // Validación básica
-    if (!muestra || !fecha_ingreso || !hora_ingreso || !fecha_salida || !hora_salida || !responsable) {
-      return NextResponse.json(
-        { error: 'Faltan campos requeridos' },
-        { status: 400 }
-      );
-    }
 
     const query = `
       INSERT INTO ${getMicroTable('incubadora_control')} (
@@ -99,19 +93,21 @@ export async function POST(request: NextRequest) {
         fecha_salida,
         hora_salida,
         responsable,
-        observaciones
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        observaciones,
+        estado
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *
     `;
 
     const values = [
-      muestra,
-      fecha_ingreso,
-      hora_ingreso,
-      fecha_salida,
-      hora_salida,
-      responsable,
-      observaciones || null
+      muestra || null,
+      fecha_ingreso || null,
+      hora_ingreso || null,
+      fecha_salida || null,
+      hora_salida || null,
+      responsable || null,
+      observaciones || null,
+      estado || 'completado'
     ];
 
     const result = await pool.query(query, values);

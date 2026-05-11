@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
         accion_correctiva,
         observaciones,
         responsable,
+        estado,
         created_at,
         updated_at
       FROM ${getMicroTable('medios_cultivo')}
@@ -76,18 +77,9 @@ export async function POST(request: NextRequest) {
       control_negativo_no_cumple,
       accion_correctiva,
       responsable,
-      observaciones
+      observaciones,
+      estado
     } = body;
-
-    // Validación básica
-    if (!fecha || !medio_cultivo || !cantidad_ml || !cantidad_medio_cultivo_g || 
-        !control_negativo_inicio || !control_negativo_final || !control_negativo_cumple || 
-        !control_negativo_no_cumple || !accion_correctiva || !responsable) {
-      return NextResponse.json(
-        { error: 'Faltan campos requeridos' },
-        { status: 400 }
-      );
-    }
 
     const query = `
       INSERT INTO ${getMicroTable('medios_cultivo')} (
@@ -101,23 +93,25 @@ export async function POST(request: NextRequest) {
         control_negativo_no_cumple,
         accion_correctiva,
         responsable,
-        observaciones
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        observaciones,
+        estado
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *
     `;
 
     const values = [
-      fecha,
-      medio_cultivo,
-      cantidad_ml,
-      cantidad_medio_cultivo_g,
-      control_negativo_inicio,
-      control_negativo_final,
-      control_negativo_cumple,
-      control_negativo_no_cumple,
-      accion_correctiva,
-      responsable,
-      observaciones || null
+      fecha || null,
+      medio_cultivo || null,
+      cantidad_ml || null,
+      cantidad_medio_cultivo_g || null,
+      control_negativo_inicio || null,
+      control_negativo_final || null,
+      control_negativo_cumple || null,
+      control_negativo_no_cumple || null,
+      accion_correctiva || null,
+      responsable || null,
+      observaciones || null,
+      estado || 'completado'
     ];
 
     const result = await pool.query(query, values);

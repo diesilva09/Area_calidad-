@@ -27,6 +27,7 @@ export async function GET(
         cinta_indicadora,
         realizado_por,
         observaciones,
+        estado,
         created_at,
         updated_at
       FROM ${getMicroTable('esterilizacion_autoclave')}
@@ -73,7 +74,8 @@ export async function PUT(
       fin_ciclo_hora,
       cinta_indicadora,
       realizado_por,
-      observaciones
+      observaciones,
+      estado
     } = body;
 
     const query = `
@@ -92,25 +94,27 @@ export async function PUT(
         cinta_indicadora = COALESCE($11, cinta_indicadora),
         realizado_por = COALESCE($12, realizado_por),
         observaciones = COALESCE($13, observaciones),
+        estado = COALESCE($14, estado),
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = $14
+      WHERE id = $15
       RETURNING *
     `;
 
     const values = [
-      fecha,
-      elementos_medios_cultivo,
-      inicio_ciclo_hora,
-      inicio_proceso_hora,
-      inicio_proceso_tc,
-      inicio_proceso_presion,
-      fin_proceso_hora,
-      fin_proceso_tc,
-      fin_proceso_presion,
-      fin_ciclo_hora,
-      cinta_indicadora,
-      realizado_por,
+      fecha || null,
+      elementos_medios_cultivo || null,
+      inicio_ciclo_hora || null,
+      inicio_proceso_hora || null,
+      inicio_proceso_tc || null,
+      inicio_proceso_presion || null,
+      fin_proceso_hora || null,
+      fin_proceso_tc || null,
+      fin_proceso_presion || null,
+      fin_ciclo_hora || null,
+      cinta_indicadora || null,
+      realizado_por || null,
       observaciones || null,
+      estado || null,
       id
     ];
 

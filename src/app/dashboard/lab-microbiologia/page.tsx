@@ -4,7 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { Microscope, Plus, FileText, Calendar, Beaker, Pencil, Trash2, Thermometer, Clock, Settings, BarChart3, Menu, X, ChevronLeft, LayoutDashboard, Download, Package, Building, Truck } from 'lucide-react';
+import { Microscope, Plus, FileText, Calendar, Beaker, Pencil, Trash2, Thermometer, Clock, Settings, BarChart3, Menu, X, ChevronLeft, LayoutDashboard, Download, Package, Building, Truck, FileSpreadsheet, FileType2 } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import * as XLSX from 'xlsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -137,6 +138,76 @@ export default function LabMicrobiologiaPage() {
       'otro': 'Otro'
     };
     return labels[motivo] || motivo;
+  };
+
+  // Función auxiliar para obtener el nombre del cronograma (usa código específico y tipo)
+  const getCronogramaNombre = (codigo: string, tipo?: string): string => {
+    const nombres: Record<string, string> = {
+      'PL-CAL-008': 'Cronograma Muestreo Microbiológico',
+      'PL-CAL-009': 'Cronograma Producto Terminado',
+      'PL-CAL-009-AP': 'Cronograma Agua Potable',
+      'PL-CAL-009-PE': 'Cronograma Producto Terminado (Ext)',
+      'PL-CAL-009-MP': 'Cronograma Materia Prima',
+      'PL-CAL-010': 'Cronograma Materia Prima',
+      'PL-CAL-013': 'Cronograma ATP'
+    };
+    
+    // Si el código es PL-CAL-009, verificar el tipo para determinar el nombre correcto
+    if (codigo === 'PL-CAL-009') {
+      if (tipo === 'Agua Potable') {
+        return 'Cronograma Agua Potable';
+      } else if (tipo === 'Producto Terminado') {
+        return 'Cronograma Producto Terminado';
+      } else if (tipo === 'Materia Prima') {
+        return 'Cronograma Materia Prima';
+      }
+      return 'Cronograma Producto Terminado';
+    }
+    
+    return nombres[codigo] || codigo;
+  };
+
+  // Función auxiliar para obtener el color del badge del cronograma (usa código específico y tipo)
+  const getCronogramaColor = (codigo: string, tipo?: string): { bg: string; text: string; border: string } => {
+    const colores: Record<string, { bg: string; text: string; border: string }> = {
+      'PL-CAL-008': { bg: 'bg-violet-100', text: 'text-violet-700', border: 'border-violet-200' },
+      'PL-CAL-009-AP': { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200' },
+      'PL-CAL-009-PE': { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200' },
+      'PL-CAL-009-MP': { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-200' },
+      'PL-CAL-010': { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-200' },
+      'PL-CAL-013': { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200' }
+    };
+    
+    // Si el código es PL-CAL-009, verificar el tipo para determinar el color correcto
+    if (codigo === 'PL-CAL-009') {
+      if (tipo === 'Agua Potable') {
+        return { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200' };
+      } else if (tipo === 'Producto Terminado') {
+        return { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200' };
+      } else if (tipo === 'Materia Prima') {
+        return { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-200' };
+      }
+      return { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200' };
+    }
+    
+    return colores[codigo] || { bg: 'bg-gray-100', text: 'text-gray-700', border: 'border-gray-200' };
+  };
+
+  // Función auxiliar para determinar si es externo o interno
+  const isExterno = (tipo?: string, observaciones?: string, cronogramaCodigo?: string, cronogramaTipo?: string): boolean => {
+    // Prioridad 1: Usar el campo cronograma_tipo si está disponible
+    if (cronogramaTipo === 'externo') return true;
+    if (cronogramaTipo === 'interno') return false;
+    
+    if (cronogramaCodigo) {
+      // Códigos específicos para cronogramas externos
+      if (cronogramaCodigo === 'PL-CAL-009-AP' || cronogramaCodigo === 'PL-CAL-009-PE' || cronogramaCodigo === 'PL-CAL-009-MP') return true;
+      // Si el código es PL-CAL-009, verificar el tipo (solo Agua Potable es externo por defecto)
+      if (cronogramaCodigo === 'PL-CAL-009' && tipo === 'Agua Potable') return true;
+      // Producto Terminado y Materia Prima con PL-CAL-009 son internos por defecto
+    }
+    if (observaciones && (observaciones.includes('externo') || observaciones.includes('Externo'))) return true;
+    return false;
   };
 
   // Preparar datos para exportación
@@ -274,12 +345,12 @@ export default function LabMicrobiologiaPage() {
   // Exportar array genérico a Word
   const exportarArrayWord = async (registros: any[], titulo: string, fileName: string, columnas: string[]) => {
     if (registros.length === 0) { alert('No hay registros para exportar'); return; }
-    const { Document, Paragraph, Table, TableCell, TableRow, Packer } = await import('docx');
+    const { Document, Paragraph, Table, TableCell, TableRow, Packer, TextRun } = await import('docx');
     const { saveAs } = await import('file-saver');
     const data = registros.slice(0, 100);
-    const tableHeader = new TableRow({ children: columnas.map(h => new TableCell({ children: [new Paragraph({ text: h, bold: true })], shading: { fill: '003366' } })) });
-    const tableRows = data.map(r => new TableRow({ children: columnas.map(col => new TableCell({ children: [new Paragraph(String(r[col] || '-'))] })) }));
-    const doc = new Document({ sections: [{ properties: {}, children: [new Paragraph({ text: titulo, heading: 'Heading1', alignment: 'center' }), new Paragraph({ text: `Total de registros: ${data.length}`, alignment: 'center', spacing: { after: 400 } }), new Table({ rows: [tableHeader, ...tableRows], width: { size: 100, type: 'pct' } })] }] });
+    const tableHeader = new TableRow({ children: columnas.map(h => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: h, bold: true })] })], shading: { fill: '003366' } })) });
+    const tableRows = data.map(r => new TableRow({ children: columnas.map(col => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: String(r[col] || '-') })] })] })) }));
+    const doc = new Document({ sections: [{ properties: {}, children: [new Paragraph({ children: [new TextRun({ text: titulo, bold: true })], heading: 'Heading1', alignment: 'center' }), new Paragraph({ children: [new TextRun({ text: `Total de registros: ${data.length}` })], alignment: 'center', spacing: { after: 400 } }), new Table({ rows: [tableHeader, ...tableRows], width: { size: 100, type: 'pct' } })] }] });
     const blob = await Packer.toBlob(doc); saveAs(blob, `${fileName}_${new Date().toISOString().split('T')[0]}.docx`);
   };
 
@@ -287,17 +358,24 @@ export default function LabMicrobiologiaPage() {
   const BotonesExportacion = ({ registros, titulo, fileName, columnas }: { registros: any[], titulo: string, fileName: string, columnas: string[] }) => {
     if (registros.length === 0) return null;
     return (
-      <>
-        <Button variant="outline" size="sm" onClick={() => exportarArrayExcel(registros, titulo, fileName)} title="Exportar Excel">
-          <Download className="w-4 h-4 mr-1" /> Excel
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => exportarArrayPdf(registros, titulo, fileName, columnas)} title="Exportar PDF">
-          <FileText className="w-4 h-4 mr-1" /> PDF
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => exportarArrayWord(registros, titulo, fileName, columnas)} title="Exportar Word">
-          <FileText className="w-4 h-4 mr-1" /> Word
-        </Button>
-      </>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" title="Exportar">
+            <Download className="w-4 h-4" /><span className="hidden sm:inline ml-1">Exportar</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => exportarArrayExcel(registros, titulo, fileName)}>
+            <FileSpreadsheet className="w-4 h-4 mr-2 text-green-600" />Exportar Excel
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => exportarArrayPdf(registros, titulo, fileName, columnas)}>
+            <FileText className="w-4 h-4 mr-2 text-red-600" />Exportar PDF
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => exportarArrayWord(registros, titulo, fileName, columnas)}>
+            <FileType2 className="w-4 h-4 mr-2 text-blue-600" />Exportar Word
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     );
   };
 
@@ -336,10 +414,10 @@ export default function LabMicrobiologiaPage() {
 
   // Exportar registro individual a Word
   const exportarIndividualWord = async (registro: any, titulo: string, fileName: string) => {
-    const { Document, Paragraph, Table, TableCell, TableRow, Packer } = await import('docx');
+    const { Document, Paragraph, Table, TableCell, TableRow, Packer, TextRun } = await import('docx');
     const { saveAs } = await import('file-saver');
-    const tableRows = Object.entries(registro).map(([key, value]) => new TableRow({ children: [new TableCell({ children: [new Paragraph({ text: key, bold: true })], shading: { fill: '003366' }, width: { size: 40, type: 'pct' } }), new TableCell({ children: [new Paragraph({ text: String(value || '-') })], width: { size: 60, type: 'pct' } })] }));
-    const doc = new Document({ sections: [{ properties: {}, children: [new Paragraph({ text: titulo, heading: 'Heading1', alignment: 'center' }), new Paragraph({ text: `ID: ${registro.id}`, alignment: 'center', spacing: { after: 400 } }), new Table({ rows: tableRows, width: { size: 100, type: 'pct' } })] }] });
+    const tableRows = Object.entries(registro).map(([key, value]) => new TableRow({ children: [new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: key, bold: true })] })], shading: { fill: '003366' }, width: { size: 40, type: 'pct' } }), new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: String(value || '-') })] })], width: { size: 60, type: 'pct' } })] }));
+    const doc = new Document({ sections: [{ properties: {}, children: [new Paragraph({ children: [new TextRun({ text: titulo, bold: true })], heading: 'Heading1', alignment: 'center' }), new Paragraph({ children: [new TextRun({ text: `ID: ${registro.id}` })], alignment: 'center', spacing: { after: 400 } }), new Table({ rows: tableRows, width: { size: 100, type: 'pct' } })] }] });
     const blob = await Packer.toBlob(doc); saveAs(blob, `${fileName}_${registro.id}.docx`);
   };
 
@@ -347,17 +425,24 @@ export default function LabMicrobiologiaPage() {
   const BotonesExportacionIndividual = ({ registro, titulo, fileName }: { registro: any, titulo: string, fileName: string }) => {
     if (!registro) return null;
     return (
-      <>
-        <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); exportarIndividualExcel(registro, fileName); }} title="Exportar Excel">
-          <Download className="w-4 h-4" />
-        </Button>
-        <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); exportarIndividualPdf(registro, titulo, fileName); }} title="Exportar PDF">
-          <FileText className="w-4 h-4" />
-        </Button>
-        <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); exportarIndividualWord(registro, titulo, fileName); }} title="Exportar Word">
-          <FileText className="w-4 h-4" />
-        </Button>
-      </>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" title="Exportar" onClick={(e) => e.stopPropagation()}>
+            <Download className="w-4 h-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); exportarIndividualExcel(registro, fileName); }}>
+            <FileSpreadsheet className="w-4 h-4 mr-2 text-green-600" />Exportar Excel
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); exportarIndividualPdf(registro, titulo, fileName); }}>
+            <FileText className="w-4 h-4 mr-2 text-red-600" />Exportar PDF
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); exportarIndividualWord(registro, titulo, fileName); }}>
+            <FileType2 className="w-4 h-4 mr-2 text-blue-600" />Exportar Word
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     );
   };
 
@@ -412,6 +497,7 @@ export default function LabMicrobiologiaPage() {
     fechaAprobacion: string;
   } | null>(null);
   const [pendingTaskToComplete, setPendingTaskToComplete] = useState<TareaCronograma | null>(null);
+
 
   const registrosResultadosConResultado = useMemo(() => {
     return resultadosMicrobiologicosRegistros.filter(
@@ -748,7 +834,6 @@ export default function LabMicrobiologiaPage() {
     // Definir solo los campos que están en el modal, en orden lógico
     const camposModal = [
       { key: 'codigo', label: 'Código' },
-      { key: 'estado', label: 'Estado' },
       { key: 'tipo', label: 'Tipo' },
       { key: 'muestra_id', label: 'Muestra' },
       { key: 'tipo_muestra', label: 'Tipo de Muestra', formatter: (v: string) => {
@@ -927,6 +1012,118 @@ export default function LabMicrobiologiaPage() {
     );
   };
 
+  const renderDetalleGridGenerico = (record: any, camposModal: Array<{ key: string; label: string; formatter?: (v: any, r?: any) => string }>) => {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {camposModal.map((campo) => {
+          const value = record?.[campo.key];
+          const hasValue = value !== null && value !== undefined && value !== '';
+          const displayValue = hasValue && campo.formatter ? campo.formatter(value, record) : value;
+          return (
+            <div key={campo.key} className="rounded-lg border bg-white p-3 min-w-0">
+              <p className="text-xs font-medium text-gray-500">{campo.label}</p>
+              <p className="text-sm text-gray-900 mt-1 break-words whitespace-pre-wrap overflow-wrap-anywhere">
+                {hasValue ? renderDetalleValue(displayValue) : '-'}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const camposCondiciones = [
+    { key: 'fecha', label: 'Fecha' },
+    { key: 'hora', label: 'Hora' },
+    { key: 'temperatura', label: 'Temperatura (°C)' },
+    { key: 'humedad_relativa', label: 'Humedad Relativa (%)' },
+    { key: 'responsable', label: 'Responsable' },
+    { key: 'observaciones', label: 'Observaciones' },
+    { key: 'estado', label: 'Estado' },
+  ];
+
+  const camposTemperatura = [
+    { key: 'fecha', label: 'Fecha' },
+    { key: 'horario', label: 'Horario' },
+    { key: 'incubadora_037', label: 'Incubadora 037 (°C)' },
+    { key: 'incubadora_038', label: 'Incubadora 038 (°C)' },
+    { key: 'nevera', label: 'Nevera (°C)' },
+    { key: 'realizado_por', label: 'Realizado por' },
+    { key: 'observaciones', label: 'Observaciones' },
+    { key: 'estado', label: 'Estado' },
+  ];
+
+  const camposMediosCultivo = [
+    { key: 'fecha', label: 'Fecha' },
+    { key: 'medio_cultivo', label: 'Medio de Cultivo' },
+    { key: 'cantidad_ml', label: 'Cantidad (mL)' },
+    { key: 'cantidad_medio_cultivo_g', label: 'Cantidad Medio Cultivo (g)' },
+    { key: 'control_negativo_inicio', label: 'Control Negativo Inicio' },
+    { key: 'control_negativo_final', label: 'Control Negativo Final' },
+    { key: 'control_negativo_cumple', label: 'Control Negativo Cumple' },
+    { key: 'control_negativo_no_cumple', label: 'Control Negativo No Cumple' },
+    { key: 'accion_correctiva', label: 'Acción Correctiva' },
+    { key: 'responsable', label: 'Responsable' },
+    { key: 'observaciones', label: 'Observaciones' },
+    { key: 'estado', label: 'Estado' },
+  ];
+
+  const camposEsterilizacion = [
+    { key: 'fecha', label: 'Fecha' },
+    { key: 'elementos_medios_cultivo', label: 'Elementos/Medios de Cultivo' },
+    { key: 'inicio_ciclo_hora', label: 'Inicio Ciclo (Hora)' },
+    { key: 'inicio_proceso_hora', label: 'Inicio Proceso (Hora)' },
+    { key: 'inicio_proceso_tc', label: 'Inicio Proceso T°C' },
+    { key: 'inicio_proceso_presion', label: 'Inicio Proceso Presión' },
+    { key: 'fin_proceso_hora', label: 'Fin Proceso (Hora)' },
+    { key: 'fin_proceso_tc', label: 'Fin Proceso T°C' },
+    { key: 'fin_proceso_presion', label: 'Fin Proceso Presión' },
+    { key: 'fin_ciclo_hora', label: 'Fin Ciclo (Hora)' },
+    { key: 'cinta_indicadora', label: 'Cinta Indicadora' },
+    { key: 'realizado_por', label: 'Realizado por' },
+    { key: 'observaciones', label: 'Observaciones' },
+    { key: 'estado', label: 'Estado' },
+  ];
+
+  const camposIncubadora = [
+    { key: 'muestra', label: 'Muestra' },
+    { key: 'fecha_ingreso', label: 'Fecha Ingreso' },
+    { key: 'hora_ingreso', label: 'Hora Ingreso' },
+    { key: 'fecha_salida', label: 'Fecha Salida' },
+    { key: 'hora_salida', label: 'Hora Salida' },
+    { key: 'responsable', label: 'Responsable' },
+    { key: 'observaciones', label: 'Observaciones' },
+    { key: 'estado', label: 'Estado' },
+  ];
+
+  const camposControlLavado = [
+    { key: 'fecha', label: 'Fecha' },
+    { key: 'actividad_realizada', label: 'Actividad Realizada' },
+    { key: 'sustancia_limpieza_nombre', label: 'Sustancia Limpieza' },
+    { key: 'sustancia_limpieza_cantidad_preparada', label: 'Limpieza - Cant. Preparada' },
+    { key: 'sustancia_limpieza_cantidad_sustancia', label: 'Limpieza - Cant. Sustancia' },
+    { key: 'sustancia_desinfeccion_1_nombre', label: 'Desinfección 1' },
+    { key: 'sustancia_desinfeccion_1_cantidad_preparada', label: 'Desinfección 1 - Cant. Preparada' },
+    { key: 'sustancia_desinfeccion_1_cantidad_sustancia', label: 'Desinfección 1 - Cant. Sustancia' },
+    { key: 'sustancia_desinfeccion_2_nombre', label: 'Desinfección 2' },
+    { key: 'sustancia_desinfeccion_2_cantidad_preparada', label: 'Desinfección 2 - Cant. Preparada' },
+    { key: 'sustancia_desinfeccion_2_cantidad_sustancia', label: 'Desinfección 2 - Cant. Sustancia' },
+    { key: 'realizado_por', label: 'Realizado por' },
+    { key: 'observaciones', label: 'Observaciones' },
+    { key: 'estado', label: 'Estado' },
+  ];
+
+  const camposRecepcionFormatos = [
+    { key: 'fecha_entrega', label: 'Fecha Entrega' },
+    { key: 'fecha_registros', label: 'Fecha Registros' },
+    { key: 'codigo_version_registros', label: 'Código/Versión Registros' },
+    { key: 'numero_folios', label: 'Número de Folios' },
+    { key: 'nombre_quien_entrega', label: 'Quien Entrega' },
+    { key: 'nombre_quien_recibe', label: 'Quien Recibe' },
+    { key: 'observaciones', label: 'Observaciones' },
+    { key: 'estado', label: 'Estado' },
+  ];
+
   const getVistaTitulo = () => {
     const titulos: Record<string, string> = {
       principal: 'Registros',
@@ -1004,16 +1201,16 @@ export default function LabMicrobiologiaPage() {
   }) => {
     const isActive = vistaActual === id;
     const colors = {
-      blue: { bg: 'bg-blue-50', text: 'text-blue-700', icon: 'text-blue-600' },
-      green: { bg: 'bg-green-50', text: 'text-green-700', icon: 'text-green-600' },
-      yellow: { bg: 'bg-yellow-50', text: 'text-yellow-700', icon: 'text-yellow-600' },
-      purple: { bg: 'bg-purple-50', text: 'text-purple-700', icon: 'text-purple-600' },
-      indigo: { bg: 'bg-indigo-50', text: 'text-indigo-700', icon: 'text-indigo-600' },
-      cyan: { bg: 'bg-cyan-50', text: 'text-cyan-700', icon: 'text-cyan-600' },
-      pink: { bg: 'bg-pink-50', text: 'text-pink-700', icon: 'text-pink-600' },
-      gray: { bg: 'bg-gray-50', text: 'text-gray-700', icon: 'text-gray-600' },
-      violet: { bg: 'bg-violet-50', text: 'text-violet-700', icon: 'text-violet-600' },
-      orange: { bg: 'bg-orange-50', text: 'text-orange-700', icon: 'text-orange-600' },
+      blue:   { bg: 'bg-blue-50',   text: 'text-blue-700',   icon: 'text-blue-600',   accent: 'bg-blue-500',   badge: 'bg-blue-100 text-blue-700' },
+      green:  { bg: 'bg-green-50',  text: 'text-green-700',  icon: 'text-green-600',  accent: 'bg-green-500',  badge: 'bg-green-100 text-green-700' },
+      yellow: { bg: 'bg-yellow-50', text: 'text-yellow-700', icon: 'text-yellow-600', accent: 'bg-yellow-500', badge: 'bg-yellow-100 text-yellow-700' },
+      purple: { bg: 'bg-purple-50', text: 'text-purple-700', icon: 'text-purple-600', accent: 'bg-purple-500', badge: 'bg-purple-100 text-purple-700' },
+      indigo: { bg: 'bg-indigo-50', text: 'text-indigo-700', icon: 'text-indigo-600', accent: 'bg-indigo-500', badge: 'bg-indigo-100 text-indigo-700' },
+      cyan:   { bg: 'bg-cyan-50',   text: 'text-cyan-700',   icon: 'text-cyan-600',   accent: 'bg-cyan-500',   badge: 'bg-cyan-100 text-cyan-700' },
+      pink:   { bg: 'bg-pink-50',   text: 'text-pink-700',   icon: 'text-pink-600',   accent: 'bg-pink-500',   badge: 'bg-pink-100 text-pink-700' },
+      gray:   { bg: 'bg-gray-50',   text: 'text-gray-700',   icon: 'text-gray-600',   accent: 'bg-gray-500',   badge: 'bg-gray-100 text-gray-600' },
+      violet: { bg: 'bg-violet-50', text: 'text-violet-700', icon: 'text-violet-600', accent: 'bg-violet-500', badge: 'bg-violet-100 text-violet-700' },
+      orange: { bg: 'bg-orange-50', text: 'text-orange-700', icon: 'text-orange-600', accent: 'bg-orange-500', badge: 'bg-orange-100 text-orange-700' },
     };
     const c = colors[color];
     
@@ -1023,19 +1220,26 @@ export default function LabMicrobiologiaPage() {
           setVistaActual(id as any);
           setSidebarOpen(false);
         }}
-        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 group ${
-          isActive ? `${c.bg} ${c.text} font-medium` : 'text-gray-700 hover:bg-gray-100'
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150 group relative overflow-hidden ${
+          isActive ? `${c.bg} ${c.text} font-semibold shadow-sm` : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
         }`}
       >
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isActive ? 'bg-white/60' : 'bg-gray-100 group-hover:bg-white'}`}>
-          <Icon className={`w-4 h-4 ${isActive ? c.icon : 'text-gray-500'}`} />
+        {isActive && (
+          <span className={`absolute left-0 inset-y-0 w-[3px] rounded-r-full ${c.accent}`} />
+        )}
+        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${
+          isActive ? 'bg-white/80 shadow-sm' : 'bg-gray-100 group-hover:bg-white group-hover:shadow-sm'
+        }`}>
+          <Icon className={`w-4 h-4 ${isActive ? c.icon : 'text-gray-400 group-hover:text-gray-600'}`} />
         </div>
-        <div className="flex-1 text-left">
-          <div className="font-medium">{title}</div>
-          {subtitle && <div className="text-xs text-gray-500">{subtitle}</div>}
+        <div className="flex-1 text-left min-w-0">
+          <div className="font-medium truncate leading-tight">{title}</div>
+          {subtitle && <div className="text-[11px] text-gray-400 truncate mt-0.5">{subtitle}</div>}
         </div>
         {count !== undefined && count > 0 && (
-          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{count}</span>
+          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${
+            isActive ? c.badge : 'bg-gray-100 text-gray-500'
+          }`}>{count}</span>
         )}
       </button>
     );
@@ -1053,26 +1257,28 @@ export default function LabMicrobiologiaPage() {
       )}
 
       {/* SIDEBAR */}
-      <aside className={`${sidebarOpen ? 'flex' : 'hidden'} flex-col fixed lg:static inset-y-0 left-0 lg:relative z-50 w-72 bg-white border-r border-gray-200 h-screen lg:h-full`}>
-        {/* Header */}
-        <div className="p-4 border-b border-gray-200">
+      <aside className={`${sidebarOpen ? 'flex' : 'hidden'} flex-col fixed lg:static inset-y-0 left-0 lg:relative z-50 w-72 bg-white border-r border-gray-100 shadow-xl lg:shadow-none h-screen lg:h-full`}>
+        {/* Header con gradiente */}
+        <div className="relative bg-gradient-to-br from-blue-600 via-blue-700 to-violet-700 p-5">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+            <div className="w-11 h-11 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center flex-shrink-0 ring-1 ring-white/30">
               <Microscope className="w-6 h-6 text-white" />
             </div>
-            <div>
-              <h1 className="font-bold text-gray-900 text-sm">LAB. MICROBIOLOGÍA</h1>
-              <p className="text-xs text-gray-500">Sistema de Gestión</p>
+            <div className="min-w-0">
+              <h1 className="font-bold text-white text-sm tracking-wide leading-tight">LAB. MICROBIOLOGÍA</h1>
+              <p className="text-xs text-blue-200 mt-0.5">Sistema de Gestión</p>
             </div>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="absolute top-4 right-4 p-1 rounded-md hover:bg-gray-100">
-            <X className="w-5 h-5 text-gray-500" />
+          <button onClick={() => setSidebarOpen(false)} className="absolute top-3.5 right-3.5 p-1.5 rounded-lg bg-white/10 hover:bg-white/25 transition-colors">
+            <X className="w-4 h-4 text-white" />
           </button>
         </div>
 
         {/* Menú */}
-        <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-          <div className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase">Módulos</div>
+        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+          <div className="px-2 pt-3 pb-2">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Módulos</p>
+          </div>
           <SidebarItem 
             id="principal" 
             icon={FileText} 
@@ -1144,22 +1350,12 @@ export default function LabMicrobiologiaPage() {
             </AlertDialogContent>
           </AlertDialog>
 
-          {/* Header Desktop - Botón Volver */}
-          {vistaActual !== 'principal' && vistaActual !== 'detalle' && (
-            <div className="hidden lg:flex items-center justify-end mb-6">
-              <Button variant="outline" onClick={() => setVistaActual('principal')}>
-                <ChevronLeft className="w-4 h-4 mr-2" />
-                Volver a Registros
-              </Button>
-            </div>
-          )}
-
       {vistaActual === 'detalle' && detalle && (
         <>
-          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mb-6 bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 flex items-start justify-between gap-3">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{detalle.titulo}</h1>
-              <p className="text-gray-600 mt-2">Detalle del registro</p>
+              <p className="text-sm text-gray-500 mt-1">Detalle del registro</p>
             </div>
             <Button
               onClick={() => setVistaActual(detalle.tipo as any)}
@@ -1169,59 +1365,65 @@ export default function LabMicrobiologiaPage() {
             </Button>
           </div>
 
-          {detalle.tipo === 'custodia-muestras' ? (
-            // Vista específica para RE-CAL-107 - solo campos del modal
-            <Card>
-              <CardHeader>
-                <CardTitle>Información</CardTitle>
-                <CardDescription>Campos del registro seleccionado</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {renderDetalleGridCustodia(detalle.record)}
-              </CardContent>
-            </Card>
-          ) : detalle.tipo === 'resultados-microbiologicos' ? (
-            // Vista específica para RE-CAL-046 - solo campos del modal
-            <Card>
-              <CardHeader>
-                <CardTitle>Información</CardTitle>
-                <CardDescription>Campos del registro seleccionado</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {renderDetalleGridResultados(detalle.record)}
-              </CardContent>
-            </Card>
-          ) : (
-            // Vista genérica para otros tipos
-            <Card>
-              <CardHeader>
-                <CardTitle>Información</CardTitle>
-                <CardDescription>Campos del registro seleccionado</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {renderDetalleGrid(
+          <Card>
+            <CardHeader>
+              <CardTitle>Información</CardTitle>
+              <CardDescription>Campos del registro seleccionado</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {detalle.tipo === 'custodia-muestras' ? (
+                renderDetalleGridCustodia(detalle.record)
+              ) : detalle.tipo === 'resultados-microbiologicos' ? (
+                renderDetalleGridResultados(detalle.record)
+              ) : detalle.tipo === 'condiciones' ? (
+                renderDetalleGridGenerico(detalle.record, camposCondiciones)
+              ) : detalle.tipo === 'temperatura' ? (
+                renderDetalleGridGenerico(detalle.record, camposTemperatura)
+              ) : detalle.tipo === 'medios-cultivo' ? (
+                renderDetalleGridGenerico(detalle.record, camposMediosCultivo)
+              ) : detalle.tipo === 'esterilizacion-autoclave' ? (
+                renderDetalleGridGenerico(detalle.record, camposEsterilizacion)
+              ) : detalle.tipo === 'incubadora-control' ? (
+                renderDetalleGridGenerico(detalle.record, camposIncubadora)
+              ) : detalle.tipo === 'control-lavado-inactivacion' ? (
+                renderDetalleGridGenerico(detalle.record, camposControlLavado)
+              ) : detalle.tipo === 'registros-recepcion-formatos' ? (
+                renderDetalleGridGenerico(detalle.record, camposRecepcionFormatos)
+              ) : (
+                renderDetalleGrid(
                   Object.entries(detalle.record ?? {})
                     .sort(([a], [b]) => a.localeCompare(b))
                     .map(([key, value]) => ({
                       label: formatDetalleLabel(key),
                       value,
                     }))
-                )}
-              </CardContent>
-            </Card>
-          )}
+                )
+              )}
+            </CardContent>
+          </Card>
         </>
       )}
 
       {/* Vista Principal - Tarjetas de registros */}
       {vistaActual === 'principal' && (
         <>
-          <div className="mb-4 sm:mb-6">
-            <div>
-              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">LAB. MICROBIOLOGÍA</h1>
-              <p className="text-gray-600 mt-1 sm:mt-2 text-xs sm:text-sm md:text-base">
-                Módulo de análisis microbiológicos y control de calidad microbiológica.
-              </p>
+          <div className="mb-6">
+            <div className="rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-700 p-5 sm:p-6 text-white shadow-lg">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-white/20 rounded-2xl flex items-center justify-center shrink-0">
+                  <Microscope className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight">LAB. MICROBIOLOGÍA</h1>
+                  <p className="text-blue-100 mt-0.5 text-xs sm:text-sm">Módulo de análisis microbiológicos y control de calidad microbiológica</p>
+                </div>
+                <div className="ml-auto hidden sm:flex">
+                  <div className="bg-white/15 rounded-xl px-4 py-2 text-center">
+                    <p className="text-xl font-bold">9</p>
+                    <p className="text-[10px] text-blue-200 uppercase tracking-wide">Formatos</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1229,416 +1431,370 @@ export default function LabMicrobiologiaPage() {
           <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
             {/* RE-CAL-021 - Condiciones Ambientales */}
             <Card 
-              className="group border-blue-200 bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+              className="group border-blue-100 bg-white hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden"
               onClick={handleVerCondiciones}
             >
-              <CardHeader className="p-3 sm:p-4 md:p-6">
-                <div className="flex items-center space-x-2 sm:space-x-3">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                    <Calendar className="w-4 h-4 sm:w-6 sm:h-6 text-blue-600" />
+              <div className="h-1.5 bg-gradient-to-r from-blue-400 to-blue-600" />
+              <CardHeader className="p-4 pb-2">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 bg-blue-50 rounded-xl flex items-center justify-center ring-2 ring-blue-100 group-hover:ring-blue-200 transition-all shrink-0">
+                      <Calendar className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <CardTitle className="text-base font-bold text-gray-900">RE-CAL-021</CardTitle>
+                      <CardDescription className="text-xs text-gray-500">Condiciones Ambientales</CardDescription>
+                    </div>
                   </div>
-                  <div>
-                    <CardTitle className="text-sm sm:text-base md:text-lg">RE-CAL-021</CardTitle>
-                    <CardDescription className="text-xs sm:text-sm">
-                      Condiciones Ambientales
-                    </CardDescription>
-                  </div>
+                  <Badge className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] shrink-0 ml-2">V2</Badge>
                 </div>
               </CardHeader>
-              <CardContent className="p-3 sm:p-4 md:p-6">
-                <div className="space-y-2 sm:space-y-3">
-                  <div className="text-xs sm:text-sm text-gray-600">
-                    <p><strong>Código:</strong> RE-CAL-021</p>
-                    <p><strong>Versión:</strong> 2</p>
-                    <p><strong>Aprobación:</strong> 03-may-2021</p>
+              <CardContent className="p-4 pt-2">
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="bg-gray-50 rounded-lg px-2.5 py-1.5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Aprobación</p>
+                    <p className="text-xs text-gray-700 font-medium">03-may-2021</p>
                   </div>
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
-                    <span className="text-xs sm:text-sm text-gray-500">
-                      {condicionesRegistros.length} registros
-                    </span>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      className="text-xs sm:text-sm px-2 sm:px-4 py-2"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingCondiciones(null);
-                        setIsCondicionesModalOpen(true);
-                      }}
-                    >
-                      <FileText className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                      <span className="hidden xs:inline sm:inline">Nuevo</span>
-                    </Button>
+                  <div className="bg-blue-50 rounded-lg px-2.5 py-1.5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Registros</p>
+                    <p className="text-xs text-blue-700 font-bold">{condicionesRegistros.length}</p>
                   </div>
                 </div>
+                <Button 
+                  size="sm"
+                  className="w-full h-8 text-xs bg-blue-500 hover:bg-blue-600 text-white border-0"
+                  onClick={(e) => { e.stopPropagation(); setEditingCondiciones(null); setIsCondicionesModalOpen(true); }}
+                >
+                  <Plus className="w-3 h-3 mr-1.5" />Nuevo Registro
+                </Button>
               </CardContent>
             </Card>
 
             {/* RE-CAL-016 - Temperatura Equipos */}
             <Card 
-              className="group border-green-200 bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+              className="group border-emerald-100 bg-white hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden"
               onClick={handleVerTemperatura}
             >
-              <CardHeader>
-                <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                    <Thermometer className="h-6 w-6 text-green-600" />
+              <div className="h-1.5 bg-gradient-to-r from-emerald-400 to-emerald-600" />
+              <CardHeader className="p-4 pb-2">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 bg-emerald-50 rounded-xl flex items-center justify-center ring-2 ring-emerald-100 group-hover:ring-emerald-200 transition-all shrink-0">
+                      <Thermometer className="w-5 h-5 text-emerald-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <CardTitle className="text-base font-bold text-gray-900">RE-CAL-016</CardTitle>
+                      <CardDescription className="text-xs text-gray-500">Temperatura Equipos</CardDescription>
+                    </div>
                   </div>
-                  <div>
-                    <CardTitle className="text-lg">RE-CAL-016</CardTitle>
-                    <CardDescription>
-                      Temperatura Equipos
-                    </CardDescription>
-                  </div>
+                  <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] shrink-0 ml-2">V2</Badge>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="text-sm text-gray-600">
-                    <p><strong>Código:</strong> RE-CAL-016</p>
-                    <p><strong>Versión:</strong> 2</p>
-                    <p><strong>Aprobación:</strong> 03-may-2021</p>
+              <CardContent className="p-4 pt-2">
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="bg-gray-50 rounded-lg px-2.5 py-1.5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Aprobación</p>
+                    <p className="text-xs text-gray-700 font-medium">03-may-2021</p>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">
-                      {temperaturaRegistros.length} registros
-                    </span>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingTemperatura(null);
-                        setIsTemperaturaModalOpen(true);
-                      }}
-                    >
-                      <FileText className="w-4 h-4 mr-1" />
-                      Nuevo
-                    </Button>
+                  <div className="bg-emerald-50 rounded-lg px-2.5 py-1.5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Registros</p>
+                    <p className="text-xs text-emerald-700 font-bold">{temperaturaRegistros.length}</p>
                   </div>
                 </div>
+                <Button 
+                  size="sm"
+                  className="w-full h-8 text-xs bg-emerald-500 hover:bg-emerald-600 text-white border-0"
+                  onClick={(e) => { e.stopPropagation(); setEditingTemperatura(null); setIsTemperaturaModalOpen(true); }}
+                >
+                  <Plus className="w-3 h-3 mr-1.5" />Nuevo Registro
+                </Button>
               </CardContent>
             </Card>
 
             {/* RE-CAL-022 - Medios de Cultivo */}
             <Card 
-              className="group border-purple-200 bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+              className="group border-purple-100 bg-white hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden"
               onClick={handleVerMediosCultivo}
             >
-              <CardHeader>
-                <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
-                    <Beaker className="w-6 h-6 text-purple-600" />
+              <div className="h-1.5 bg-gradient-to-r from-purple-400 to-purple-600" />
+              <CardHeader className="p-4 pb-2">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 bg-purple-50 rounded-xl flex items-center justify-center ring-2 ring-purple-100 group-hover:ring-purple-200 transition-all shrink-0">
+                      <Beaker className="w-5 h-5 text-purple-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <CardTitle className="text-base font-bold text-gray-900">RE-CAL-022</CardTitle>
+                      <CardDescription className="text-xs text-gray-500">Medios de Cultivo</CardDescription>
+                    </div>
                   </div>
-                  <div>
-                    <CardTitle className="text-lg">RE-CAL-022</CardTitle>
-                    <CardDescription>
-                      Medios de Cultivo
-                    </CardDescription>
-                  </div>
+                  <Badge className="bg-purple-50 text-purple-700 border border-purple-200 text-[10px] shrink-0 ml-2">V2</Badge>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="text-sm text-gray-600">
-                    <p><strong>Código:</strong> RE-CAL-022</p>
-                    <p><strong>Versión:</strong> 2</p>
-                    <p><strong>Aprobación:</strong> FEBRERO 28 DE 2020</p>
+              <CardContent className="p-4 pt-2">
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="bg-gray-50 rounded-lg px-2.5 py-1.5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Aprobación</p>
+                    <p className="text-xs text-gray-700 font-medium">Feb 28 de 2020</p>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">
-                      {mediosCultivoRegistros.length} registros
-                    </span>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingMediosCultivo(null);
-                        setIsMediosCultivoModalOpen(true);
-                      }}
-                    >
-                      <FileText className="w-4 h-4 mr-1" />
-                      Nuevo
-                    </Button>
+                  <div className="bg-purple-50 rounded-lg px-2.5 py-1.5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Registros</p>
+                    <p className="text-xs text-purple-700 font-bold">{mediosCultivoRegistros.length}</p>
                   </div>
                 </div>
+                <Button 
+                  size="sm"
+                  className="w-full h-8 text-xs bg-purple-500 hover:bg-purple-600 text-white border-0"
+                  onClick={(e) => { e.stopPropagation(); setEditingMediosCultivo(null); setIsMediosCultivoModalOpen(true); }}
+                >
+                  <Plus className="w-3 h-3 mr-1.5" />Nuevo Registro
+                </Button>
               </CardContent>
             </Card>
 
             {/* RE-CAL-017 - Esterilización en Autoclave */}
             <Card 
-              className="group border-orange-200 bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+              className="group border-orange-100 bg-white hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden"
               onClick={handleVerEsterilizacionAutoclave}
             >
-              <CardHeader>
-                <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
-                    <Microscope className="w-6 h-6 text-orange-600" />
+              <div className="h-1.5 bg-gradient-to-r from-orange-400 to-orange-600" />
+              <CardHeader className="p-4 pb-2">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 bg-orange-50 rounded-xl flex items-center justify-center ring-2 ring-orange-100 group-hover:ring-orange-200 transition-all shrink-0">
+                      <Microscope className="w-5 h-5 text-orange-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <CardTitle className="text-base font-bold text-gray-900">RE-CAL-017</CardTitle>
+                      <CardDescription className="text-xs text-gray-500">Esterilización en Autoclave</CardDescription>
+                    </div>
                   </div>
-                  <div>
-                    <CardTitle className="text-lg">RE-CAL-017</CardTitle>
-                    <CardDescription>
-                      Esterilización en Autoclave
-                    </CardDescription>
-                  </div>
+                  <Badge className="bg-orange-50 text-orange-700 border border-orange-200 text-[10px] shrink-0 ml-2">V2</Badge>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="text-sm text-gray-600">
-                    <p><strong>Código:</strong> RE-CAL-017</p>
-                    <p><strong>Versión:</strong> 2</p>
-                    <p><strong>Aprobación:</strong> 03-may-2021</p>
+              <CardContent className="p-4 pt-2">
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="bg-gray-50 rounded-lg px-2.5 py-1.5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Aprobación</p>
+                    <p className="text-xs text-gray-700 font-medium">03-may-2021</p>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">
-                      {esterilizacionAutoclaveRegistros.length} registros
-                    </span>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingEsterilizacionAutoclave(null);
-                        setIsEsterilizacionAutoclaveModalOpen(true);
-                      }}
-                    >
-                      <FileText className="w-4 h-4 mr-1" />
-                      Nuevo
-                    </Button>
+                  <div className="bg-orange-50 rounded-lg px-2.5 py-1.5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Registros</p>
+                    <p className="text-xs text-orange-700 font-bold">{esterilizacionAutoclaveRegistros.length}</p>
                   </div>
                 </div>
+                <Button 
+                  size="sm"
+                  className="w-full h-8 text-xs bg-orange-500 hover:bg-orange-600 text-white border-0"
+                  onClick={(e) => { e.stopPropagation(); setEditingEsterilizacionAutoclave(null); setIsEsterilizacionAutoclaveModalOpen(true); }}
+                >
+                  <Plus className="w-3 h-3 mr-1.5" />Nuevo Registro
+                </Button>
               </CardContent>
             </Card>
 
             {/* RE-CAL-107 - Custodia de Muestras */}
             <Card 
-              className="group border-red-200 bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+              className="group border-red-100 bg-white hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden"
               onClick={handleVerCustodiaMuestras}
             >
-              <CardHeader>
-                <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
-                    <FileText className="w-6 h-6 text-red-600" />
+              <div className="h-1.5 bg-gradient-to-r from-red-400 to-red-600" />
+              <CardHeader className="p-4 pb-2">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 bg-red-50 rounded-xl flex items-center justify-center ring-2 ring-red-100 group-hover:ring-red-200 transition-all shrink-0">
+                      <FileText className="w-5 h-5 text-red-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <CardTitle className="text-base font-bold text-gray-900">RE-CAL-107</CardTitle>
+                      <CardDescription className="text-xs text-gray-500">Custodia de Muestras</CardDescription>
+                    </div>
                   </div>
-                  <div>
-                    <CardTitle className="text-lg">RE-CAL-107</CardTitle>
-                    <CardDescription>
-                      Custodia de Muestras
-                    </CardDescription>
-                  </div>
+                  <Badge className="bg-red-50 text-red-700 border border-red-200 text-[10px] shrink-0 ml-2">V2</Badge>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="text-sm text-gray-600">
-                    <p><strong>Código:</strong> RE-CAL-107</p>
-                    <p><strong>Versión:</strong> 2</p>
-                    <p><strong>Aprobación:</strong> Marzo 10 de 2022</p>
+              <CardContent className="p-4 pt-2">
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="bg-gray-50 rounded-lg px-2.5 py-1.5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Aprobación</p>
+                    <p className="text-xs text-gray-700 font-medium">Mar 10 de 2022</p>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">
-                      {custodiaMuestrasRegistros.length} registros
-                    </span>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingCustodiaMuestras(null);
-                        setIsCustodiaMuestrasModalOpen(true);
-                      }}
-                    >
-                      <FileText className="w-4 h-4 mr-1" />
-                      Nuevo
-                    </Button>
+                  <div className="bg-red-50 rounded-lg px-2.5 py-1.5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Registros</p>
+                    <p className="text-xs text-red-700 font-bold">{custodiaMuestrasRegistros.length}</p>
                   </div>
                 </div>
+                <Button 
+                  size="sm"
+                  className="w-full h-8 text-xs bg-red-500 hover:bg-red-600 text-white border-0"
+                  onClick={(e) => { e.stopPropagation(); setEditingCustodiaMuestras(null); setIsCustodiaMuestrasModalOpen(true); }}
+                >
+                  <Plus className="w-3 h-3 mr-1.5" />Nuevo Registro
+                </Button>
               </CardContent>
             </Card>
 
             {/* RE-CAL-089 - Control de Incubadora */}
             <Card 
-              className="group border-teal-200 bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+              className="group border-teal-100 bg-white hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden"
               onClick={handleVerIncubadoraControl}
             >
-              <CardHeader>
-                <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 bg-teal-100 rounded-full flex items-center justify-center">
-                    <Calendar className="w-6 h-6 text-teal-600" />
+              <div className="h-1.5 bg-gradient-to-r from-teal-400 to-teal-600" />
+              <CardHeader className="p-4 pb-2">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 bg-teal-50 rounded-xl flex items-center justify-center ring-2 ring-teal-100 group-hover:ring-teal-200 transition-all shrink-0">
+                      <Calendar className="w-5 h-5 text-teal-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <CardTitle className="text-base font-bold text-gray-900">RE-CAL-089</CardTitle>
+                      <CardDescription className="text-xs text-gray-500">Control de Incubadora</CardDescription>
+                    </div>
                   </div>
-                  <div>
-                    <CardTitle className="text-lg">RE-CAL-089</CardTitle>
-                    <CardDescription>
-                      Control de Incubadora
-                    </CardDescription>
-                  </div>
+                  <Badge className="bg-teal-50 text-teal-700 border border-teal-200 text-[10px] shrink-0 ml-2">V1</Badge>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="text-sm text-gray-600">
-                    <p><strong>Código:</strong> RE-CAL-089</p>
-                    <p><strong>Versión:</strong> 1</p>
-                    <p><strong>Aprobación:</strong> Noviembre 07 de 2025</p>
+              <CardContent className="p-4 pt-2">
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="bg-gray-50 rounded-lg px-2.5 py-1.5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Aprobación</p>
+                    <p className="text-xs text-gray-700 font-medium">Nov 07 de 2025</p>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">
-                      {incubadoraControlRegistros.length} registros
-                    </span>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingIncubadoraControl(null);
-                        setIsIncubadoraControlModalOpen(true);
-                      }}
-                    >
-                      <FileText className="w-4 h-4 mr-1" />
-                      Nuevo
-                    </Button>
+                  <div className="bg-teal-50 rounded-lg px-2.5 py-1.5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Registros</p>
+                    <p className="text-xs text-teal-700 font-bold">{incubadoraControlRegistros.length}</p>
                   </div>
                 </div>
+                <Button 
+                  size="sm"
+                  className="w-full h-8 text-xs bg-teal-500 hover:bg-teal-600 text-white border-0"
+                  onClick={(e) => { e.stopPropagation(); setEditingIncubadoraControl(null); setIsIncubadoraControlModalOpen(true); }}
+                >
+                  <Plus className="w-3 h-3 mr-1.5" />Nuevo Registro
+                </Button>
               </CardContent>
             </Card>
 
             {/* RE-CAL-046 - Resultados Microbiológicos */}
             <Card 
-              className="group border-indigo-200 bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+              className="group border-indigo-100 bg-white hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden"
               onClick={handleVerResultadosMicrobiologicos}
             >
-              <CardHeader>
-                <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center">
-                    <Microscope className="w-6 h-6 text-indigo-600" />
+              <div className="h-1.5 bg-gradient-to-r from-indigo-400 to-indigo-600" />
+              <CardHeader className="p-4 pb-2">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 bg-indigo-50 rounded-xl flex items-center justify-center ring-2 ring-indigo-100 group-hover:ring-indigo-200 transition-all shrink-0">
+                      <Microscope className="w-5 h-5 text-indigo-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <CardTitle className="text-base font-bold text-gray-900">RE-CAL-046</CardTitle>
+                      <CardDescription className="text-xs text-gray-500">Resultados Microbiológicos</CardDescription>
+                    </div>
                   </div>
-                  <div>
-                    <CardTitle className="text-lg">RE-CAL-046</CardTitle>
-                    <CardDescription>
-                      Resultados Microbiológicos
-                    </CardDescription>
-                  </div>
+                  <Badge className="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] shrink-0 ml-2">V4</Badge>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="text-sm text-gray-600">
-                    <p><strong>Código:</strong> RE-CAL-046</p>
-                    <p><strong>Versión:</strong> 4</p>
-                    <p><strong>Aprobación:</strong> Abril 22 de 2024</p>
+              <CardContent className="p-4 pt-2">
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="bg-gray-50 rounded-lg px-2.5 py-1.5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Aprobación</p>
+                    <p className="text-xs text-gray-700 font-medium">Abr 22 de 2024</p>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">
-                      {resultadosMicrobiologicosRegistros.length} registros
-                    </span>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingResultadosMicrobiologicos(null);
-                        setIsResultadosMicrobiologicosModalOpen(true);
-                      }}
-                    >
-                      <FileText className="w-4 h-4 mr-1" />
-                      Nuevo
-                    </Button>
+                  <div className="bg-indigo-50 rounded-lg px-2.5 py-1.5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Registros</p>
+                    <p className="text-xs text-indigo-700 font-bold">{resultadosMicrobiologicosRegistros.length}</p>
                   </div>
                 </div>
+                <Button 
+                  size="sm"
+                  className="w-full h-8 text-xs bg-indigo-500 hover:bg-indigo-600 text-white border-0"
+                  onClick={(e) => { e.stopPropagation(); setEditingResultadosMicrobiologicos(null); setIsResultadosMicrobiologicosModalOpen(true); }}
+                >
+                  <Plus className="w-3 h-3 mr-1.5" />Nuevo Registro
+                </Button>
               </CardContent>
             </Card>
 
             {/* RE-CAL-111 - Control Lavado e Inactivación */}
             <Card 
-              className="group border-cyan-200 bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+              className="group border-cyan-100 bg-white hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden"
               onClick={handleVerControlLavadoInactivacion}
             >
-              <CardHeader>
-                <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 bg-cyan-100 rounded-full flex items-center justify-center">
-                    <Beaker className="w-6 h-6 text-cyan-600" />
+              <div className="h-1.5 bg-gradient-to-r from-cyan-400 to-cyan-600" />
+              <CardHeader className="p-4 pb-2">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 bg-cyan-50 rounded-xl flex items-center justify-center ring-2 ring-cyan-100 group-hover:ring-cyan-200 transition-all shrink-0">
+                      <Beaker className="w-5 h-5 text-cyan-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <CardTitle className="text-base font-bold text-gray-900">RE-CAL-111</CardTitle>
+                      <CardDescription className="text-xs text-gray-500">Control Lavado e Inactivación</CardDescription>
+                    </div>
                   </div>
-                  <div>
-                    <CardTitle className="text-lg">RE-CAL-111</CardTitle>
-                    <CardDescription>
-                      Control Lavado e Inactivación
-                    </CardDescription>
-                  </div>
+                  <Badge className="bg-cyan-50 text-cyan-700 border border-cyan-200 text-[10px] shrink-0 ml-2">V1</Badge>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="text-sm text-gray-600">
-                    <p><strong>Código:</strong> RE-CAL-111</p>
-                    <p><strong>Versión:</strong> 1</p>
-                    <p><strong>Aprobación:</strong> Julio 01 de 2020</p>
+              <CardContent className="p-4 pt-2">
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="bg-gray-50 rounded-lg px-2.5 py-1.5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Aprobación</p>
+                    <p className="text-xs text-gray-700 font-medium">Jul 01 de 2020</p>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">
-                      {controlLavadoInactivacionRegistros.length} registros
-                    </span>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingControlLavadoInactivacion(null);
-                        setIsControlLavadoInactivacionModalOpen(true);
-                      }}
-                    >
-                      <FileText className="w-4 h-4 mr-1" />
-                      Nuevo
-                    </Button>
+                  <div className="bg-cyan-50 rounded-lg px-2.5 py-1.5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Registros</p>
+                    <p className="text-xs text-cyan-700 font-bold">{controlLavadoInactivacionRegistros.length}</p>
                   </div>
                 </div>
+                <Button 
+                  size="sm"
+                  className="w-full h-8 text-xs bg-cyan-500 hover:bg-cyan-600 text-white border-0"
+                  onClick={(e) => { e.stopPropagation(); setEditingControlLavadoInactivacion(null); setIsControlLavadoInactivacionModalOpen(true); }}
+                >
+                  <Plus className="w-3 h-3 mr-1.5" />Nuevo Registro
+                </Button>
               </CardContent>
             </Card>
 
             {/* RE-CAL-100 - Registros Recepción Formatos */}
             <Card 
-              className="group border-amber-200 bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+              className="group border-amber-100 bg-white hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden"
               onClick={handleVerRegistrosRecepcionFormatos}
             >
-              <CardHeader>
-                <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
-                    <FileText className="w-6 h-6 text-amber-600" />
+              <div className="h-1.5 bg-gradient-to-r from-amber-400 to-amber-600" />
+              <CardHeader className="p-4 pb-2">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 bg-amber-50 rounded-xl flex items-center justify-center ring-2 ring-amber-100 group-hover:ring-amber-200 transition-all shrink-0">
+                      <FileText className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <CardTitle className="text-base font-bold text-gray-900">RE-CAL-100</CardTitle>
+                      <CardDescription className="text-xs text-gray-500">Registros Recepción Formatos</CardDescription>
+                    </div>
                   </div>
-                  <div>
-                    <CardTitle className="text-lg">RE-CAL-100</CardTitle>
-                    <CardDescription>
-                      Registros Recepción Formatos
-                    </CardDescription>
-                  </div>
+                  <Badge className="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] shrink-0 ml-2">V1</Badge>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="text-sm text-gray-600">
-                    <p><strong>Código:</strong> RE-CAL-100</p>
-                    <p><strong>Versión:</strong> 1</p>
-                    <p><strong>Aprobación:</strong> Abril 24 de 2020</p>
+              <CardContent className="p-4 pt-2">
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="bg-gray-50 rounded-lg px-2.5 py-1.5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Aprobación</p>
+                    <p className="text-xs text-gray-700 font-medium">Abr 24 de 2020</p>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">
-                      {registrosRecepcionFormatosRegistros.length} registros
-                    </span>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingRegistrosRecepcionFormatos(null);
-                        setIsRegistrosRecepcionFormatosModalOpen(true);
-                      }}
-                    >
-                      <FileText className="w-4 h-4 mr-1" />
-                      Nuevo
-                    </Button>
+                  <div className="bg-amber-50 rounded-lg px-2.5 py-1.5">
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Registros</p>
+                    <p className="text-xs text-amber-700 font-bold">{registrosRecepcionFormatosRegistros.length}</p>
                   </div>
                 </div>
+                <Button 
+                  size="sm"
+                  className="w-full h-8 text-xs bg-amber-500 hover:bg-amber-600 text-white border-0"
+                  onClick={(e) => { e.stopPropagation(); setEditingRegistrosRecepcionFormatos(null); setIsRegistrosRecepcionFormatosModalOpen(true); }}
+                >
+                  <Plus className="w-3 h-3 mr-1.5" />Nuevo Registro
+                </Button>
               </CardContent>
             </Card>
           </div>
@@ -1648,31 +1804,33 @@ export default function LabMicrobiologiaPage() {
       {/* Vista de Condiciones Ambientales */}
       {vistaActual === 'condiciones' && (
         <>
-          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mb-6 bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 flex items-start justify-between gap-3">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">RE-CAL-021 - Condiciones Ambientales</h1>
-              <p className="text-gray-600 mt-2">
+              <h1 className="text-xl font-bold text-gray-900 leading-tight">RE-CAL-021 - Condiciones Ambientales</h1>
+              <p className="text-sm text-gray-500 mt-1">
                 Registro de condiciones ambientales del laboratorio de microbiología
               </p>
             </div>
             <Button 
               onClick={handleVolverPrincipal}
-              variant="outline"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 text-gray-500 hover:text-gray-900 hover:bg-gray-100 mt-0.5"
             >
-              Volver
+              <ChevronLeft className="w-4 h-4 mr-1" />Volver
             </Button>
           </div>
 
           <Card>
             <CardHeader>
-              <div className="flex justify-end items-center gap-2">
+              <div className="flex flex-wrap justify-end items-center gap-2">
                 <BotonesExportacion 
                   registros={condicionesRegistros} 
                   titulo="RE-CAL-021 - Condiciones Ambientales" 
                   fileName="RE-CAL-021_Condiciones_Ambientales"
-                  columnas={['fecha', 'hora', 'temperatura', 'humedad', 'responsable']}
+                  columnas={['fecha', 'hora', 'temperatura', 'humedad_relativa', 'responsable']}
                 />
-                <Button onClick={() => {
+                <Button className="bg-blue-500 hover:bg-blue-600 text-white border-0" onClick={() => {
                   setEditingCondiciones(null);
                   setIsCondicionesModalOpen(true);
                 }}>
@@ -1697,7 +1855,7 @@ export default function LabMicrobiologiaPage() {
                   <p className="text-gray-600 mb-4">
                     Comienza agregando tu primer registro de condiciones ambientales.
                   </p>
-                  <Button onClick={() => {
+                  <Button className="bg-blue-500 hover:bg-blue-600 text-white border-0" onClick={() => {
                     setEditingCondiciones(null);
                     setIsCondicionesModalOpen(true);
                   }}>
@@ -1710,60 +1868,43 @@ export default function LabMicrobiologiaPage() {
                   {condicionesRegistros.map((registro: any) => (
                     <div
                       key={registro.id}
-                      className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50"
+                      className={`border rounded-xl shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md ${registro.estado === 'pendiente' ? 'border-amber-300 bg-gradient-to-r from-amber-50 to-white' : 'border-green-200 bg-white hover:border-green-300'}`}
                       onClick={() => openDetalle('condiciones', 'RE-CAL-021 - Condiciones Ambientales', registro)}
                     >
-                      <div className="flex items-center justify-end gap-2 mb-3">
-                        {registro.estado === 'pendiente' ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingCondiciones(registro);
-                              setIsCondicionesModalOpen(true);
-                            }}
-                            className="border-orange-400 text-orange-700 hover:bg-orange-50"
-                          >
-                            <Pencil className="w-4 h-4 mr-1" />
-                            Completar
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingCondiciones(registro);
-                              setIsCondicionesModalOpen(true);
-                            }}
-                          >
-                            <Pencil className="w-4 h-4 mr-1" />
-                            Editar
-                          </Button>
-                        )}
-                        <BotonesExportacionIndividual 
-                          registro={registro} 
-                          titulo="RE-CAL-021 - Condiciones Ambientales" 
-                          fileName="RE-CAL-021_Condiciones_Ambientales"
-                        />
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete({
-                              id: registro.id,
-                              label: 'Condiciones Ambientales',
-                              run: () => condicionesAmbientalesService.delete(registro.id),
-                            });
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4 mr-1" />
-                          Eliminar
-                        </Button>
+                      <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-2.5 pb-2 border-b border-gray-100 rounded-t-xl">
+                        <div className="flex-shrink-0">
+                          {registro.estado === 'pendiente' ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">Pendiente</span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700 border border-green-200">Completado</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {registro.estado === 'pendiente' ? (
+                            <>
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditingCondiciones(registro); setIsCondicionesModalOpen(true); }} className="border-amber-400 text-amber-700 hover:bg-amber-50 h-7 px-2 text-xs">
+                                <Pencil className="w-3 h-3 mr-1" />Completar
+                              </Button>
+                              {user?.role === 'jefe' && (
+                                <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); handleDelete({ id: registro.id, label: 'Condiciones Ambientales', run: () => condicionesAmbientalesService.delete(registro.id) }); }} className="h-7 w-7 p-0">
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
+                              )}
+                            </>
+                          ) : user?.role === 'jefe' ? (
+                            <>
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditingCondiciones(registro); setIsCondicionesModalOpen(true); }} className="h-7 w-7 p-0">
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                              <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); handleDelete({ id: registro.id, label: 'Condiciones Ambientales', run: () => condicionesAmbientalesService.delete(registro.id) }); }} className="h-7 w-7 p-0">
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </>
+                          ) : null}
+                          <BotonesExportacionIndividual registro={registro} titulo="RE-CAL-021 - Condiciones Ambientales" fileName="RE-CAL-021_Condiciones_Ambientales" />
+                        </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 px-3 py-2.5">
                         <div>
                           <p className="text-sm font-medium text-gray-700">Fecha</p>
                           <p className="text-sm text-gray-900">
@@ -1805,31 +1946,33 @@ export default function LabMicrobiologiaPage() {
       {/* Vista de Temperatura Equipos */}
       {vistaActual === 'temperatura' && (
         <>
-          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4">
+          <div className="mb-6 bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 flex items-start justify-between gap-3">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">RE-CAL-016 - Temperatura Equipos</h1>
-              <p className="text-gray-600 mt-2">
+              <h1 className="text-xl font-bold text-gray-900 leading-tight">RE-CAL-016 - Temperatura Equipos</h1>
+              <p className="text-sm text-gray-500 mt-1">
                 Registro de temperatura de equipos del laboratorio de microbiología
               </p>
             </div>
             <Button 
               onClick={handleVolverPrincipal}
-              variant="outline"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 text-gray-500 hover:text-gray-900 hover:bg-gray-100 mt-0.5"
             >
-              Volver
+              <ChevronLeft className="w-4 h-4 mr-1" />Volver
             </Button>
           </div>
 
           <Card>
             <CardHeader>
-              <div className="flex justify-end items-center gap-2">
+              <div className="flex flex-wrap justify-end items-center gap-2">
                 <BotonesExportacion 
                   registros={temperaturaRegistros} 
                   titulo="RE-CAL-016 - Temperatura Equipos" 
                   fileName="RE-CAL-016_Temperatura_Equipos"
-                  columnas={['fecha', 'equipo', 'temperatura', 'responsable']}
+                  columnas={['fecha', 'horario', 'incubadora_037', 'incubadora_038', 'nevera', 'realizado_por']}
                 />
-                <Button onClick={() => {
+                <Button className="bg-emerald-500 hover:bg-emerald-600 text-white border-0" onClick={() => {
                   setEditingTemperatura(null);
                   setIsTemperaturaModalOpen(true);
                 }}>
@@ -1854,7 +1997,7 @@ export default function LabMicrobiologiaPage() {
                   <p className="text-gray-600 mb-4">
                     Comienza agregando tu primer registro de temperatura de equipos.
                   </p>
-                  <Button onClick={() => {
+                  <Button className="bg-emerald-500 hover:bg-emerald-600 text-white border-0" onClick={() => {
                     setEditingTemperatura(null);
                     setIsTemperaturaModalOpen(true);
                   }}>
@@ -1867,60 +2010,43 @@ export default function LabMicrobiologiaPage() {
                   {temperaturaRegistros.map((registro: any) => (
                     <div
                       key={registro.id}
-                      className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50"
+                      className={`border rounded-xl shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md ${registro.estado === 'pendiente' ? 'border-amber-300 bg-gradient-to-r from-amber-50 to-white' : 'border-green-200 bg-white hover:border-green-300'}`}
                       onClick={() => openDetalle('temperatura', 'RE-CAL-016 - Temperatura Equipos', registro)}
                     >
-                      <div className="flex items-center justify-end gap-2 mb-3">
-                        {registro.estado === 'pendiente' ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingTemperatura(registro);
-                              setIsTemperaturaModalOpen(true);
-                            }}
-                            className="border-orange-400 text-orange-700 hover:bg-orange-50"
-                          >
-                            <Pencil className="w-4 h-4 mr-1" />
-                            Completar
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingTemperatura(registro);
-                              setIsTemperaturaModalOpen(true);
-                            }}
-                          >
-                            <Pencil className="w-4 h-4 mr-1" />
-                            Editar
-                          </Button>
-                        )}
-                        <BotonesExportacionIndividual 
-                          registro={registro} 
-                          titulo="RE-CAL-016 - Temperatura Equipos" 
-                          fileName="RE-CAL-016_Temperatura_Equipos"
-                        />
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete({
-                              id: registro.id,
-                              label: 'Temperatura Equipos',
-                              run: () => temperaturaEquiposService.delete(registro.id),
-                            });
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4 mr-1" />
-                          Eliminar
-                        </Button>
+                      <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-2.5 pb-2 border-b border-gray-100 rounded-t-xl">
+                        <div className="flex-shrink-0">
+                          {registro.estado === 'pendiente' ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">Pendiente</span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700 border border-green-200">Completado</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {registro.estado === 'pendiente' ? (
+                            <>
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditingTemperatura(registro); setIsTemperaturaModalOpen(true); }} className="border-amber-400 text-amber-700 hover:bg-amber-50 h-7 px-2 text-xs">
+                                <Pencil className="w-3 h-3 mr-1" />Completar
+                              </Button>
+                              {user?.role === 'jefe' && (
+                                <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); handleDelete({ id: registro.id, label: 'Temperatura Equipos', run: () => temperaturaEquiposService.delete(registro.id) }); }} className="h-7 w-7 p-0">
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
+                              )}
+                            </>
+                          ) : user?.role === 'jefe' ? (
+                            <>
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditingTemperatura(registro); setIsTemperaturaModalOpen(true); }} className="h-7 w-7 p-0">
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                              <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); handleDelete({ id: registro.id, label: 'Temperatura Equipos', run: () => temperaturaEquiposService.delete(registro.id) }); }} className="h-7 w-7 p-0">
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </>
+                          ) : null}
+                          <BotonesExportacionIndividual registro={registro} titulo="RE-CAL-016 - Temperatura Equipos" fileName="RE-CAL-016_Temperatura_Equipos" />
+                        </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 px-3 py-2.5">
                         <div>
                           <p className="text-sm font-medium text-gray-700">Fecha</p>
                           <p className="text-sm text-gray-900">
@@ -1961,7 +2087,7 @@ export default function LabMicrobiologiaPage() {
                         </div>
                       </div>
                       {registro.observaciones && (
-                        <div className="mt-3 pt-3 border-t">
+                        <div className="px-4 pt-3 pb-3 border-t">
                           <p className="text-sm font-medium text-gray-700">Observaciones</p>
                           <p className="text-sm text-gray-900">{registro.observaciones}</p>
                         </div>
@@ -1978,31 +2104,33 @@ export default function LabMicrobiologiaPage() {
       {/* Vista de Medios de Cultivo */}
       {vistaActual === 'medios-cultivo' && (
         <>
-          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4">
+          <div className="mb-6 bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 flex items-start justify-between gap-3">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">RE-CAL-022 - Medios de Cultivo</h1>
-              <p className="text-gray-600 mt-2">
+              <h1 className="text-xl font-bold text-gray-900 leading-tight">RE-CAL-022 - Medios de Cultivo</h1>
+              <p className="text-sm text-gray-500 mt-1">
                 Registro de preparación de medios de cultivo y control negativo
               </p>
             </div>
             <Button 
               onClick={handleVolverPrincipal}
-              variant="outline"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 text-gray-500 hover:text-gray-900 hover:bg-gray-100 mt-0.5"
             >
-              Volver
+              <ChevronLeft className="w-4 h-4 mr-1" />Volver
             </Button>
           </div>
 
           <Card>
             <CardHeader>
-              <div className="flex justify-end items-center gap-2">
+              <div className="flex flex-wrap justify-end items-center gap-2">
                 <BotonesExportacion 
                   registros={mediosCultivoRegistros} 
                   titulo="RE-CAL-022 - Medios de Cultivo" 
                   fileName="RE-CAL-022_Medios_Cultivo"
-                  columnas={['fecha', 'lote', 'medio_cultivo', 'volumen_preparado', 'ph', 'responsable']}
+                  columnas={['fecha', 'medio_cultivo', 'cantidad_ml', 'cantidad_medio_cultivo_g', 'responsable']}
                 />
-                <Button onClick={() => {
+                <Button className="bg-purple-500 hover:bg-purple-600 text-white border-0" onClick={() => {
                   setEditingMediosCultivo(null);
                   setIsMediosCultivoModalOpen(true);
                 }}>
@@ -2027,7 +2155,7 @@ export default function LabMicrobiologiaPage() {
                   <p className="text-gray-600 mb-4">
                     Comienza agregando tu primer registro de medios de cultivo.
                   </p>
-                  <Button onClick={() => {
+                  <Button className="bg-purple-500 hover:bg-purple-600 text-white border-0" onClick={() => {
                     setEditingMediosCultivo(null);
                     setIsMediosCultivoModalOpen(true);
                   }}>
@@ -2040,105 +2168,70 @@ export default function LabMicrobiologiaPage() {
                   {mediosCultivoRegistros.map((registro: any) => (
                     <div
                       key={registro.id}
-                      className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50"
+                      className={`border rounded-xl shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md ${registro.estado === 'pendiente' ? 'border-amber-300 bg-gradient-to-r from-amber-50 to-white' : 'border-green-200 bg-white hover:border-green-300'}`}
                       onClick={() => openDetalle('medios-cultivo', 'RE-CAL-022 - Medios de Cultivo', registro)}
                     >
-                      <div className="flex items-center justify-end gap-2 mb-3">
-                        {registro.estado === 'pendiente' ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingMediosCultivo(registro);
-                              setIsMediosCultivoModalOpen(true);
-                            }}
-                            className="border-orange-400 text-orange-700 hover:bg-orange-50"
-                          >
-                            <Pencil className="w-4 h-4 mr-1" />
-                            Completar
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingMediosCultivo(registro);
-                              setIsMediosCultivoModalOpen(true);
-                            }}
-                          >
-                            <Pencil className="w-4 h-4 mr-1" />
-                            Editar
-                          </Button>
-                        )}
-                        <BotonesExportacionIndividual 
-                          registro={registro} 
-                          titulo="RE-CAL-022 - Medios de Cultivo" 
-                          fileName="RE-CAL-022_Medios_Cultivo"
-                        />
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete({
-                              id: registro.id,
-                              label: 'Medios de Cultivo',
-                              run: () => mediosCultivoService.delete(registro.id),
-                            });
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4 mr-1" />
-                          Eliminar
-                        </Button>
+                      <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-2.5 pb-2 border-b border-gray-100 rounded-t-xl">
+                        <div className="flex-shrink-0">
+                          {registro.estado === 'pendiente' ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">Pendiente</span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700 border border-green-200">Completado</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {registro.estado === 'pendiente' ? (
+                            <>
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditingMediosCultivo(registro); setIsMediosCultivoModalOpen(true); }} className="border-amber-400 text-amber-700 hover:bg-amber-50 h-7 px-2 text-xs">
+                                <Pencil className="w-3 h-3 mr-1" />Completar
+                              </Button>
+                              {user?.role === 'jefe' && (
+                                <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); handleDelete({ id: registro.id, label: 'Medios de Cultivo', run: () => mediosCultivoService.delete(registro.id) }); }} className="h-7 w-7 p-0">
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
+                              )}
+                            </>
+                          ) : user?.role === 'jefe' ? (
+                            <>
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditingMediosCultivo(registro); setIsMediosCultivoModalOpen(true); }} className="h-7 w-7 p-0">
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                              <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); handleDelete({ id: registro.id, label: 'Medios de Cultivo', run: () => mediosCultivoService.delete(registro.id) }); }} className="h-7 w-7 p-0">
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </>
+                          ) : null}
+                          <BotonesExportacionIndividual registro={registro} titulo="RE-CAL-022 - Medios de Cultivo" fileName="RE-CAL-022_Medios_Cultivo" />
+                        </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 px-3 py-2.5">
                         <div>
                           <p className="text-sm font-medium text-gray-700">Fecha</p>
-                          <p className="text-sm text-gray-900">{new Date(registro.fecha).toLocaleDateString('es-ES')}</p>
+                          <p className="text-sm text-gray-900">{registro.fecha ? new Date(registro.fecha).toLocaleDateString('es-ES') : '-'}</p>
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-700">Medio</p>
-                          <p className="text-sm text-gray-900">{registro.medio}</p>
+                          <p className="text-sm font-medium text-gray-700">Medio de Cultivo</p>
+                          <p className="text-sm text-gray-900">{registro.medio_cultivo || '-'}</p>
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-700">Lote</p>
-                          <p className="text-sm text-gray-900">{registro.lote}</p>
+                          <p className="text-sm font-medium text-gray-700">Cantidad ML</p>
+                          <p className="text-sm text-gray-900">{registro.cantidad_ml || '-'}</p>
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-700">Vencimiento</p>
-                          <p className="text-sm text-gray-900">{new Date(registro.fecha_vencimiento).toLocaleDateString('es-ES')}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Preparado por</p>
-                          <p className="text-sm text-gray-900">{registro.preparado_por}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Autoclave</p>
-                          <p className="text-sm text-gray-900">{registro.autoclave}</p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-3 pt-3 border-t">
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Temperatura</p>
-                          <p className="text-sm text-gray-900">{registro.temperatura}°C</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Presión</p>
-                          <p className="text-sm text-gray-900">{registro.presion} psi</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Tiempo</p>
-                          <p className="text-sm text-gray-900">{registro.tiempo} min</p>
+                          <p className="text-sm font-medium text-gray-700">Cantidad Medio G</p>
+                          <p className="text-sm text-gray-900">{registro.cantidad_medio_cultivo_g || '-'}</p>
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-700">Control Negativo</p>
-                          <p className="text-sm text-gray-900">{registro.control_negativo}</p>
+                          <p className="text-sm text-gray-900">{registro.control_negativo_cumple ? 'Cumple' : registro.control_negativo_no_cumple ? 'No Cumple' : '-'}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-700">Responsable</p>
+                          <p className="text-sm text-gray-900">{registro.responsable || '-'}</p>
                         </div>
                       </div>
                       {registro.observaciones && (
-                        <div className="mt-3 pt-3 border-t">
+                        <div className="px-4 pt-3 pb-3 border-t">
                           <p className="text-sm font-medium text-gray-700">Observaciones</p>
                           <p className="text-sm text-gray-900">{registro.observaciones}</p>
                         </div>
@@ -2155,31 +2248,33 @@ export default function LabMicrobiologiaPage() {
       {/* Vista de Esterilización en Autoclave */}
       {vistaActual === 'esterilizacion-autoclave' && (
         <>
-          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4">
+          <div className="mb-6 bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 flex items-start justify-between gap-3">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">RE-CAL-017 - Esterilización en Autoclave</h1>
-              <p className="text-gray-600 mt-2">
+              <h1 className="text-xl font-bold text-gray-900 leading-tight">RE-CAL-017 - Esterilización en Autoclave</h1>
+              <p className="text-sm text-gray-500 mt-1">
                 Registro de proceso de esterilización en autoclave microbiología
               </p>
             </div>
             <Button 
               onClick={handleVolverPrincipal}
-              variant="outline"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 text-gray-500 hover:text-gray-900 hover:bg-gray-100 mt-0.5"
             >
-              Volver
+              <ChevronLeft className="w-4 h-4 mr-1" />Volver
             </Button>
           </div>
 
           <Card>
             <CardHeader>
-              <div className="flex justify-end items-center gap-2">
+              <div className="flex flex-wrap justify-end items-center gap-2">
                 <BotonesExportacion 
                   registros={esterilizacionAutoclaveRegistros} 
                   titulo="RE-CAL-017 - Esterilización en Autoclave" 
                   fileName="RE-CAL-017_Esterilizacion_Autoclave"
-                  columnas={['fecha', 'carga', 'inicio_ciclo_hora', 'fin_ciclo_hora', 'realizado_por']}
+                  columnas={['fecha', 'elementos_medios_cultivo', 'inicio_ciclo_hora', 'fin_ciclo_hora', 'realizado_por']}
                 />
-                <Button onClick={() => {
+                <Button className="bg-orange-500 hover:bg-orange-600 text-white border-0" onClick={() => {
                   setEditingEsterilizacionAutoclave(null);
                   setIsEsterilizacionAutoclaveModalOpen(true);
                 }}>
@@ -2204,7 +2299,7 @@ export default function LabMicrobiologiaPage() {
                   <p className="text-gray-600 mb-4">
                     Comienza agregando tu primer registro de esterilización en autoclave.
                   </p>
-                  <Button onClick={() => {
+                  <Button className="bg-orange-500 hover:bg-orange-600 text-white border-0" onClick={() => {
                     setEditingEsterilizacionAutoclave(null);
                     setIsEsterilizacionAutoclaveModalOpen(true);
                   }}>
@@ -2217,60 +2312,43 @@ export default function LabMicrobiologiaPage() {
                   {esterilizacionAutoclaveRegistros.map((registro: any) => (
                     <div
                       key={registro.id}
-                      className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50"
+                      className={`border rounded-xl shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md ${registro.estado === 'pendiente' ? 'border-amber-300 bg-gradient-to-r from-amber-50 to-white' : 'border-green-200 bg-white hover:border-green-300'}`}
                       onClick={() => openDetalle('esterilizacion-autoclave', 'RE-CAL-017 - Esterilización en Autoclave', registro)}
                     >
-                      <div className="flex items-center justify-end gap-2 mb-3">
-                        {registro.estado === 'pendiente' ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingEsterilizacionAutoclave(registro);
-                              setIsEsterilizacionAutoclaveModalOpen(true);
-                            }}
-                            className="border-orange-400 text-orange-700 hover:bg-orange-50"
-                          >
-                            <Pencil className="w-4 h-4 mr-1" />
-                            Completar
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingEsterilizacionAutoclave(registro);
-                              setIsEsterilizacionAutoclaveModalOpen(true);
-                            }}
-                          >
-                            <Pencil className="w-4 h-4 mr-1" />
-                            Editar
-                          </Button>
-                        )}
-                        <BotonesExportacionIndividual 
-                          registro={registro} 
-                          titulo="RE-CAL-017 - Esterilización Autoclave" 
-                          fileName="RE-CAL-017_Esterilizacion_Autoclave"
-                        />
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete({
-                              id: registro.id,
-                              label: 'Esterilización Autoclave',
-                              run: () => esterilizacionAutoclaveService.delete(registro.id),
-                            });
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4 mr-1" />
-                          Eliminar
-                        </Button>
+                      <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-2.5 pb-2 border-b border-gray-100 rounded-t-xl">
+                        <div className="flex-shrink-0">
+                          {registro.estado === 'pendiente' ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">Pendiente</span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700 border border-green-200">Completado</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {registro.estado === 'pendiente' ? (
+                            <>
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditingEsterilizacionAutoclave(registro); setIsEsterilizacionAutoclaveModalOpen(true); }} className="border-amber-400 text-amber-700 hover:bg-amber-50 h-7 px-2 text-xs">
+                                <Pencil className="w-3 h-3 mr-1" />Completar
+                              </Button>
+                              {user?.role === 'jefe' && (
+                                <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); handleDelete({ id: registro.id, label: 'Esterilización Autoclave', run: () => esterilizacionAutoclaveService.delete(registro.id) }); }} className="h-7 w-7 p-0">
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
+                              )}
+                            </>
+                          ) : user?.role === 'jefe' ? (
+                            <>
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditingEsterilizacionAutoclave(registro); setIsEsterilizacionAutoclaveModalOpen(true); }} className="h-7 w-7 p-0">
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                              <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); handleDelete({ id: registro.id, label: 'Esterilización Autoclave', run: () => esterilizacionAutoclaveService.delete(registro.id) }); }} className="h-7 w-7 p-0">
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </>
+                          ) : null}
+                          <BotonesExportacionIndividual registro={registro} titulo="RE-CAL-017 - Esterilización Autoclave" fileName="RE-CAL-017_Esterilizacion_Autoclave" />
+                        </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 px-3 py-2.5">
                         <div>
                           <p className="text-sm font-medium text-gray-700">Fecha</p>
                           <p className="text-sm text-gray-900">{new Date(registro.fecha).toLocaleDateString('es-ES')}</p>
@@ -2297,7 +2375,7 @@ export default function LabMicrobiologiaPage() {
                         </div>
                       </div>
                       {registro.observaciones && (
-                        <div className="mt-3 pt-3 border-t">
+                        <div className="px-4 pt-3 pb-3 border-t">
                           <p className="text-sm font-medium text-gray-700">Observaciones</p>
                           <p className="text-sm text-gray-900">{registro.observaciones}</p>
                         </div>
@@ -2314,36 +2392,45 @@ export default function LabMicrobiologiaPage() {
       {/* Vista de Custodia de Muestras */}
       {vistaActual === 'custodia-muestras' && (
         <>
-          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4">
+          <div className="mb-6 bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 flex items-start justify-between gap-3">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">RE-CAL-107 - Custodia de Muestras</h1>
-              <p className="text-gray-600 mt-2">
+              <h1 className="text-xl font-bold text-gray-900 leading-tight">RE-CAL-107 - Custodia de Muestras</h1>
+              <p className="text-sm text-gray-500 mt-1">
                 Registro y cadena de custodia de muestras análisis interno
               </p>
             </div>
             <Button 
               onClick={handleVolverPrincipal}
-              variant="outline"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 text-gray-500 hover:text-gray-900 hover:bg-gray-100 mt-0.5"
             >
-              Volver
+              <ChevronLeft className="w-4 h-4 mr-1" />Volver
             </Button>
           </div>
 
           <Card>
             <CardHeader>
-              <div className="flex justify-end items-center gap-2">
+              <div className="flex flex-wrap justify-end items-center gap-2">
                 {custodiaMuestrasRegistros.length > 0 && (
-                  <>
-                    <Button variant="outline" size="sm" onClick={exportarExcelGeneral} title="Exportar Excel">
-                      <Download className="w-4 h-4 mr-1" /> Excel
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={exportarPdfGeneral} title="Exportar PDF">
-                      <FileText className="w-4 h-4 mr-1" /> PDF
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={exportarWordGeneral} title="Exportar Word">
-                      <FileText className="w-4 h-4 mr-1" /> Word
-                    </Button>
-                  </>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" title="Exportar">
+                        <Download className="w-4 h-4" /><span className="hidden sm:inline ml-1">Exportar</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={exportarExcelGeneral}>
+                        <FileSpreadsheet className="w-4 h-4 mr-2 text-green-600" />Exportar Excel
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={exportarPdfGeneral}>
+                        <FileText className="w-4 h-4 mr-2 text-red-600" />Exportar PDF
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={exportarWordGeneral}>
+                        <FileType2 className="w-4 h-4 mr-2 text-blue-600" />Exportar Word
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
                 <Button
                   variant="outline"
@@ -2359,7 +2446,7 @@ export default function LabMicrobiologiaPage() {
                 >
                   Cronograma
                 </Button>
-                <Button onClick={() => {
+                <Button className="bg-red-500 hover:bg-red-600 text-white border-0" onClick={() => {
                   setEditingCustodiaMuestras(null);
                   setIsCustodiaMuestrasModalOpen(true);
                 }}>
@@ -2384,7 +2471,7 @@ export default function LabMicrobiologiaPage() {
                   <p className="text-gray-600 mb-4">
                     Comienza agregando tu primer registro de custodia de muestras.
                   </p>
-                  <Button onClick={() => {
+                  <Button className="bg-red-500 hover:bg-red-600 text-white border-0" onClick={() => {
                     setEditingCustodiaMuestras(null);
                     setIsCustodiaMuestrasModalOpen(true);
                   }}>
@@ -2397,114 +2484,63 @@ export default function LabMicrobiologiaPage() {
                   {custodiaMuestrasRegistros.map((registro: any) => (
                     <div
                       key={registro.id}
-                      className={`border rounded-xl shadow-sm p-4 cursor-pointer transition-all duration-200 hover:shadow-md ${registro.estado === 'pendiente' ? 'border-orange-400 bg-gradient-to-r from-orange-50 to-white' : 'border-green-200 bg-white hover:border-green-300'}`}
+                      className={`border rounded-xl shadow-sm p-4 cursor-pointer transition-all duration-200 hover:shadow-md ${registro.estado === 'pendiente' ? 'border-amber-300 bg-gradient-to-r from-amber-50 to-white' : 'border-green-200 bg-white hover:border-green-300'}`}
                       onClick={() => openDetalle('custodia-muestras', 'RE-CAL-107 - Custodia de Muestras', registro)}
                     >
-                      {/* Badge de estado */}
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
+                      {/* Badge de estado y cronograma */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-2.5 pb-2 border-b border-gray-100 rounded-t-xl">
+                        <div className="flex items-center gap-1 flex-wrap flex-shrink-0">
                           {registro.estado === 'pendiente' ? (
-                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700 border border-orange-200">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">
                               Pendiente
                             </span>
                           ) : (
-                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 border border-green-200">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700 border border-green-200">
                               Completado
                             </span>
                           )}
+                          {registro.cronograma_codigo && (
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${getCronogramaColor(registro.cronograma_codigo, registro.tipo).bg} ${getCronogramaColor(registro.cronograma_codigo, registro.tipo).text} ${getCronogramaColor(registro.cronograma_codigo, registro.tipo).border}`}>
+                              {getCronogramaNombre(registro.cronograma_codigo, registro.tipo)}
+                            </span>
+                          )}
+                          {registro.cronograma_tipo === 'externo' && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700 border border-red-200">
+                              Externo
+                            </span>
+                          )}
+                          {registro.cronograma_tipo === 'interno' && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700 border border-green-200">
+                              Interno
+                            </span>
+                          )}
                         </div>
-                        <div className="flex items-center gap-2">
-                        {registro.estado === 'pendiente' ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              // Limpiar datos corruptos antes de editar
-                              const registroLimpio = {
-                                ...registro,
-                                area: limpiarArea(registro.area || ''),
-                                tipo_muestra: limpiarTipoMuestra(registro.tipo_muestra || ''),
-                              };
-                              setEditingCustodiaMuestras(registroLimpio);
-                              setIsCustodiaMuestrasModalOpen(true);
-                            }}
-                            className="border-orange-400 text-orange-700 hover:bg-orange-50"
-                          >
-                            <Pencil className="w-4 h-4 mr-1" />
-                            Completar
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              // Limpiar datos corruptos antes de editar
-                              const registroLimpio = {
-                                ...registro,
-                                area: limpiarArea(registro.area || ''),
-                                tipo_muestra: limpiarTipoMuestra(registro.tipo_muestra || ''),
-                              };
-                              setEditingCustodiaMuestras(registroLimpio);
-                              setIsCustodiaMuestrasModalOpen(true);
-                            }}
-                          >
-                            <Pencil className="w-4 h-4 mr-1" />
-                            Editar
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            exportarExcelIndividual(registro);
-                          }}
-                          title="Exportar Excel"
-                        >
-                          <Download className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            exportarPdfIndividual(registro);
-                          }}
-                          title="Exportar PDF"
-                        >
-                          <FileText className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            exportarWordIndividual(registro);
-                          }}
-                          title="Exportar Word"
-                        >
-                          <FileText className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete({
-                              id: registro.id,
-                              label: 'Custodia de Muestras',
-                              run: () => custodiaMuestrasService.delete(registro.id),
-                            });
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4 mr-1" />
-                          Eliminar
-                        </Button>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {registro.estado === 'pendiente' ? (
+                            <>
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); const registroLimpio = { ...registro, area: limpiarArea(registro.area || ''), tipo_muestra: limpiarTipoMuestra(registro.tipo_muestra || '') }; setEditingCustodiaMuestras(registroLimpio); setIsCustodiaMuestrasModalOpen(true); }} className="border-amber-400 text-amber-700 hover:bg-amber-50 h-7 px-2 text-xs">
+                                <Pencil className="w-3 h-3 mr-1" />Completar
+                              </Button>
+                              {user?.role === 'jefe' && (
+                                <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); handleDelete({ id: registro.id, label: 'Custodia de Muestras', run: () => custodiaMuestrasService.delete(registro.id) }); }} className="h-7 w-7 p-0">
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
+                              )}
+                            </>
+                          ) : user?.role === 'jefe' ? (
+                            <>
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); const registroLimpio = { ...registro, area: limpiarArea(registro.area || ''), tipo_muestra: limpiarTipoMuestra(registro.tipo_muestra || '') }; setEditingCustodiaMuestras(registroLimpio); setIsCustodiaMuestrasModalOpen(true); }} className="h-7 w-7 p-0">
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                              <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); handleDelete({ id: registro.id, label: 'Custodia de Muestras', run: () => custodiaMuestrasService.delete(registro.id) }); }} className="h-7 w-7 p-0">
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </>
+                          ) : null}
+                          <BotonesExportacionIndividual registro={registro} titulo="RE-CAL-107 - Custodia de Muestras" fileName="RE-CAL-107_Custodia_Muestras" />
                         </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 px-3 py-2.5">
                         <div>
                           <p className="text-sm font-medium text-gray-700">Código</p>
                           <p className="text-sm text-gray-900">{registro.codigo}</p>
@@ -2542,31 +2578,33 @@ export default function LabMicrobiologiaPage() {
       {/* Vista de Control de Incubadora */}
       {vistaActual === 'incubadora-control' && (
         <>
-          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4">
+          <div className="mb-6 bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 flex items-start justify-between gap-3">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">RE-CAL-089 - Control de Incubadora</h1>
-              <p className="text-gray-600 mt-2">
+              <h1 className="text-xl font-bold text-gray-900 leading-tight">RE-CAL-089 - Control de Incubadora</h1>
+              <p className="text-sm text-gray-500 mt-1">
                 Registro de operación y control de incubadora del laboratorio
               </p>
             </div>
             <Button 
               onClick={handleVolverPrincipal}
-              variant="outline"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 text-gray-500 hover:text-gray-900 hover:bg-gray-100 mt-0.5"
             >
-              Volver
+              <ChevronLeft className="w-4 h-4 mr-1" />Volver
             </Button>
           </div>
 
           <Card>
             <CardHeader>
-              <div className="flex justify-end items-center gap-2">
+              <div className="flex flex-wrap justify-end items-center gap-2">
                 <BotonesExportacion 
                   registros={incubadoraControlRegistros} 
                   titulo="RE-CAL-089 - Control de Incubadora" 
                   fileName="RE-CAL-089_Control_Incubadora"
-                  columnas={['fecha', 'temperatura_1', 'temperatura_2', 'diferencia', 'responsable']}
+                  columnas={['muestra', 'fecha_ingreso', 'hora_ingreso', 'fecha_salida', 'hora_salida', 'responsable']}
                 />
-                <Button onClick={() => {
+                <Button className="bg-teal-500 hover:bg-teal-600 text-white border-0" onClick={() => {
                   setEditingIncubadoraControl(null);
                   setIsIncubadoraControlModalOpen(true);
                 }}>
@@ -2591,7 +2629,7 @@ export default function LabMicrobiologiaPage() {
                   <p className="text-gray-600 mb-4">
                     Comienza agregando tu primer registro de control de incubadora.
                   </p>
-                  <Button onClick={() => {
+                  <Button className="bg-teal-500 hover:bg-teal-600 text-white border-0" onClick={() => {
                     setEditingIncubadoraControl(null);
                     setIsIncubadoraControlModalOpen(true);
                   }}>
@@ -2604,60 +2642,43 @@ export default function LabMicrobiologiaPage() {
                   {incubadoraControlRegistros.map((registro: any) => (
                     <div
                       key={registro.id}
-                      className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50"
+                      className={`border rounded-xl shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md ${registro.estado === 'pendiente' ? 'border-amber-300 bg-gradient-to-r from-amber-50 to-white' : 'border-green-200 bg-white hover:border-green-300'}`}
                       onClick={() => openDetalle('incubadora-control', 'RE-CAL-089 - Operación y Control de Incubadora', registro)}
                     >
-                      <div className="flex items-center justify-end gap-2 mb-3">
-                        {registro.estado === 'pendiente' ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingIncubadoraControl(registro);
-                              setIsIncubadoraControlModalOpen(true);
-                            }}
-                            className="border-orange-400 text-orange-700 hover:bg-orange-50"
-                          >
-                            <Pencil className="w-4 h-4 mr-1" />
-                            Completar
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingIncubadoraControl(registro);
-                              setIsIncubadoraControlModalOpen(true);
-                            }}
-                          >
-                            <Pencil className="w-4 h-4 mr-1" />
-                            Editar
-                          </Button>
-                        )}
-                        <BotonesExportacionIndividual 
-                          registro={registro} 
-                          titulo="RE-CAL-089 - Control Incubadora" 
-                          fileName="RE-CAL-089_Control_Incubadora"
-                        />
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete({
-                              id: registro.id,
-                              label: 'Control Incubadora',
-                              run: () => incubadoraControlService.delete(registro.id),
-                            });
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4 mr-1" />
-                          Eliminar
-                        </Button>
+                      <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-2.5 pb-2 border-b border-gray-100 rounded-t-xl">
+                        <div className="flex-shrink-0">
+                          {registro.estado === 'pendiente' ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">Pendiente</span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700 border border-green-200">Completado</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {registro.estado === 'pendiente' ? (
+                            <>
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditingIncubadoraControl(registro); setIsIncubadoraControlModalOpen(true); }} className="border-amber-400 text-amber-700 hover:bg-amber-50 h-7 px-2 text-xs">
+                                <Pencil className="w-3 h-3 mr-1" />Completar
+                              </Button>
+                              {user?.role === 'jefe' && (
+                                <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); handleDelete({ id: registro.id, label: 'Control Incubadora', run: () => incubadoraControlService.delete(registro.id) }); }} className="h-7 w-7 p-0">
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
+                              )}
+                            </>
+                          ) : user?.role === 'jefe' ? (
+                            <>
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditingIncubadoraControl(registro); setIsIncubadoraControlModalOpen(true); }} className="h-7 w-7 p-0">
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                              <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); handleDelete({ id: registro.id, label: 'Control Incubadora', run: () => incubadoraControlService.delete(registro.id) }); }} className="h-7 w-7 p-0">
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </>
+                          ) : null}
+                          <BotonesExportacionIndividual registro={registro} titulo="RE-CAL-089 - Control Incubadora" fileName="RE-CAL-089_Control_Incubadora" />
+                        </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 px-3 py-2.5">
                         <div>
                           <p className="text-sm font-medium text-gray-700">Muestra</p>
                           <p className="text-sm text-gray-900">{registro.muestra}</p>
@@ -2692,7 +2713,7 @@ export default function LabMicrobiologiaPage() {
                         </div>
                       </div>
                       {registro.observaciones && (
-                        <div className="mt-3 pt-3 border-t">
+                        <div className="px-4 pt-3 pb-3 border-t">
                           <p className="text-sm font-medium text-gray-700">Observaciones</p>
                           <p className="text-sm text-gray-900">{registro.observaciones}</p>
                         </div>
@@ -2709,18 +2730,20 @@ export default function LabMicrobiologiaPage() {
       {/* Vista de Resultados Microbiológicos */}
       {vistaActual === 'resultados-microbiologicos' && (
         <>
-          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mb-6 bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 flex items-start justify-between gap-3">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">RE-CAL-046 - Resultados Microbiológicos</h1>
-              <p className="text-gray-600 mt-2">
+              <h1 className="text-xl font-bold text-gray-900 leading-tight">RE-CAL-046 - Resultados Microbiológicos</h1>
+              <p className="text-sm text-gray-500 mt-1">
                 Resultados microbiológicos análisis internos y externos
               </p>
             </div>
             <Button 
               onClick={handleVolverPrincipal}
-              variant="outline"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 text-gray-500 hover:text-gray-900 hover:bg-gray-100 mt-0.5"
             >
-              Volver
+              <ChevronLeft className="w-4 h-4 mr-1" />Volver
             </Button>
           </div>
 
@@ -2824,7 +2847,7 @@ export default function LabMicrobiologiaPage() {
 
           <Card>
             <CardHeader>
-              <div className="flex justify-end items-center gap-2">
+              <div className="flex flex-wrap justify-end items-center gap-2">
                 <Button
                   variant="outline"
                   onClick={() => setIsIndicadorModalOpen(true)}
@@ -2851,7 +2874,7 @@ export default function LabMicrobiologiaPage() {
                   >
                     Cronograma
                   </Button>
-                  <Button onClick={() => {
+                  <Button className="bg-indigo-500 hover:bg-indigo-600 text-white border-0" onClick={() => {
                     setEditingResultadosMicrobiologicos(null);
                     setIsResultadosMicrobiologicosModalOpen(true);
                   }}>
@@ -2899,7 +2922,7 @@ export default function LabMicrobiologiaPage() {
                   <p className="text-gray-600 mb-4">
                     Comienza agregando tu primer registro de resultados microbiológicos.
                   </p>
-                  <Button onClick={() => {
+                  <Button className="bg-indigo-500 hover:bg-indigo-600 text-white border-0" onClick={() => {
                     setEditingResultadosMicrobiologicos(null);
                     setIsResultadosMicrobiologicosModalOpen(true);
                   }}>
@@ -2925,76 +2948,61 @@ export default function LabMicrobiologiaPage() {
                     .map((registro: any) => (
                     <div
                       key={registro.id}
-                      className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50"
+                      className={`border rounded-xl shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md ${registro.estado === 'pendiente' ? 'border-amber-300 bg-gradient-to-r from-amber-50 to-white' : 'border-green-200 bg-white hover:border-green-300'}`}
                       onClick={() => {
                         setViewingResultadosMicrobiologicos(registro);
                         setIsViewResultadosMicrobiologicosModalOpen(true);
                       }}
                     >
-                      <div className="flex items-center justify-end gap-2 mb-3">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-blue-600 text-blue-600 hover:bg-blue-50"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setViewingResultadosMicrobiologicos(registro);
-                            setIsViewResultadosMicrobiologicosModalOpen(true);
-                          }}
-                        >
-                          <FileText className="w-4 h-4 mr-1" />
-                          Ver detalles
-                        </Button>
-                        {registro.estado === 'pendiente' ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingResultadosMicrobiologicos(registro);
-                              setIsResultadosMicrobiologicosModalOpen(true);
-                            }}
-                            className="border-orange-400 text-orange-700 hover:bg-orange-50"
-                          >
-                            <Pencil className="w-4 h-4 mr-1" />
-                            Completar
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingResultadosMicrobiologicos(registro);
-                              setIsResultadosMicrobiologicosModalOpen(true);
-                            }}
-                          >
-                            <Pencil className="w-4 h-4 mr-1" />
-                            Editar
-                          </Button>
-                        )}
-                        <BotonesExportacionIndividual 
-                          registro={registro} 
-                          titulo="RE-CAL-046 - Resultados Microbiológicos" 
-                          fileName="RE-CAL-046_Resultados_Microbiologicos"
-                        />
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete({
-                              id: registro.id,
-                              label: 'Resultados Microbiológicos',
-                              run: () => resultadosMicrobiologicosService.delete(registro.id),
-                            });
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4 mr-1" />
-                          Eliminar
-                        </Button>
+                      <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-2.5 pb-2 border-b border-gray-100 rounded-t-xl">
+                        <div className="flex items-center gap-1 flex-wrap flex-shrink-0">
+                          {registro.estado === 'pendiente' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">Pendiente</span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700 border border-green-200">Completado</span>
+                          )}
+                          {registro.cronograma_codigo && (
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${getCronogramaColor(registro.cronograma_codigo, registro.tipo).bg} ${getCronogramaColor(registro.cronograma_codigo, registro.tipo).text} ${getCronogramaColor(registro.cronograma_codigo, registro.tipo).border}`}>
+                              {getCronogramaNombre(registro.cronograma_codigo, registro.tipo)}
+                            </span>
+                          )}
+                          {registro.cronograma_tipo === 'externo' && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700 border border-red-200">
+                              Externo
+                            </span>
+                          )}
+                          {registro.cronograma_tipo === 'interno' && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700 border border-green-200">
+                              Interno
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {registro.estado === 'pendiente' ? (
+                            <>
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditingResultadosMicrobiologicos(registro); setIsResultadosMicrobiologicosModalOpen(true); }} className="border-amber-400 text-amber-700 hover:bg-amber-50 h-7 px-2 text-xs">
+                                <Pencil className="w-3 h-3 mr-1" />Completar
+                              </Button>
+                              {user?.role === 'jefe' && (
+                                <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); handleDelete({ id: registro.id, label: 'Resultados Microbiológicos', run: () => resultadosMicrobiologicosService.delete(registro.id) }); }} className="h-7 w-7 p-0">
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
+                              )}
+                            </>
+                          ) : user?.role === 'jefe' ? (
+                            <>
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditingResultadosMicrobiologicos(registro); setIsResultadosMicrobiologicosModalOpen(true); }} className="h-7 w-7 p-0">
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                              <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); handleDelete({ id: registro.id, label: 'Resultados Microbiológicos', run: () => resultadosMicrobiologicosService.delete(registro.id) }); }} className="h-7 w-7 p-0">
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </>
+                          ) : null}
+                          <BotonesExportacionIndividual registro={registro} titulo="RE-CAL-046 - Resultados Microbiológicos" fileName="RE-CAL-046_Resultados_Microbiologicos" />
+                        </div>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 px-3 py-2.5">
                         <div className="min-w-0">
                           <p className="text-xs font-medium text-gray-500">Fecha</p>
                           <p className="text-sm font-medium text-gray-900 truncate">
@@ -3014,18 +3022,18 @@ export default function LabMicrobiologiaPage() {
                           <p className="text-sm font-medium text-gray-900 truncate">{registro.area}</p>
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs font-medium text-gray-500">Mesófilos</p>
-                          <p className="text-sm font-medium text-gray-900">{registro.mesofilos || '-'}</p>
+                          <p className="text-xs font-medium text-gray-700">Mesófilos</p>
+                          <p className="text-sm text-gray-900">{registro.mesofilos || '-'}</p>
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs font-medium text-gray-500">Cumple</p>
-                          <p className="text-sm font-medium text-gray-900">
+                          <p className="text-xs font-medium text-gray-700">Cumple</p>
+                          <p className="text-sm text-gray-900">
                             {registro.cumple ? '✅ Sí' : registro.no_cumple ? '❌ No' : '-'}
                           </p>
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs font-medium text-gray-500">Responsable</p>
-                          <p className="text-sm font-medium text-gray-900 truncate">{registro.responsable}</p>
+                          <p className="text-xs font-medium text-gray-700">Responsable</p>
+                          <p className="text-sm text-gray-900 truncate">{registro.responsable}</p>
                         </div>
                       </div>
                     </div>
@@ -3040,31 +3048,33 @@ export default function LabMicrobiologiaPage() {
       {/* Vista de Control Lavado e Inactivación */}
       {vistaActual === 'control-lavado-inactivacion' && (
         <>
-          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mb-6 bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 flex items-start justify-between gap-3">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">RE-CAL-111 - Control Lavado e Inactivación</h1>
-              <p className="text-gray-600 mt-2">
+              <h1 className="text-xl font-bold text-gray-900 leading-tight">RE-CAL-111 - Control Lavado e Inactivación</h1>
+              <p className="text-sm text-gray-500 mt-1">
                 Control de lavado e inactivación de material - Laboratorio Microbiología
               </p>
             </div>
             <Button 
               onClick={handleVolverPrincipal}
-              variant="outline"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 text-gray-500 hover:text-gray-900 hover:bg-gray-100 mt-0.5"
             >
-              Volver
+              <ChevronLeft className="w-4 h-4 mr-1" />Volver
             </Button>
           </div>
 
           <Card>
             <CardHeader>
-              <div className="flex justify-end items-center gap-2">
+              <div className="flex flex-wrap justify-end items-center gap-2">
                 <BotonesExportacion 
                   registros={controlLavadoInactivacionRegistros} 
-                  titulo="RE-CAL-045 - Control Lavado e Inactivación" 
-                  fileName="RE-CAL-045_Control_Lavado_Inactivacion"
-                  columnas={['fecha', 'producto', 'lote', 'responsable']}
+                  titulo="RE-CAL-111 - Control Lavado e Inactivación" 
+                  fileName="RE-CAL-111_Control_Lavado_Inactivacion"
+                  columnas={['fecha', 'actividad_realizada', 'realizado_por']}
                 />
-                <Button onClick={() => {
+                <Button className="bg-cyan-500 hover:bg-cyan-600 text-white border-0" onClick={() => {
                   setEditingControlLavadoInactivacion(null);
                   setIsControlLavadoInactivacionModalOpen(true);
                 }}>
@@ -3089,7 +3099,7 @@ export default function LabMicrobiologiaPage() {
                   <p className="text-gray-600 mb-4">
                     Comienza agregando tu primer registro de control de lavado e inactivación.
                   </p>
-                  <Button onClick={() => {
+                  <Button className="bg-cyan-500 hover:bg-cyan-600 text-white border-0" onClick={() => {
                     setEditingControlLavadoInactivacion(null);
                     setIsControlLavadoInactivacionModalOpen(true);
                   }}>
@@ -3102,60 +3112,43 @@ export default function LabMicrobiologiaPage() {
                   {controlLavadoInactivacionRegistros.map((registro: any) => (
                     <div
                       key={registro.id}
-                      className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50"
+                      className={`border rounded-xl shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md ${registro.estado === 'pendiente' ? 'border-amber-300 bg-gradient-to-r from-amber-50 to-white' : 'border-green-200 bg-white hover:border-green-300'}`}
                       onClick={() => openDetalle('control-lavado-inactivacion', 'RE-CAL-111 - Control Lavado e Inactivación', registro)}
                     >
-                      <div className="flex items-center justify-end gap-2 mb-3">
-                        {registro.estado === 'pendiente' ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingControlLavadoInactivacion(registro);
-                              setIsControlLavadoInactivacionModalOpen(true);
-                            }}
-                            className="border-orange-400 text-orange-700 hover:bg-orange-50"
-                          >
-                            <Pencil className="w-4 h-4 mr-1" />
-                            Completar
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingControlLavadoInactivacion(registro);
-                              setIsControlLavadoInactivacionModalOpen(true);
-                            }}
-                          >
-                            <Pencil className="w-4 h-4 mr-1" />
-                            Editar
-                          </Button>
-                        )}
-                        <BotonesExportacionIndividual 
-                          registro={registro} 
-                          titulo="RE-CAL-045 - Control Lavado e Inactivación" 
-                          fileName="RE-CAL-045_Control_Lavado_Inactivacion"
-                        />
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete({
-                              id: registro.id,
-                              label: 'Control Lavado e Inactivación',
-                              run: () => controlLavadoInactivacionService.delete(registro.id),
-                            });
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4 mr-1" />
-                          Eliminar
-                        </Button>
+                      <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-2.5 pb-2 border-b border-gray-100 rounded-t-xl">
+                        <div className="flex-shrink-0">
+                          {registro.estado === 'pendiente' ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">Pendiente</span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700 border border-green-200">Completado</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {registro.estado === 'pendiente' ? (
+                            <>
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditingControlLavadoInactivacion(registro); setIsControlLavadoInactivacionModalOpen(true); }} className="border-amber-400 text-amber-700 hover:bg-amber-50 h-7 px-2 text-xs">
+                                <Pencil className="w-3 h-3 mr-1" />Completar
+                              </Button>
+                              {user?.role === 'jefe' && (
+                                <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); handleDelete({ id: registro.id, label: 'Control Lavado e Inactivación', run: () => controlLavadoInactivacionService.delete(registro.id) }); }} className="h-7 w-7 p-0">
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
+                              )}
+                            </>
+                          ) : user?.role === 'jefe' ? (
+                            <>
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditingControlLavadoInactivacion(registro); setIsControlLavadoInactivacionModalOpen(true); }} className="h-7 w-7 p-0">
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                              <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); handleDelete({ id: registro.id, label: 'Control Lavado e Inactivación', run: () => controlLavadoInactivacionService.delete(registro.id) }); }} className="h-7 w-7 p-0">
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </>
+                          ) : null}
+                          <BotonesExportacionIndividual registro={registro} titulo="RE-CAL-045 - Control Lavado e Inactivación" fileName="RE-CAL-045_Control_Lavado_Inactivacion" />
+                        </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 px-3 py-2.5">
                         <div>
                           <p className="text-sm font-medium text-gray-700">Fecha</p>
                           <p className="text-sm text-gray-900">
@@ -3184,7 +3177,7 @@ export default function LabMicrobiologiaPage() {
                         </div>
                       </div>
                       {registro.observaciones && (
-                        <div className="mt-3 pt-3 border-t">
+                        <div className="px-4 pt-3 pb-3 border-t">
                           <p className="text-sm font-medium text-gray-700">Observaciones</p>
                           <p className="text-sm text-gray-900">{registro.observaciones}</p>
                         </div>
@@ -3201,31 +3194,33 @@ export default function LabMicrobiologiaPage() {
       {/* Vista de Registros Recepción Formatos */}
       {vistaActual === 'registros-recepcion-formatos' && (
         <>
-          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mb-6 bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 flex items-start justify-between gap-3">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">RE-CAL-100 - Registros Recepción Formatos</h1>
-              <p className="text-gray-600 mt-2">
+              <h1 className="text-xl font-bold text-gray-900 leading-tight">RE-CAL-100 - Registros Recepción Formatos</h1>
+              <p className="text-sm text-gray-500 mt-1">
                 Registros recepción de formatos diligenciados en proceso
               </p>
             </div>
             <Button 
               onClick={handleVolverPrincipal}
-              variant="outline"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 text-gray-500 hover:text-gray-900 hover:bg-gray-100 mt-0.5"
             >
-              Volver
+              <ChevronLeft className="w-4 h-4 mr-1" />Volver
             </Button>
           </div>
 
           <Card>
             <CardHeader>
-              <div className="flex justify-end items-center gap-2">
+              <div className="flex flex-wrap justify-end items-center gap-2">
                 <BotonesExportacion 
                   registros={registrosRecepcionFormatosRegistros} 
                   titulo="RE-CAL-100 - Registros Recepción Formatos" 
                   fileName="RE-CAL-100_Recepcion_Formatos"
-                  columnas={['fecha', 'formato', 'area', 'responsable']}
+                  columnas={['fecha_entrega', 'fecha_registros', 'codigo_version_registros', 'nombre_quien_recibe']}
                 />
-                <Button onClick={() => {
+                <Button className="bg-amber-500 hover:bg-amber-600 text-white border-0" onClick={() => {
                   setEditingRegistrosRecepcionFormatos(null);
                   setIsRegistrosRecepcionFormatosModalOpen(true);
                 }}>
@@ -3250,7 +3245,7 @@ export default function LabMicrobiologiaPage() {
                   <p className="text-gray-600 mb-4">
                     Comienza agregando tu primer registro de recepción de formatos.
                   </p>
-                  <Button onClick={() => {
+                  <Button className="bg-amber-500 hover:bg-amber-600 text-white border-0" onClick={() => {
                     setEditingRegistrosRecepcionFormatos(null);
                     setIsRegistrosRecepcionFormatosModalOpen(true);
                   }}>
@@ -3263,60 +3258,43 @@ export default function LabMicrobiologiaPage() {
                   {registrosRecepcionFormatosRegistros.map((registro: any) => (
                     <div
                       key={registro.id}
-                      className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50"
+                      className={`border rounded-xl shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md ${registro.estado === 'pendiente' ? 'border-amber-300 bg-gradient-to-r from-amber-50 to-white' : 'border-green-200 bg-white hover:border-green-300'}`}
                       onClick={() => openDetalle('registros-recepcion-formatos', 'RE-CAL-100 - Recepción de Formatos', registro)}
                     >
-                      <div className="flex items-center justify-end gap-2 mb-3">
-                        {registro.estado === 'pendiente' ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingRegistrosRecepcionFormatos(registro);
-                              setIsRegistrosRecepcionFormatosModalOpen(true);
-                            }}
-                            className="border-orange-400 text-orange-700 hover:bg-orange-50"
-                          >
-                            <Pencil className="w-4 h-4 mr-1" />
-                            Completar
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="variant"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingRegistrosRecepcionFormatos(registro);
-                              setIsRegistrosRecepcionFormatosModalOpen(true);
-                            }}
-                          >
-                            <Pencil className="w-4 h-4 mr-1" />
-                            Editar
-                          </Button>
-                        )}
-                        <BotonesExportacionIndividual 
-                          registro={registro} 
-                          titulo="RE-CAL-100 - Registros Recepción Formatos" 
-                          fileName="RE-CAL-100_Recepcion_Formatos"
-                        />
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete({
-                              id: registro.id,
-                              label: 'Recepción de Formatos',
-                              run: () => registrosRecepcionFormatosService.delete(registro.id),
-                            });
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4 mr-1" />
-                          Eliminar
-                        </Button>
+                      <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-2.5 pb-2 border-b border-gray-100 rounded-t-xl">
+                        <div className="flex-shrink-0">
+                          {registro.estado === 'pendiente' ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700 border border-amber-200">Pendiente</span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 text-green-700 border border-green-200">Completado</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {registro.estado === 'pendiente' ? (
+                            <>
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditingRegistrosRecepcionFormatos(registro); setIsRegistrosRecepcionFormatosModalOpen(true); }} className="border-amber-400 text-amber-700 hover:bg-amber-50 h-7 px-2 text-xs">
+                                <Pencil className="w-3 h-3 mr-1" />Completar
+                              </Button>
+                              {user?.role === 'jefe' && (
+                                <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); handleDelete({ id: registro.id, label: 'Recepción de Formatos', run: () => registrosRecepcionFormatosService.delete(registro.id) }); }} className="h-7 w-7 p-0">
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
+                              )}
+                            </>
+                          ) : user?.role === 'jefe' ? (
+                            <>
+                              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setEditingRegistrosRecepcionFormatos(registro); setIsRegistrosRecepcionFormatosModalOpen(true); }} className="h-7 w-7 p-0">
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                              <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); handleDelete({ id: registro.id, label: 'Recepción de Formatos', run: () => registrosRecepcionFormatosService.delete(registro.id) }); }} className="h-7 w-7 p-0">
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </>
+                          ) : null}
+                          <BotonesExportacionIndividual registro={registro} titulo="RE-CAL-100 - Registros Recepción Formatos" fileName="RE-CAL-100_Recepcion_Formatos" />
+                        </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 px-3 py-2.5">
                         <div>
                           <p className="text-sm font-medium text-gray-700">Fecha Entrega</p>
                           <p className="text-sm text-gray-900">
@@ -3347,7 +3325,7 @@ export default function LabMicrobiologiaPage() {
                         </div>
                       </div>
                       {registro.observaciones && (
-                        <div className="mt-3 pt-3 border-t">
+                        <div className="px-4 pt-3 pb-3 border-t">
                           <p className="text-sm font-medium text-gray-700">Observaciones</p>
                           <p className="text-sm text-gray-900">{registro.observaciones}</p>
                         </div>
@@ -3365,22 +3343,29 @@ export default function LabMicrobiologiaPage() {
       {vistaActual === 'conograma' && (
         <>
           {/* Header Principal */}
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Cronogramas de Muestreo</h2>
-            <p className="text-gray-600">Planificación y seguimiento de actividades microbiológicas</p>
+          <div className="mb-8 rounded-2xl bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-700 p-5 sm:p-6 text-white shadow-lg">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center shrink-0">
+                <Calendar className="w-7 h-7 text-white" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Cronogramas de Muestreo</h2>
+                <p className="text-violet-200 text-xs sm:text-sm mt-0.5">Planificación y seguimiento de actividades microbiológicas</p>
+              </div>
+            </div>
           </div>
 
           {/* Sección: Cronogramas Internos */}
           <div className="mb-8">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
-                <Building className="w-5 h-5 text-blue-600" />
+            <div className="flex items-center gap-3 mb-4 p-3 bg-blue-50 rounded-xl border border-blue-100">
+              <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shrink-0">
+                <Building className="w-5 h-5 text-white" />
               </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Cronogramas Internos</h3>
-                <p className="text-sm text-gray-500">Muestreos realizados dentro de la organización</p>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-semibold text-gray-900">Cronogramas Internos</h3>
+                <p className="text-xs text-gray-500">Muestreos realizados dentro de la organización</p>
               </div>
-              <Badge className="ml-auto bg-blue-100 text-blue-700 hover:bg-blue-100">2 activos</Badge>
+              <Badge className="bg-blue-600 text-white border-0 shrink-0">2 activos</Badge>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -3482,15 +3467,15 @@ export default function LabMicrobiologiaPage() {
 
           {/* Sección: Cronogramas Externos */}
           <div className="mb-8">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
-                <Truck className="w-5 h-5 text-amber-600" />
+            <div className="flex items-center gap-3 mb-4 p-3 bg-amber-50 rounded-xl border border-amber-100">
+              <div className="w-10 h-10 bg-amber-500 rounded-xl flex items-center justify-center shrink-0">
+                <Truck className="w-5 h-5 text-white" />
               </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Cronogramas Externos</h3>
-                <p className="text-sm text-gray-500">Muestreos realizados por laboratorios externos</p>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-semibold text-gray-900">Cronogramas Externos</h3>
+                <p className="text-xs text-gray-500">Muestreos realizados por laboratorios externos</p>
               </div>
-              <Badge className="ml-auto bg-blue-100 text-blue-700 hover:bg-blue-100">3 activos</Badge>
+              <Badge className="bg-amber-500 text-white border-0 shrink-0">3 activos</Badge>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -3586,12 +3571,12 @@ export default function LabMicrobiologiaPage() {
                 </CardContent>
               </Card>
 
-              {/* Card: PL-CAL-010 - Materia Prima */}
+              {/* Card: PL-CAL-009 - Materia Prima */}
               <Card
                 className="group border-purple-200 bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer overflow-hidden"
                 onClick={()=>{
                   setCronogramaSeleccionado({
-                    codigo: 'PL-CAL-010',
+                    codigo: 'PL-CAL-009',
                     titulo: 'Plan de Muestreo Materia Prima',
                     version: '1',
                     fechaAprobacion: ''
@@ -3607,7 +3592,7 @@ export default function LabMicrobiologiaPage() {
                         <Beaker className="w-4 h-4 text-purple-600" />
                       </div>
                       <div>
-                        <CardTitle className="text-sm font-semibold text-gray-900">PL-CAL-010</CardTitle>
+                        <CardTitle className="text-sm font-semibold text-gray-900">PL-CAL-009</CardTitle>
                         <p className="text-xs text-gray-500">Materia Prima</p>
                       </div>
                     </div>
@@ -3636,8 +3621,8 @@ export default function LabMicrobiologiaPage() {
           </div>
 
           {/* Leyenda */}
-          <div className="mt-8 p-4 bg-gray-50 rounded-xl border border-gray-100">
-            <h4 className="text-sm font-medium text-gray-700 mb-3">Leyenda de Estados</h4>
+          <div className="mt-8 p-4 bg-gray-50 rounded-xl border border-gray-200 shadow-sm">
+            <h4 className="text-sm font-semibold text-gray-800 mb-3">Leyenda de Estados</h4>
             <div className="flex flex-wrap gap-4 text-xs">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-green-500" />
@@ -3671,26 +3656,39 @@ export default function LabMicrobiologiaPage() {
       {/* Modal del Cronograma con Calendario */}
       <Dialog open={isCronogramaModalOpen} onOpenChange={setIsCronogramaModalOpen}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {cronogramaSeleccionado?.codigo === 'PL-CAL-009' ? (
-                <Package className="w-5 h-5 text-emerald-600" />
-              ) : (
-                <Microscope className="w-5 h-5 text-violet-600" />
-              )}
-              {cronogramaSeleccionado?.codigo} - {cronogramaSeleccionado?.titulo}
-            </DialogTitle>
-            <DialogDescription>
-              Versión {cronogramaSeleccionado?.version} | Aprobado: {cronogramaSeleccionado?.fechaAprobacion}
-            </DialogDescription>
+          <DialogHeader className="pb-4 border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl flex-shrink-0 bg-violet-50 border border-violet-100">
+                {cronogramaSeleccionado?.codigo === 'PL-CAL-009' ? (
+                  <Package className="w-5 h-5 text-emerald-600" />
+                ) : (
+                  <Microscope className="w-5 h-5 text-violet-600" />
+                )}
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-[10px] font-bold text-violet-700 bg-violet-50 px-2 py-0.5 rounded-full border border-violet-100">{cronogramaSeleccionado?.codigo}</span>
+                  <span className="text-[10px] text-gray-400">v.{cronogramaSeleccionado?.version} · {cronogramaSeleccionado?.fechaAprobacion}</span>
+                </div>
+                <DialogTitle className="text-base font-semibold text-gray-900 leading-snug">
+                  {cronogramaSeleccionado?.titulo?.split(' - ').slice(-1)[0] || cronogramaSeleccionado?.titulo}
+                </DialogTitle>
+              </div>
+            </div>
           </DialogHeader>
 
           <div className="mt-4">
-            {['PL-CAL-009', 'PL-CAL-010'].includes(cronogramaSeleccionado?.codigo || '') ? (
+            {['PL-CAL-009'].includes(cronogramaSeleccionado?.codigo || '') ? (
               <CronogramaProductoTerminado
-                tipoCronograma={
-                  cronogramaSeleccionado?.codigo === 'PL-CAL-010' ? 'materia-prima' :
+                key={
                   cronogramaSeleccionado?.titulo?.includes('Agua Potable') ? 'agua-potable' :
+                  cronogramaSeleccionado?.titulo?.includes('Materia Prima') ? 'materia-prima' :
+                  cronogramaSeleccionado?.titulo?.includes('Externo') ? 'pt-externo' :
+                  'producto-terminado'
+                }
+                tipoCronograma={
+                  cronogramaSeleccionado?.titulo?.includes('Agua Potable') ? 'agua-potable' :
+                  cronogramaSeleccionado?.titulo?.includes('Materia Prima') ? 'materia-prima' :
                   cronogramaSeleccionado?.titulo?.includes('Externo') ? 'pt-externo' :
                   'producto-terminado'
                 }
@@ -3749,7 +3747,7 @@ export default function LabMicrobiologiaPage() {
                   console.log('Completar tarea PT/Agua Potable:', task);
                   // Determinar el tipo de cronograma basado en el cronograma seleccionado
                   const cronogramaTipo =
-                    cronogramaSeleccionado?.codigo === 'PL-CAL-010' ? 'materia-prima' :
+                    cronogramaSeleccionado?.codigo === 'PL-CAL-009' ? 'materia-prima' :
                     cronogramaSeleccionado?.titulo?.includes('Agua Potable') ? 'agua-potable' :
                     cronogramaSeleccionado?.titulo?.includes('Externo') ? 'pt-externo' :
                     'producto-terminado';
@@ -3814,7 +3812,7 @@ export default function LabMicrobiologiaPage() {
                 try {
                   // Buscar el registro de Custodia de Muestras asociado a esta tarea
                   const registro = await custodiaMuestrasService.getByCronogramaTaskId(task.id);
-                  console.log('📋 Registro RE-CAL-107 encontrado:', registro);
+                  console.log(' Registro RE-CAL-107 encontrado:', registro);
                   if (registro) {
                     // Limpiar datos corruptos antes de mostrar
                     const registroLimpio = {

@@ -3,6 +3,11 @@
 -- NOTA: Las tablas están en el esquema lab_microbiologia
 -- ========================================
 
+-- RE-CAL-021: Condiciones Ambientales
+ALTER TABLE lab_microbiologia.condiciones_ambientales ADD COLUMN IF NOT EXISTS estado VARCHAR(20) DEFAULT 'completado';
+CREATE INDEX IF NOT EXISTS idx_condiciones_ambientales_estado ON lab_microbiologia.condiciones_ambientales(estado);
+UPDATE lab_microbiologia.condiciones_ambientales SET estado = 'completado' WHERE estado IS NULL;
+
 -- RE-CAL-016: Temperatura Equipos
 ALTER TABLE lab_microbiologia.temperatura_equipos ADD COLUMN IF NOT EXISTS estado VARCHAR(20) DEFAULT 'completado';
 CREATE INDEX IF NOT EXISTS idx_temperatura_equipos_estado ON lab_microbiologia.temperatura_equipos(estado);
@@ -52,6 +57,7 @@ SELECT
 FROM information_schema.columns
 WHERE table_schema = 'lab_microbiologia'
 AND table_name IN (
+    'condiciones_ambientales',
     'temperatura_equipos',
     'esterilizacion_autoclave',
     'incubadora_control',

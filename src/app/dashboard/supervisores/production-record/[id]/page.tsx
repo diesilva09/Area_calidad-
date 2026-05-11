@@ -173,6 +173,8 @@ export default function ProductionRecordDetailPage({
   // Función para determinar si el registro está pendiente
   const isRegistroPendiente = () => {
     const status = String((record as any)?.status ?? '').toLowerCase().trim();
+    // Si el estado del registro es 'pending', está pendiente
+    if (status === 'pending') return true;
     // Si el estado es 'completed', no está pendiente
     if (status === 'completed') return false;
 
@@ -234,6 +236,7 @@ export default function ProductionRecordDetailPage({
 
   const isJefe = String((user as any)?.role ?? '').toLowerCase() === 'jefe';
   const canEditCompleted = isJefe && !isRegistroPendiente();
+  const canDeletePending = isJefe && isRegistroPendiente();
 
   // Helper para parsear rango de vacíos (ej: ">= 20", "15-20", ">2")
   const parseVaciosRangeConfig = (raw: unknown) => {
@@ -1052,7 +1055,7 @@ export default function ProductionRecordDetailPage({
   };
 
   return (
-    <div className="min-h-screen bg-white p-2 sm:p-4 md:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-white via-white to-white p-2 sm:p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <Button variant="ghost" asChild className="mb-4 hover:bg-gray-100 transition-colors">
@@ -1061,30 +1064,50 @@ export default function ProductionRecordDetailPage({
               Volver a Registros
             </Link>
           </Button>
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-gray-800 tracking-tight">Detalle de Registro de Producción</h1>
-              <p className="text-gray-600 mt-1 flex items-center gap-2">
-                <Package className="h-4 w-4 text-gray-400" />
-                {record.producto_nombre || record.producto}
-              </p>
+
+          {/* Header Section */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 mb-4 shadow-sm">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-2.5 sm:p-3 rounded-xl shadow-lg shrink-0">
+                <Package className="h-6 w-6 sm:h-7 sm:w-7 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">
+                  Detalle de Registro de Producción
+                </h1>
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <Badge variant="outline" className="bg-white px-2 sm:px-3 py-1 text-xs sm:text-sm border-gray-300 shadow-sm">
-                <Calendar className="mr-1 h-3 w-3" />
+
+            {/* Product Info */}
+            <div className="ml-10 sm:ml-14 mb-4">
+              <span className="text-sm text-gray-600">
+                Producto: <span className="font-semibold text-gray-800">{record.producto_nombre || record.producto}</span>
+              </span>
+            </div>
+
+            {/* Badges */}
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 ml-10 sm:ml-14">
+              <Badge variant="outline" className="bg-white px-3 py-1.5 text-xs sm:text-sm border-gray-200 shadow-sm">
+                <Calendar className="mr-1.5 h-3 w-3" />
                 {formatDate(record.fechaproduccion)}
               </Badge>
-              <Badge variant="outline" className="bg-white px-2 sm:px-3 py-1 text-xs sm:text-sm border-gray-300 shadow-sm">
-                <Hash className="mr-1 h-3 w-3" />
+              <Badge variant="outline" className="bg-white px-3 py-1.5 text-xs sm:text-sm border-gray-200 shadow-sm">
+                <Hash className="mr-1.5 h-3 w-3" />
                 Lote: {record.lote}
               </Badge>
+            </div>
+          </div>
+
+          {/* Action Buttons Section */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+            <div className="flex flex-wrap gap-2 sm:gap-3">
               <Button
                 variant="outline"
                 onClick={() => setIsHistoryPanelOpen(true)}
                 className="flex items-center gap-1 sm:gap-2 text-blue-600 border-blue-200 hover:bg-blue-50 text-xs sm:text-sm px-2 sm:px-3 h-8 sm:h-9"
               >
                 <Clock className="h-3 w-3 sm:h-4 sm:w-4" />
-                <span className="hidden sm:inline">Ver</span> Historial
+                Historial
               </Button>
               {canEditCompleted && (
                 <Button
@@ -1096,7 +1119,7 @@ export default function ProductionRecordDetailPage({
                   Editar
                 </Button>
               )}
-              {canEditCompleted && (
+              {(canEditCompleted || canDeletePending) && (
                 <Button
                   onClick={() => setConfirmDeleteOpen(true)}
                   variant="outline"
@@ -1350,7 +1373,7 @@ export default function ProductionRecordDetailPage({
               <CardContent className="space-y-6 p-5">
                 <div>
                   <CumpleField
-                    label="Análisis Sensorial (1) C - (0) NC"
+                    label="Análisis Sensorial"
                     rawValue={normalizeLineTestValue(
                       record.analisis_sensorial,
                       'Análisis Sensorial',
@@ -1362,7 +1385,7 @@ export default function ProductionRecordDetailPage({
 
                 <div>
                   <CumpleField
-                    label="Prueba de Hermeticidad (1) C - (0) NC"
+                    label="Prueba de Hermeticidad"
                     rawValue={normalizeLineTestValue(
                       record.prueba_hermeticidad,
                       'Prueba de Hermeticidad',
@@ -1375,10 +1398,10 @@ export default function ProductionRecordDetailPage({
                 <div className="space-y-4">
                   <div>
                     <CumpleField
-                      label="Inspección Micropesaje No. Mezcla"
+                      label="Inspección Micropesaje Número de mezcla"
                       rawValue={normalizeLineTestValue(
                         record.inspeccion_micropesaje_mezcla,
-                        'Inspección Micropesaje No. Mezcla',
+                        'Inspección Micropesaje Número de mezcla',
                         record.observaciones_acciones_correctivas
                       )}
                       containerClass={highlightFromStatus(record.inspeccion_micropesaje_mezcla)}
@@ -1513,13 +1536,6 @@ export default function ProductionRecordDetailPage({
                     />
                   </div>
                 </div>
-                <AuditedField
-                  label="Responsable Análisis PT"
-                  value={record.responsable_analisis_pt}
-                  fieldName="responsable_analisis_pt"
-                  recordId={record.id}
-                  tableName="production_records"
-                />
                 {(() => {
                   const parsed = parseNovCorrPorSeccion(record.novedades_proceso, record.observaciones_acciones_correctivas);
                   const novedades = String(parsed.vacio.novedades || '').trim();
@@ -1696,12 +1712,6 @@ export default function ProductionRecordDetailPage({
                   </div>
                   <div>
                     <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                      <Eye className="h-3 w-3" /> Sensorial
-                    </label>
-                    <CumpleField label="" rawValue={record.sensorial_pt} />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                       <Package className="h-3 w-3" /> Tapado/Cierre
                     </label>
                     <div className="mt-1">
@@ -1718,13 +1728,7 @@ export default function ProductionRecordDetailPage({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div>
-                    <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                      <Award className="h-3 w-3" /> Presentación Final
-                    </label>
-                    <CumpleField label="" rawValue={record.presentacion_final_pt} />
-                  </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div>
                     <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                       <MapPin className="h-3 w-3" /> Ubicación Muestra
@@ -1741,6 +1745,24 @@ export default function ProductionRecordDetailPage({
                   </div>
                 </div>
 
+                <div className="w-full">
+                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                    <Eye className="h-3 w-3" /> Sensorial
+                  </label>
+                  <div className="mt-1">
+                    <CumpleField label="" rawValue={record.sensorial_pt} />
+                  </div>
+                </div>
+
+                <div className="w-full">
+                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                    <Award className="h-3 w-3" /> Presentación Final
+                  </label>
+                  <div className="mt-1">
+                    <CumpleField label="" rawValue={record.presentacion_final_pt} />
+                  </div>
+                </div>
+
                 <div>
                   <AuditedField
                     label="Observaciones Generales"
@@ -1750,13 +1772,6 @@ export default function ProductionRecordDetailPage({
                     tableName="production_records"
                     className="w-full"
                   />
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                    <User className="h-3 w-3" /> Responsable Análisis PT
-                  </label>
-                  <p className="whitespace-pre-wrap break-words mt-1 font-medium text-gray-800">{record.responsable_analisis_pt}</p>
                 </div>
               </CardContent>
             </Card>
@@ -1880,8 +1895,8 @@ export default function ProductionRecordDetailPage({
                         </div>
                       </div>
 
-                      {/* Fila 3: Consistencia, Tapado/Cierre, Etiqueta, Estado */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {/* Fila 3: Consistencia, Tapado/Cierre, Etiqueta */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div>
                           <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                             <Gauge className="h-3 w-3" /> Consistencia
@@ -1923,6 +1938,17 @@ export default function ProductionRecordDetailPage({
                             {extra.etiquetaPT || 'N/A'}
                           </p>
                         </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div>
+                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                            <MapPin className="h-3 w-3" /> Ubicación Muestra
+                          </label>
+                          <p className="mt-1 text-sm whitespace-pre-wrap break-words">
+                            {extra.ubicacionMuestraPT || 'N/A'}
+                          </p>
+                        </div>
                         <div>
                           <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                             <CheckCircle className="h-3 w-3" /> Estado
@@ -1937,29 +1963,22 @@ export default function ProductionRecordDetailPage({
                         </div>
                       </div>
 
-                      {/* Fila 4: Ubicación Muestra */}
-                      <div>
-                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                          <MapPin className="h-3 w-3" /> Ubicación Muestra
-                        </label>
-                        <p className="mt-1 text-sm whitespace-pre-wrap break-words">
-                          {extra.ubicacionMuestraPT || 'N/A'}
-                        </p>
-                      </div>
-
-                      {/* Sensorial, Presentación Final, Observaciones, Responsable */}
-                      <div>
+                      <div className="w-full">
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                           <Eye className="h-3 w-3" /> Sensorial
                         </label>
-                        <CumpleField label="" rawValue={extra.sensorialPT} />
+                        <div className="mt-1">
+                          <CumpleField label="" rawValue={extra.sensorialPT} />
+                        </div>
                       </div>
 
-                      <div>
+                      <div className="w-full">
                         <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
                           <Award className="h-3 w-3" /> Presentación Final
                         </label>
-                        <CumpleField label="" rawValue={extra.presentacionFinalPT} />
+                        <div className="mt-1">
+                          <CumpleField label="" rawValue={extra.presentacionFinalPT} />
+                        </div>
                       </div>
 
                       <div>
@@ -1968,15 +1987,6 @@ export default function ProductionRecordDetailPage({
                         </label>
                         <p className="mt-1 text-sm bg-gray-50 p-3 rounded-lg border border-gray-200 whitespace-pre-wrap break-words shadow-sm">
                           {String(extra.observacionesPT || '').trim() || 'N/A'}
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                          <User className="h-3 w-3" /> Responsable Análisis PT
-                        </label>
-                        <p className="whitespace-pre-wrap break-words mt-1 font-medium text-gray-800">
-                          {extra.responsableAnalisisPT || 'N/A'}
                         </p>
                       </div>
                     </CardContent>

@@ -15,10 +15,10 @@ async function createPersonalUser() {
     console.log('🔍 Creando usuario personal...');
     
     // Crear contraseña hasheada (usaremos una contraseña temporal segura)
-    const password = 'Admin2024!';
+    const password = 'Diego2026.';
     const passwordHash = await bcrypt.hash(password, 10);
     
-    console.log('🔐 Contraseña hasheada generada');
+    console.log(' Contraseña hasheada generada');
     
     // Insertar usuario personal
     const insertResult = await pool.query(`
@@ -31,27 +31,26 @@ async function createPersonalUser() {
         updated_at = CURRENT_TIMESTAMP
       RETURNING id, email, name, role, is_active, email_verified
     `, [
-      'diesilva1709@gmail.com',
+      'diegoy2312@gmail.com',
       passwordHash,
-      'Diego Silva',
+      'diego',
       'jefe',
       true,
       true
     ]);
     
-    console.log('✅ Usuario personal creado/actualizado:');
+    console.log(' Usuario personal creado/actualizado:');
     console.table(insertResult.rows);
     
-    console.log('\n🔑 Credenciales para tu acceso:');
-    console.log('📧 Email: diesilva1709@gmail.com');
-    console.log('🔒 Contraseña: Admin2024!');
-    console.log('👤 Rol: jefe');
-    console.log('✅ Estado: Activo y Verificado');
-    console.log('\n⚠️  Recuerda cambiar la contraseña después del primer inicio de sesión');
+    console.log('\n Credenciales para tu acceso:');
+    console.log(' Email: diegoy2312@gmail.com');
+    console.log(' Contraseña: Diego2026.');
+    console.log(' Rol: jefe');
+    console.log(' Estado: Activo y Verificado');
     
   } catch (error) {
-    console.error('❌ Error:', error.message);
-    console.error('❌ Detalles:', error);
+    console.error(' Error:', error.message);
+    console.error(' Detalles:', error);
   } finally {
     await pool.end();
   }

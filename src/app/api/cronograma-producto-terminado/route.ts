@@ -59,8 +59,9 @@ export async function GET(request: NextRequest) {
     const productoId = searchParams.get('productoId');
 
     // Query con LEFT JOIN para obtener el código de muestra de RE-CAL-107
+    // Usar DISTINCT ON para evitar duplicación cuando hay múltiples registros en custodia_muestras
     let query = `
-      SELECT 
+      SELECT DISTINCT ON (cpt.id)
         cpt.*,
         cm.codigo as codigo_muestra
       FROM lab_microbiologia.cronograma_producto_terminado cpt
@@ -86,8 +87,7 @@ export async function GET(request: NextRequest) {
     if (conditions.length > 0) {
       query += ' WHERE ' + conditions.join(' AND ');
     }
-
-    query += ' ORDER BY cpt.fecha_programada DESC, cpt.fecha_creacion DESC';
+    query += ' ORDER BY cpt.id, cpt.fecha_programada DESC, cpt.fecha_creacion DESC';
 
     const result = await pool.query(query, params);
     return NextResponse.json(result.rows);
@@ -168,8 +168,8 @@ export async function POST(request: NextRequest) {
           codigo, tipo, muestra_id, area, temperatura, cantidad, motivo,
           toma_muestra_fecha, toma_muestra_hora, recepcion_lab_fecha, recepcion_lab_hora,
           medio_transporte, responsable, observaciones, cronograma_task_id, estado,
-          created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+          cronograma_codigo, cronograma_tipo, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
         [
           codigoMuestra,                           // $1: código M-X
           'Producto Terminado',                    // $2: tipo (producto terminado)
@@ -184,11 +184,13 @@ export async function POST(request: NextRequest) {
           horaActual,                              // $11: hora recepción lab
           'N/A',                                   // $12: medio transporte
           responsable || 'PENDIENTE',              // $13: responsable
-          'Generado automáticamente desde cronograma PL-CAL-009', // $14: observaciones
+          '',                                       // $14: observaciones
           nuevaTarea.id,                           // $15: cronograma_task_id (ID de la tarea 009)
           'pendiente',                             // $16: estado
-          now,                                     // $17: created_at
-          now                                      // $18: updated_at
+          'PL-CAL-009',                            // $17: cronograma_codigo
+          'interno',                               // $18: cronograma_tipo
+          now,                                     // $19: created_at
+          now                                      // $20: updated_at
         ]
       );
 

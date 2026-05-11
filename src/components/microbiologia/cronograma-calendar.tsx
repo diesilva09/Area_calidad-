@@ -178,7 +178,19 @@ export function CronogramaCalendar({ onViewTask, onCompleteTask }: CronogramaCal
     try {
       setIsLoading(true);
       const tasks = await microbiologiaCronogramaService.getAll();
-      setEventos(tasks.map(mapApiTaskToTarea));
+      const mappedTasks = tasks.map(mapApiTaskToTarea);
+      
+      // Eliminar duplicados basados en ID para asegurar que no haya tareas duplicadas
+      const tareasUnicas = mappedTasks.filter((tarea, index, self) =>
+        index === self.findIndex((t) => t.id === tarea.id)
+      );
+      
+      // Log para detectar si se eliminaron duplicados
+      if (mappedTasks.length !== tareasUnicas.length) {
+        console.warn(`⚠️ Se eliminaron ${mappedTasks.length - tareasUnicas.length} tareas duplicadas`);
+      }
+      
+      setEventos(tareasUnicas);
     } catch (error) {
       console.error('Error al cargar tareas:', error);
       toast({
@@ -248,10 +260,14 @@ export function CronogramaCalendar({ onViewTask, onCompleteTask }: CronogramaCal
   // Estadísticas
   const stats = useMemo(() => {
     const total = eventos.length;
+    const pendientes = eventos.filter(e => e.status === 'pending').length;
+    const completadas = eventos.filter(e => e.status === 'completed').length;
+    const externas = eventos.filter(e => e.marcaManual === 'externo').length;
+    const alergenos = eventos.filter(e => e.marcaManual === 'alergenos').length;
     const manipuladores = eventos.filter(e => e.tipo === 'manipuladores').length;
     const superficies = eventos.filter(e => e.tipo === 'superficies').length;
     const ambientes = eventos.filter(e => e.tipo === 'ambientes').length;
-    return { total, manipuladores, superficies, ambientes };
+    return { total, pendientes, completadas, externas, alergenos, manipuladores, superficies, ambientes };
   }, [eventos]);
 
   // Crear nueva tarea
@@ -282,7 +298,17 @@ export function CronogramaCalendar({ onViewTask, onCompleteTask }: CronogramaCal
       };
       
       const createdTask = await microbiologiaCronogramaService.create(newTaskData);
-      setEventos(prev => [...prev, mapApiTaskToTarea(createdTask)]);
+      const mappedTask = mapApiTaskToTarea(createdTask);
+      
+      // Verificar que no exista una tarea con el mismo ID antes de agregar
+      setEventos(prev => {
+        if (prev.some(e => e.id === mappedTask.id)) {
+          console.warn(`⚠️ Tarea con ID ${mappedTask.id} ya existe, no se agregará duplicado`);
+          return prev;
+        }
+        return [...prev, mappedTask];
+      });
+      
       setIsTaskModalOpen(false);
       resetForm();
       toast({
@@ -327,9 +353,25 @@ export function CronogramaCalendar({ onViewTask, onCompleteTask }: CronogramaCal
       };
       
       const updatedTask = await microbiologiaCronogramaService.update(editingTask.id, updateData);
-      setEventos(prev => prev.map(e => 
-        e.id === editingTask.id ? mapApiTaskToTarea(updatedTask) : e
-      ));
+      const mappedUpdatedTask = mapApiTaskToTarea(updatedTask);
+      
+      // Verificar que solo se actualice una tarea con el mismo ID
+      setEventos(prev => {
+        const count = prev.filter(e => e.id === editingTask.id).length;
+        if (count > 1) {
+          console.warn(`⚠️ Se encontraron ${count} tareas con ID ${editingTask.id}, se eliminarán duplicados`);
+          // Eliminar duplicados y actualizar
+          const withoutDuplicates = prev.filter((e, index, self) =>
+            index === self.findIndex((t) => t.id === e.id)
+          );
+          return withoutDuplicates.map(e => 
+            e.id === editingTask.id ? mappedUpdatedTask : e
+          );
+        }
+        return prev.map(e => 
+          e.id === editingTask.id ? mappedUpdatedTask : e
+        );
+      });
       setIsTaskModalOpen(false);
       setEditingTask(null);
       resetForm();
@@ -350,12 +392,15 @@ export function CronogramaCalendar({ onViewTask, onCompleteTask }: CronogramaCal
   // Eliminar tarea
   const handleDeleteTask = useCallback(async () => {
     if (!taskToDelete) return;
-    
+
     try {
+      setIsLoading(true);
       await microbiologiaCronogramaService.delete(taskToDelete);
       setEventos(prev => prev.filter(e => e.id !== taskToDelete));
+      setIsViewModalOpen(false);
       setIsDeleteDialogOpen(false);
       setTaskToDelete(null);
+      setViewingTask(null);
       toast({
         title: 'Éxito',
         description: 'Tarea eliminada correctamente',
@@ -367,6 +412,8 @@ export function CronogramaCalendar({ onViewTask, onCompleteTask }: CronogramaCal
         description: 'No se pudo eliminar la tarea',
         variant: 'destructive',
       });
+    } finally {
+      setIsLoading(false);
     }
   }, [taskToDelete, toast]);
 
@@ -577,36 +624,88 @@ export function CronogramaCalendar({ onViewTask, onCompleteTask }: CronogramaCal
 
   return (
     <div className="space-y-4">
-      {/* Estadísticas */}
-      <div className="grid grid-cols-4 gap-3">
-        <Card className="bg-blue-50 border-blue-200">
-          <CardContent className="p-3">
-            <p className="text-xs text-blue-600 font-medium">Total</p>
-            <p className="text-2xl font-bold text-blue-900">{stats.total}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-violet-50 border-violet-200">
-          <CardContent className="p-3">
-            <p className="text-xs text-violet-600 font-medium">Manipuladores</p>
-            <p className="text-2xl font-bold text-violet-900">{stats.manipuladores}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-pink-50 border-pink-200">
-          <CardContent className="p-3">
-            <p className="text-xs text-pink-600 font-medium">Superficies</p>
-            <p className="text-2xl font-bold text-pink-900">{stats.superficies}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-amber-50 border-amber-200">
-          <CardContent className="p-3">
-            <p className="text-xs text-amber-600 font-medium">Ambientes</p>
+      {/* Estadísticas - Fila 1: Total + Tipos de muestreo */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="rounded-xl border-2 border-violet-200 bg-violet-50/50 p-3 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-violet-600">Total</p>
+            <p className="text-2xl font-bold text-violet-900">{stats.total}</p>
+          </div>
+          <div className="w-8 h-8 bg-violet-100 rounded-lg flex items-center justify-center">
+            <CalendarIcon className="w-4 h-4 text-violet-500" />
+          </div>
+        </div>
+        <div className="rounded-xl border-2 border-pink-200 bg-pink-50/50 p-3 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-pink-600">Manipuladores</p>
+            <p className="text-2xl font-bold text-pink-900">{stats.manipuladores}</p>
+          </div>
+          <div className="w-8 h-8 bg-pink-100 rounded-lg flex items-center justify-center">
+            <User className="w-4 h-4 text-pink-500" />
+          </div>
+        </div>
+        <div className="rounded-xl border-2 border-fuchsia-200 bg-fuchsia-50/50 p-3 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-fuchsia-600">Superficies</p>
+            <p className="text-2xl font-bold text-fuchsia-900">{stats.superficies}</p>
+          </div>
+          <div className="w-8 h-8 bg-fuchsia-100 rounded-lg flex items-center justify-center">
+            <Building className="w-4 h-4 text-fuchsia-500" />
+          </div>
+        </div>
+        <div className="rounded-xl border-2 border-amber-200 bg-amber-50/50 p-3 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-amber-600">Ambientes</p>
             <p className="text-2xl font-bold text-amber-900">{stats.ambientes}</p>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+            <Beaker className="w-4 h-4 text-amber-500" />
+          </div>
+        </div>
+      </div>
+
+      {/* Estadísticas - Fila 2: Pendientes, Completadas, Externas, Alérgenos */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="rounded-xl border-2 border-orange-200 bg-orange-50/50 p-3 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-orange-600">Pendientes</p>
+            <p className="text-2xl font-bold text-orange-900">{stats.pendientes}</p>
+          </div>
+          <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+            <Clock className="w-4 h-4 text-orange-500" />
+          </div>
+        </div>
+        <div className="rounded-xl border-2 border-green-200 bg-green-50/50 p-3 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-green-600">Completadas</p>
+            <p className="text-2xl font-bold text-green-900">{stats.completadas}</p>
+          </div>
+          <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+            <CheckCircle className="w-4 h-4 text-green-500" />
+          </div>
+        </div>
+        <div className="rounded-xl border-2 border-blue-200 bg-blue-50/50 p-3 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-blue-600">Externas</p>
+            <p className="text-2xl font-bold text-blue-900">{stats.externas}</p>
+          </div>
+          <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+            <Eye className="w-4 h-4 text-blue-500" />
+          </div>
+        </div>
+        <div className="rounded-xl border-2 border-purple-200 bg-purple-50/50 p-3 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-purple-600">Alérgenos</p>
+            <p className="text-2xl font-bold text-purple-900">{stats.alergenos}</p>
+          </div>
+          <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+            <Beaker className="w-4 h-4 text-purple-500" />
+          </div>
+        </div>
       </div>
 
       {/* Toolbar personalizado */}
-      <div className="flex flex-col gap-4 p-3 bg-gray-50 rounded-lg">
+      <div className="flex flex-col gap-4 p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
         {/* Fila 1: Título y acciones principales */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2">
@@ -709,38 +808,35 @@ export function CronogramaCalendar({ onViewTask, onCompleteTask }: CronogramaCal
         )}
       </div>
 
-      {/* Leyenda de Tipos */}
-      <div className="flex flex-wrap items-center gap-3 text-xs">
-        <span className="font-medium text-gray-500">Tipos:</span>
+      {/* Leyendas combinadas */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 text-xs">
+        <span className="font-semibold text-gray-500">Tipos:</span>
         {Object.entries(TIPOS_MUESTREO).map(([key, config]) => {
           const Icon = config.icon;
           return (
-            <div key={key} className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded" style={{ backgroundColor: config.color }} />
+            <div key={key} className="flex items-center gap-1.5">
+              <div className="w-2.5 h-2.5 rounded" style={{ backgroundColor: config.color }} />
               <Icon className="w-3 h-3" style={{ color: config.color }} />
               <span className="text-gray-600">{config.label}</span>
             </div>
           );
         })}
-      </div>
-
-      {/* Leyenda de Estados */}
-      <div className="flex flex-wrap items-center gap-3 text-xs">
-        <span className="font-medium text-gray-500">Estados:</span>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded border-2" style={{ borderColor: '#16a34a', backgroundColor: 'transparent' }} />
+        <span className="w-px h-3 bg-gray-300 hidden sm:block" />
+        <span className="font-semibold text-gray-500">Estados:</span>
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded border-2" style={{ borderColor: '#16a34a' }} />
           <span className="text-gray-600">Completado</span>
         </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded border-2" style={{ borderColor: '#dc2626', backgroundColor: 'transparent' }} />
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded border-2" style={{ borderColor: '#dc2626' }} />
           <span className="text-gray-600">Pendiente</span>
         </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#2563eb' }} />
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#2563eb' }} />
           <span className="text-gray-600">Externo</span>
         </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#6d28d9' }} />
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#6d28d9' }} />
           <span className="text-gray-600">Alérgenos</span>
         </div>
       </div>
@@ -748,7 +844,7 @@ export function CronogramaCalendar({ onViewTask, onCompleteTask }: CronogramaCal
       {/* Vista de Calendario o Lista por Meses */}
       {vistaMeses ? (
         /* Vista de Todos los Meses - Lista agrupada */
-        <div className="bg-white rounded-lg border p-4">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <div className="flex flex-col items-center gap-2">
@@ -849,7 +945,7 @@ export function CronogramaCalendar({ onViewTask, onCompleteTask }: CronogramaCal
         </div>
       ) : (
         /* Vista del Calendario */
-        <div className="bg-white rounded-lg border">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
           <div className="h-[500px] p-4 relative">
             {isLoading && (
               <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
@@ -896,16 +992,20 @@ export function CronogramaCalendar({ onViewTask, onCompleteTask }: CronogramaCal
       {/* Modal de Crear/Editar Tarea */}
       <Dialog open={isTaskModalOpen} onOpenChange={setIsTaskModalOpen}>
         <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {editingTask ? <Pencil className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-              {editingTask ? 'Editar Tarea' : 'Nueva Tarea de Muestreo'}
-            </DialogTitle>
-            <DialogDescription>
-              {editingTask 
-                ? 'Modifica los detalles de la tarea programada' 
-                : 'Programa una nueva tarea de muestreo microbiológico'}
-            </DialogDescription>
+          <DialogHeader className="pb-4 border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className={`flex items-center justify-center w-10 h-10 rounded-xl flex-shrink-0 border ${editingTask ? 'bg-amber-50 border-amber-100' : 'bg-violet-50 border-violet-100'}`}>
+                {editingTask ? <Pencil className="w-5 h-5 text-amber-600" /> : <Plus className="w-5 h-5 text-violet-600" />}
+              </div>
+              <div>
+                <DialogTitle className="text-base font-semibold text-gray-900">
+                  {editingTask ? 'Editar Tarea' : 'Nueva Tarea de Muestreo'}
+                </DialogTitle>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {editingTask ? 'Modifica los detalles de la tarea programada' : 'Programa una nueva tarea de muestreo microbiológico'}
+                </p>
+              </div>
+            </div>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
@@ -1062,20 +1162,34 @@ export function CronogramaCalendar({ onViewTask, onCompleteTask }: CronogramaCal
       {/* Modal de Vista de Tarea (Detalles) */}
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
         <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Microscope className="w-5 h-5 text-violet-600" />
-              Detalle de Tarea Programada
-            </DialogTitle>
-            <DialogDescription>
-              Información del muestreo microbiológico programado
-            </DialogDescription>
+          <DialogHeader className="pb-4 border-b border-gray-100">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-violet-50 border border-violet-100 flex-shrink-0">
+                  <Microscope className="w-5 h-5 text-violet-600" />
+                </div>
+                <div>
+                  <DialogTitle className="text-base font-semibold text-gray-900">
+                    Detalle de Tarea Programada
+                  </DialogTitle>
+                  <p className="text-xs text-gray-500 mt-0.5">Información del muestreo microbiológico programado</p>
+                </div>
+              </div>
+              <div className="flex gap-1 flex-shrink-0">
+                <Button variant="ghost" size="sm" onClick={() => { if (viewingTask) openEditModal(viewingTask); }} className="h-8 w-8 p-0">
+                  <Pencil className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => { if (viewingTask) { setTaskToDelete(viewingTask.id); setIsDeleteDialogOpen(true); } }} className="h-8 w-8 p-0 text-red-600">
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
           </DialogHeader>
 
           {viewingTask && (
             <div className="space-y-4 py-4">
               {/* Tipo de Muestreo */}
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
                 <div className="w-10 h-10 rounded-full flex items-center justify-center"
                   style={{ backgroundColor: TIPOS_MUESTREO[viewingTask.tipo]?.color || '#6b7280' }}>
                   {(() => {
@@ -1095,19 +1209,19 @@ export function CronogramaCalendar({ onViewTask, onCompleteTask }: CronogramaCal
 
               {/* Fecha */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 bg-gray-50 rounded-lg">
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
                   <p className="text-sm text-gray-500">Fecha Programada</p>
                   <p className="font-medium">{moment(viewingTask.start).format('DD/MM/YYYY')}</p>
                 </div>
-                <div className="p-3 bg-gray-50 rounded-lg">
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
                   <p className="text-sm text-gray-500">Frecuencia</p>
                   <p className="font-medium">{viewingTask.frecuencia}</p>
                 </div>
               </div>
 
               {/* Área */}
-              <div className="p-3 bg-gray-50 rounded-lg">
-                <p className="text-sm text-gray-500">Área de Muestreo</p>
+              <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-0.5">Área de Muestreo</p>
                 <p className="font-medium">
                   {viewingTask.area === 'Otro' 
                     ? (viewingTask.areaPersonalizada || 'Otro')
@@ -1117,20 +1231,20 @@ export function CronogramaCalendar({ onViewTask, onCompleteTask }: CronogramaCal
 
               {/* Descripción */}
               {viewingTask.descripcion && (
-                <div className="p-3 bg-gray-50 rounded-lg">
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
                   <p className="text-sm text-gray-500">Descripción</p>
                   <p className="font-medium">{viewingTask.descripcion}</p>
                 </div>
               )}
 
               {/* Responsable */}
-              <div className="p-3 bg-gray-50 rounded-lg">
+              <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
                 <p className="text-sm text-gray-500">Responsable</p>
                 <p className="font-medium">{viewingTask.responsable || 'Sin asignar'}</p>
               </div>
 
               {/* Estado */}
-              <div className="p-3 bg-gray-50 rounded-lg">
+              <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
                 <p className="text-sm text-gray-500">Estado</p>
                 <div className="flex items-center gap-2 mt-1">
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -1151,7 +1265,7 @@ export function CronogramaCalendar({ onViewTask, onCompleteTask }: CronogramaCal
 
               {/* Marcado Manual - Solo para tareas completadas */}
               {viewingTask.status === 'completed' && (
-                <div className="p-3 bg-gray-50 rounded-lg">
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
                   <p className="text-sm text-gray-500 mb-2">Marcado Manual</p>
                   <div className="flex flex-wrap gap-2">
                     <Button
@@ -1197,46 +1311,22 @@ export function CronogramaCalendar({ onViewTask, onCompleteTask }: CronogramaCal
           )}
 
           <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setIsViewModalOpen(false);
-                if (viewingTask) openEditModal(viewingTask);
-              }}
-            >
-              <Pencil className="w-4 h-4 mr-1" />
-              Editar
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                setIsViewModalOpen(false);
-                if (viewingTask) {
-                  setTaskToDelete(viewingTask.id);
-                  setIsDeleteDialogOpen(true);
-                }
-              }}
-              className="mr-auto"
-            >
-              <Trash2 className="w-4 h-4 mr-1" />
-              Eliminar
-            </Button>
             {viewingTask?.status === 'completed' ? (
-              <Button 
+              <Button
                 onClick={handleViewTask}
                 variant="outline"
-                className="border-green-600 text-green-700 hover:bg-green-50"
+                className="border-green-600 text-green-700 hover:bg-green-50 w-full"
               >
                 <Eye className="w-4 h-4 mr-1" />
                 Ver detalles
               </Button>
             ) : (
-              <Button 
+              <Button
                 onClick={handleCompleteTask}
-                className="bg-red-600 hover:bg-red-700"
+                className="bg-violet-600 hover:bg-violet-700 w-full"
               >
-                <FileText className="w-4 h-4 mr-1" />
-                Registrar (RE-CAL-107)
+                <CheckCircle className="w-4 h-4 mr-1" />
+                Completar Tarea
               </Button>
             )}
           </DialogFooter>
@@ -1247,16 +1337,25 @@ export function CronogramaCalendar({ onViewTask, onCompleteTask }: CronogramaCal
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar tarea?</AlertDialogTitle>
+            <AlertDialogTitle>¿Estás seguro de eliminar esta tarea o labor del cronograma?</AlertDialogTitle>
             <AlertDialogDescription>
               Esta acción no se puede deshacer. La tarea se eliminará permanentemente del cronograma.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setTaskToDelete(null)}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteTask} className="bg-red-600 hover:bg-red-700">
-              <Trash2 className="w-4 h-4 mr-1" />
-              Eliminar
+            <AlertDialogAction onClick={handleDeleteTask} className="bg-red-600 hover:bg-red-700" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  Eliminando...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Eliminar
+                </>
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

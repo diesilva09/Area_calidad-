@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { FlaskConical } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -26,7 +27,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { controlLavadoInactivacionService } from '@/lib/control-lavado-inactivacion-service';
+import { controlLavadoInactivacionService, type ControlLavadoInactivacion } from '@/lib/control-lavado-inactivacion-service';
 
 // Esquema de validación para el formulario
 // Esquema de validación para el formulario
@@ -122,19 +123,19 @@ export function AddControlLavadoInactivacionModal({
       console.log('🔍 DEBUG: Valores del formulario:', values, 'Estado:', estado);
       
       // Transformar los datos para la API
-      const transformedValues = {
-        fecha: values.fecha,
-        actividad_realizada: values.actividadRealizada,
-        sustancia_limpieza_nombre: values.sustanciaLimpiezaNombre,
-        sustancia_limpieza_cantidad_preparada: values.sustanciaLimpiezaCantidadPreparada,
-        sustancia_limpieza_cantidad_sustancia: values.sustanciaLimpiezaCantidadSustancia,
-        sustancia_desinfeccion_1_nombre: values.sustanciaDesinfeccion1Nombre,
-        sustancia_desinfeccion_1_cantidad_preparada: values.sustanciaDesinfeccion1CantidadPreparada,
-        sustancia_desinfeccion_1_cantidad_sustancia: values.sustanciaDesinfeccion1CantidadSustancia,
-        sustancia_desinfeccion_2_nombre: values.sustanciaDesinfeccion2Nombre,
-        sustancia_desinfeccion_2_cantidad_preparada: values.sustanciaDesinfeccion2CantidadPreparada,
-        sustancia_desinfeccion_2_cantidad_sustancia: values.sustanciaDesinfeccion2CantidadSustancia,
-        realizado_por: values.realizadoPor,
+      const transformedValues: Omit<ControlLavadoInactivacion, 'id' | 'created_at' | 'updated_at'> = {
+        fecha: values.fecha || '',
+        actividad_realizada: values.actividadRealizada || '',
+        sustancia_limpieza_nombre: values.sustanciaLimpiezaNombre || '',
+        sustancia_limpieza_cantidad_preparada: values.sustanciaLimpiezaCantidadPreparada || '',
+        sustancia_limpieza_cantidad_sustancia: values.sustanciaLimpiezaCantidadSustancia || '',
+        sustancia_desinfeccion_1_nombre: values.sustanciaDesinfeccion1Nombre || '',
+        sustancia_desinfeccion_1_cantidad_preparada: values.sustanciaDesinfeccion1CantidadPreparada || '',
+        sustancia_desinfeccion_1_cantidad_sustancia: values.sustanciaDesinfeccion1CantidadSustancia || '',
+        sustancia_desinfeccion_2_nombre: values.sustanciaDesinfeccion2Nombre || '',
+        sustancia_desinfeccion_2_cantidad_preparada: values.sustanciaDesinfeccion2CantidadPreparada || '',
+        sustancia_desinfeccion_2_cantidad_sustancia: values.sustanciaDesinfeccion2CantidadSustancia || '',
+        realizado_por: values.realizadoPor || '',
         observaciones: values.observaciones || undefined,
         estado: estado,
       };
@@ -184,17 +185,21 @@ export function AddControlLavadoInactivacionModal({
       }}
     >
       <DialogContent className="max-w-4xl max-h-[95vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-cyan-900">
-            RE-CAL-111 - CONTROL LAVADO E INACTIVACIÓN DE MATERIAL - LABORATORIO MICROBIOLOGÍA
-          </DialogTitle>
-          <DialogDescription asChild className="text-gray-600">
-            <div className="mt-2 space-y-1">
-              <p><strong>Código:</strong> RE-CAL-111</p>
-              <p><strong>Versión:</strong> 1</p>
-              <p><strong>Fecha de Aprobación:</strong> Julio 01 de 2020</p>
+        <DialogHeader className="pb-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-cyan-50 border border-cyan-100 flex-shrink-0">
+              <FlaskConical className="w-5 h-5 text-cyan-600" />
             </div>
-          </DialogDescription>
+            <div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-[10px] font-bold text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded-full border border-cyan-100">RE-CAL-111</span>
+                <span className="text-[10px] text-gray-400">v.1 · 01/07/2020</span>
+              </div>
+              <DialogTitle className="text-base font-semibold text-gray-900 leading-snug">
+                Control Lavado e Inactivación
+              </DialogTitle>
+            </div>
+          </div>
         </DialogHeader>
 
         <Form {...form}>
@@ -234,7 +239,7 @@ export function AddControlLavadoInactivacionModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: Limpieza de material de laboratorio, Desinfección de equipos"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -252,7 +257,7 @@ export function AddControlLavadoInactivacionModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Nombre completo del responsable"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -277,7 +282,7 @@ export function AddControlLavadoInactivacionModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: Detergente enzimático, Jabón líquido"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -295,7 +300,7 @@ export function AddControlLavadoInactivacionModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: 500, 1000"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -313,7 +318,7 @@ export function AddControlLavadoInactivacionModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: 50, 100"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -338,7 +343,7 @@ export function AddControlLavadoInactivacionModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: Alcohol al 70%, Hipoclorito de sodio"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -356,7 +361,7 @@ export function AddControlLavadoInactivacionModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: 250, 500"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -374,7 +379,7 @@ export function AddControlLavadoInactivacionModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: 25, 50"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -399,7 +404,7 @@ export function AddControlLavadoInactivacionModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: Glutaraldehído, Peróxido de hidrógeno"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -417,7 +422,7 @@ export function AddControlLavadoInactivacionModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: 200, 400"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -435,7 +440,7 @@ export function AddControlLavadoInactivacionModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: 20, 40"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -457,7 +462,7 @@ export function AddControlLavadoInactivacionModal({
                     <FormControl>
                       <textarea
                         className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        placeholder="Notas adicionales sobre el proceso de lavado e inactivación..."
+                        placeholder=""
                         {...field}
                       />
                     </FormControl>

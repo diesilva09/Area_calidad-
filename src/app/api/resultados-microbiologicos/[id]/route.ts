@@ -48,6 +48,9 @@ export async function GET(
         medio_diluyente,
         factor_dilucion,
         responsable,
+        cronograma_task_id,
+        cronograma_codigo,
+        estado,
         created_at,
         updated_at
       FROM ${getMicroTable('resultados_microbiologicos')}
@@ -115,7 +118,8 @@ export async function PUT(
       codigo,
       medio_diluyente,
       factor_dilucion,
-      responsable
+      responsable,
+      cronograma_codigo
     } = body;
 
     const query = `
@@ -155,8 +159,9 @@ export async function PUT(
         medio_diluyente = COALESCE($32, medio_diluyente),
         factor_dilucion = COALESCE($33, factor_dilucion),
         responsable = COALESCE($34, responsable),
+        cronograma_codigo = COALESCE($35, cronograma_codigo),
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = $35
+      WHERE id = $36
       RETURNING *
     `;
 
@@ -195,6 +200,7 @@ export async function PUT(
       medio_diluyente,
       factor_dilucion,
       responsable,
+      cronograma_codigo,
       id
     ];
 

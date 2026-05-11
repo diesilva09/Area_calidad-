@@ -42,6 +42,39 @@ interface ProductAnalysis {
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
 
+// Custom tick for XAxis that wraps long product names horizontally
+const CustomXAxisTick = ({ x, y, payload }: any) => {
+  const name = payload?.value || '';
+  const maxChars = 18;
+  const lines: string[] = [];
+  let remaining = name;
+  while (remaining.length > maxChars) {
+    let breakIdx = remaining.lastIndexOf(' ', maxChars);
+    if (breakIdx <= 0) breakIdx = maxChars;
+    lines.push(remaining.slice(0, breakIdx));
+    remaining = remaining.slice(breakIdx).trimStart();
+  }
+  if (remaining) lines.push(remaining);
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      {lines.map((line, i) => (
+        <text
+          key={i}
+          x={0}
+          y={i * 14}
+          dy={12}
+          textAnchor="middle"
+          fill="#374151"
+          fontSize={11}
+        >
+          {line}
+        </text>
+      ))}
+    </g>
+  );
+};
+
 const parseNumber = (value: unknown): number => {
   if (value === null || value === undefined) return 0;
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -293,7 +326,7 @@ export function EmbalajeAnalysis({ records, onClose }: EmbalajeAnalysisProps) {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="w-full sm:flex-1 sm:max-w-xs">
-          <label className="block text-sm font-medium text-gray-700 mb-2">📅 Mes</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Mes</label>
           <select
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
             value={selectedMonth}
@@ -380,19 +413,19 @@ export function EmbalajeAnalysis({ records, onClose }: EmbalajeAnalysisProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={barChartData.map(item => ({ name: item.name, value: item['% Incumplimiento'] }))}>
+            <ResponsiveContainer width="100%" height={Math.max(300, barChartData.length * 50)}>
+              <BarChart data={barChartData.map(item => ({ name: item.name, value: item['% Incumplimiento'] }))} layout="vertical" margin={{ top: 8, right: 30, left: 10, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
+                <YAxis
                   dataKey="name"
-                  angle={-45}
-                  textAnchor="end"
-                  height={80}
+                  type="category"
+                  width={160}
+                  tick={{ fontSize: 11 }}
                 />
-                <YAxis tickFormatter={(v: any) => formatPercent(v)} />
+                <XAxis type="number" tickFormatter={(v: any) => formatPercent(v)} />
                 <Tooltip formatter={(v: any) => formatPercent(v)} />
-                <ReferenceLine y={0.03} stroke="#ef4444" strokeDasharray="6 6" />
-                <Bar dataKey="value" fill="#2563eb" />
+                <ReferenceLine x={0.03} stroke="#ef4444" strokeDasharray="6 6" />
+                <Bar dataKey="value" fill="#2563eb" barSize={20} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -409,18 +442,18 @@ export function EmbalajeAnalysis({ records, onClose }: EmbalajeAnalysisProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={barChartData.map(item => ({ name: item.name, value: item['% Faltantes'] }))}>
+            <ResponsiveContainer width="100%" height={Math.max(300, barChartData.length * 50)}>
+              <BarChart data={barChartData.map(item => ({ name: item.name, value: item['% Faltantes'] }))} layout="vertical" margin={{ top: 8, right: 30, left: 10, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis 
-                  dataKey="name" 
-                  angle={-45}
-                  textAnchor="end"
-                  height={80}
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  width={160}
+                  tick={{ fontSize: 11 }}
                 />
-                <YAxis />
+                <XAxis type="number" />
                 <Tooltip />
-                <Bar dataKey="value" fill="#8884d8" />
+                <Bar dataKey="value" fill="#8884d8" barSize={20} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -437,18 +470,18 @@ export function EmbalajeAnalysis({ records, onClose }: EmbalajeAnalysisProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={barChartData.map(item => ({ name: item.name, value: item['% Etiqueta No Conforme'] }))}>
+            <ResponsiveContainer width="100%" height={Math.max(300, barChartData.length * 50)}>
+              <BarChart data={barChartData.map(item => ({ name: item.name, value: item['% Etiqueta No Conforme'] }))} layout="vertical" margin={{ top: 8, right: 30, left: 10, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis 
-                  dataKey="name" 
-                  angle={-45}
-                  textAnchor="end"
-                  height={80}
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  width={160}
+                  tick={{ fontSize: 11 }}
                 />
-                <YAxis />
+                <XAxis type="number" />
                 <Tooltip />
-                <Bar dataKey="value" fill="#82ca9d" />
+                <Bar dataKey="value" fill="#82ca9d" barSize={20} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -465,18 +498,18 @@ export function EmbalajeAnalysis({ records, onClose }: EmbalajeAnalysisProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={barChartData.map(item => ({ name: item.name, value: item['% Marcación No Conforme'] }))}>
+            <ResponsiveContainer width="100%" height={Math.max(300, barChartData.length * 50)}>
+              <BarChart data={barChartData.map(item => ({ name: item.name, value: item['% Marcación No Conforme'] }))} layout="vertical" margin={{ top: 8, right: 30, left: 10, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis 
-                  dataKey="name" 
-                  angle={-45}
-                  textAnchor="end"
-                  height={80}
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  width={160}
+                  tick={{ fontSize: 11 }}
                 />
-                <YAxis />
+                <XAxis type="number" />
                 <Tooltip />
-                <Bar dataKey="value" fill="#ffc658" />
+                <Bar dataKey="value" fill="#ffc658" barSize={20} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -493,18 +526,18 @@ export function EmbalajeAnalysis({ records, onClose }: EmbalajeAnalysisProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={barChartData.map(item => ({ name: item.name, value: item['% Presentación No Conforme'] }))}>
+            <ResponsiveContainer width="100%" height={Math.max(300, barChartData.length * 50)}>
+              <BarChart data={barChartData.map(item => ({ name: item.name, value: item['% Presentación No Conforme'] }))} layout="vertical" margin={{ top: 8, right: 30, left: 10, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis 
-                  dataKey="name" 
-                  angle={-45}
-                  textAnchor="end"
-                  height={80}
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  width={160}
+                  tick={{ fontSize: 11 }}
                 />
-                <YAxis />
+                <XAxis type="number" />
                 <Tooltip />
-                <Bar dataKey="value" fill="#ff7c7c" />
+                <Bar dataKey="value" fill="#ff7c7c" barSize={20} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -521,18 +554,18 @@ export function EmbalajeAnalysis({ records, onClose }: EmbalajeAnalysisProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={barChartData.map(item => ({ name: item.name, value: item['% Cajas No Conformes'] }))}>
+            <ResponsiveContainer width="100%" height={Math.max(300, barChartData.length * 50)}>
+              <BarChart data={barChartData.map(item => ({ name: item.name, value: item['% Cajas No Conformes'] }))} layout="vertical" margin={{ top: 8, right: 30, left: 10, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis 
-                  dataKey="name" 
-                  angle={-45}
-                  textAnchor="end"
-                  height={80}
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  width={160}
+                  tick={{ fontSize: 11 }}
                 />
-                <YAxis />
+                <XAxis type="number" />
                 <Tooltip />
-                <Bar dataKey="value" fill="#8dd1e1" />
+                <Bar dataKey="value" fill="#8dd1e1" barSize={20} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

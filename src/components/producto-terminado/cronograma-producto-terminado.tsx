@@ -12,6 +12,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -44,6 +54,7 @@ import {
   Search,
   FileText,
   MapPin,
+  Loader2,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { productsAPI } from '@/lib/api-service';
@@ -183,6 +194,7 @@ export function CronogramaProductoTerminado({
   // Modales
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<TareaCronogramaPT | null>(null);
   const [viewingTask, setViewingTask] = useState<TareaCronogramaPT | null>(null);
   const [slotSeleccionado, setSlotSeleccionado] = useState<{ start: Date; end: Date } | null>(null);
@@ -246,10 +258,12 @@ export function CronogramaProductoTerminado({
     }
   }, [isCreateModalOpen, tipoCronograma]);
 
-  // Cargar tareas del cronograma al iniciar
+  // Cargar tareas del cronograma al iniciar y cuando cambia el tipo de cronograma
   useEffect(() => {
+    // Limpiar eventos anteriores cuando cambia el tipo de cronograma
+    setEventos([]);
     loadTareas();
-  }, []);
+  }, [tipoCronograma]);
 
   async function loadProductos() {
     try {
@@ -292,7 +306,7 @@ export function CronogramaProductoTerminado({
   }, [tipoCronograma]);
 
   // Cargar tareas desde la API
-  async function loadTareas() {
+  const loadTareas = useCallback(async () => {
     try {
       setIsLoading(true);
       const endpoint = getApiEndpoint();
@@ -339,7 +353,7 @@ export function CronogramaProductoTerminado({
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [getApiEndpoint, toast]);
 
   // Filtrar eventos
   const eventosFiltrados = useMemo(() => {
@@ -378,6 +392,16 @@ export function CronogramaProductoTerminado({
       value: mes,
       label: moment(mes, 'YYYY-MM').format('MMMM YYYY')
     }));
+  }, [eventos]);
+
+  // Estadísticas
+  const stats = useMemo(() => {
+    const total = eventos.length;
+    const pendientes = eventos.filter(e => e.status === 'pending').length;
+    const completadas = eventos.filter(e => e.status === 'completed').length;
+    const externas = eventos.filter(e => e.marcaManual === 'externo').length;
+    const alergenos = eventos.filter(e => e.marcaManual === 'alergenos').length;
+    return { total, pendientes, completadas, externas, alergenos };
   }, [eventos]);
 
   // Crear nueva tarea
@@ -607,6 +631,7 @@ export function CronogramaProductoTerminado({
 
       setEventos(prev => prev.filter(e => e.id !== viewingTask.id));
       setIsViewModalOpen(false);
+      setIsDeleteDialogOpen(false);
       setViewingTask(null);
 
       toast({
@@ -838,8 +863,57 @@ export function CronogramaProductoTerminado({
 
   return (
     <div className="space-y-4">
+      {/* Estadísticas */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div className="rounded-xl border-2 border-violet-200 bg-violet-50/50 p-3 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-violet-600">Total</p>
+            <p className="text-2xl font-bold text-violet-900">{stats.total}</p>
+          </div>
+          <div className="w-8 h-8 bg-violet-100 rounded-lg flex items-center justify-center">
+            <CalendarIcon className="w-4 h-4 text-violet-500" />
+          </div>
+        </div>
+        <div className="rounded-xl border-2 border-orange-200 bg-orange-50/50 p-3 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-orange-600">Pendientes</p>
+            <p className="text-2xl font-bold text-orange-900">{stats.pendientes}</p>
+          </div>
+          <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+            <Package className="w-4 h-4 text-orange-500" />
+          </div>
+        </div>
+        <div className="rounded-xl border-2 border-green-200 bg-green-50/50 p-3 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-green-600">Completadas</p>
+            <p className="text-2xl font-bold text-green-900">{stats.completadas}</p>
+          </div>
+          <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+            <CheckCircle className="w-4 h-4 text-green-500" />
+          </div>
+        </div>
+        <div className="rounded-xl border-2 border-blue-200 bg-blue-50/50 p-3 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-blue-600">Externas</p>
+            <p className="text-2xl font-bold text-blue-900">{stats.externas}</p>
+          </div>
+          <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+            <Eye className="w-4 h-4 text-blue-500" />
+          </div>
+        </div>
+        <div className="rounded-xl border-2 border-purple-200 bg-purple-50/50 p-3 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-purple-600">Alérgenos</p>
+            <p className="text-2xl font-bold text-purple-900">{stats.alergenos}</p>
+          </div>
+          <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+            <Beaker className="w-4 h-4 text-purple-500" />
+          </div>
+        </div>
+      </div>
+
       {/* Filtros y controles */}
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
         {/* Fila 1: Título, Vistas y Acciones */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2">
@@ -933,7 +1007,12 @@ export function CronogramaProductoTerminado({
             {/* Botón Agregar Labor */}
             <Button
               size="sm"
-              className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+              className={`h-8 text-xs text-white ${
+                tipoCronograma === 'agua-potable' ? 'bg-blue-600 hover:bg-blue-700' :
+                tipoCronograma === 'pt-externo' ? 'bg-orange-500 hover:bg-orange-600' :
+                tipoCronograma === 'materia-prima' ? 'bg-purple-500 hover:bg-purple-600' :
+                'bg-emerald-600 hover:bg-emerald-700'
+              }`}
               onClick={() => {
                 const today = new Date();
                 setSlotSeleccionado({ start: today, end: today });
@@ -988,22 +1067,34 @@ export function CronogramaProductoTerminado({
       </div>
 
       {/* Leyenda de Estados */}
-      <div className="flex flex-wrap items-center gap-3 text-xs">
-        <span className="font-medium text-gray-500">Estados:</span>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded border-2" style={{ borderColor: '#16a34a', backgroundColor: 'transparent' }} />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 text-xs">
+        <span className="font-semibold text-gray-500">Tipos:</span>
+        {Object.entries(TIPOS_MUESTREO_PT).map(([key, config]) => {
+          const Icon = config.icon;
+          return (
+            <div key={key} className="flex items-center gap-1.5">
+              <div className="w-2.5 h-2.5 rounded" style={{ backgroundColor: config.color }} />
+              <Icon className="w-3 h-3" style={{ color: config.color }} />
+              <span className="text-gray-600">{config.label}</span>
+            </div>
+          );
+        })}
+        <span className="w-px h-3 bg-gray-300 hidden sm:block" />
+        <span className="font-semibold text-gray-500">Estados:</span>
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded border-2" style={{ borderColor: '#16a34a' }} />
           <span className="text-gray-600">Completado</span>
         </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded border-2" style={{ borderColor: '#dc2626', backgroundColor: 'transparent' }} />
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded border-2" style={{ borderColor: '#dc2626' }} />
           <span className="text-gray-600">Pendiente</span>
         </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#2563eb' }} />
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#2563eb' }} />
           <span className="text-gray-600">Externo</span>
         </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#6d28d9' }} />
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#6d28d9' }} />
           <span className="text-gray-600">Alérgenos</span>
         </div>
       </div>
@@ -1011,7 +1102,7 @@ export function CronogramaProductoTerminado({
       {/* Vista de Calendario o Lista por Meses */}
       {vistaMeses ? (
         /* Vista de Todos los Meses - Lista agrupada */
-        <div className="bg-white rounded-lg border p-4">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <div className="flex flex-col items-center gap-2">
@@ -1112,7 +1203,7 @@ export function CronogramaProductoTerminado({
         </div>
       ) : (
         /* Vista del Calendario */
-        <div className="h-[500px] bg-white rounded-lg border">
+        <div className="h-[500px] bg-white rounded-xl border border-gray-200 shadow-sm">
           <BigCalendar
             localizer={localizer}
             events={eventosFiltrados}
@@ -1136,10 +1227,23 @@ export function CronogramaProductoTerminado({
       {/* Modal Crear/Editar */}
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
         <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {editingEvent ? 'Editar Tarea' : 'Nueva Muestra de Producto Terminado'}
-            </DialogTitle>
+          <DialogHeader className="pb-4 border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className={`flex items-center justify-center w-10 h-10 rounded-xl flex-shrink-0 border ${editingEvent ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'}`}>
+                {editingEvent ? <Pencil className="w-5 h-5 text-amber-600" /> : <Plus className="w-5 h-5 text-emerald-600" />}
+              </div>
+              <div>
+                <DialogTitle className="text-base font-semibold text-gray-900">
+                  {editingEvent ? 'Editar Tarea' : (
+                    tipoCronograma === 'agua-potable' ? 'Nueva Muestra de Agua Potable' :
+                    tipoCronograma === 'pt-externo' ? 'Nueva Muestra de Producto Terminado' :
+                    tipoCronograma === 'materia-prima' ? 'Nueva Muestra de Materia Prima' :
+                    'Nueva Muestra de Producto Terminado'
+                  )}
+                </DialogTitle>
+                <p className="text-xs text-gray-500 mt-0.5">Programa o modifica una tarea de muestreo</p>
+              </div>
+            </div>
           </DialogHeader>
           <div className="space-y-4 py-4">
             {/* Selector de Producto - Solo para Producto Terminado */}
@@ -1490,25 +1594,31 @@ export function CronogramaProductoTerminado({
       {/* Modal Ver Detalle */}
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span>Detalle de la Tarea</span>
-              <div className="flex gap-1">
-                <Button variant="ghost" size="sm" onClick={openEditModal}>
+          <DialogHeader className="pb-4 border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 flex-shrink-0">
+                <Eye className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div className="flex-1">
+                <DialogTitle className="text-base font-semibold text-gray-900">Detalle de la Tarea</DialogTitle>
+                <p className="text-xs text-gray-500 mt-0.5">Información del muestreo programado</p>
+              </div>
+              <div className="flex gap-1 flex-shrink-0">
+                <Button variant="ghost" size="sm" onClick={openEditModal} className="h-8 w-8 p-0">
                   <Pencil className="w-4 h-4" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={handleDeleteTask} className="text-red-600">
+                <Button variant="ghost" size="sm" onClick={() => setIsDeleteDialogOpen(true)} className="h-8 w-8 p-0 text-red-600">
                   <Trash2 className="w-4 h-4" />
                 </Button>
               </div>
-            </DialogTitle>
+            </div>
           </DialogHeader>
 
           {viewingTask && (
             <div className="space-y-4 py-4">
               {/* Producto - Solo para Producto Terminado */}
               {tipoCronograma !== 'agua-potable' && (
-                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
                   <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-100">
                     <Package className="w-5 h-5 text-blue-600" />
                   </div>
@@ -1526,7 +1636,7 @@ export function CronogramaProductoTerminado({
 
               {/* Área / Tipo de Materia según cronograma */}
               {viewingTask.area && tipoCronograma !== 'materia-prima' && (
-                <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl border border-gray-100">
                   <Building className="w-5 h-5 text-gray-400" />
                   <div>
                     <p className="text-sm text-gray-600">
@@ -1539,7 +1649,7 @@ export function CronogramaProductoTerminado({
 
               {/* Tipo de Materia - Solo para Materia Prima */}
               {tipoCronograma === 'materia-prima' && (
-                <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl border border-gray-100">
                   <Package className="w-5 h-5 text-gray-400" />
                   <div>
                     <p className="text-sm text-gray-600">Tipo de Materia</p>
@@ -1550,7 +1660,7 @@ export function CronogramaProductoTerminado({
 
               {/* Ubicación - Solo para Agua Potable */}
               {tipoCronograma === 'agua-potable' && viewingTask.ubicacion && (
-                <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl border border-gray-100">
                   <MapPin className="w-5 h-5 text-gray-400" />
                   <div>
                     <p className="text-sm text-gray-600">Ubicación</p>
@@ -1560,7 +1670,7 @@ export function CronogramaProductoTerminado({
               )}
 
               {/* Fecha Programada */}
-              <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl border border-gray-100">
                 <CalendarIcon className="w-5 h-5 text-gray-400" />
                 <div>
                   <p className="text-sm text-gray-600">Fecha Programada</p>
@@ -1572,7 +1682,7 @@ export function CronogramaProductoTerminado({
 
               {/* Responsable */}
               {viewingTask.responsable && (
-                <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl border border-gray-100">
                   <User className="w-5 h-5 text-gray-400" />
                   <div>
                     <p className="text-sm text-gray-600">Responsable</p>
@@ -1606,16 +1716,6 @@ export function CronogramaProductoTerminado({
                       <CheckCircle className="w-4 h-4 mr-2" />
                       Completar Tarea
                     </Button>
-                    {viewingTask.codigoMuestra && (
-                      <Button
-                        variant="outline"
-                        onClick={() => onViewTask(viewingTask)}
-                        className="flex-1 border-red-200 hover:bg-red-50"
-                      >
-                        <Eye className="w-4 h-4 mr-2" />
-                        Ver 107
-                      </Button>
-                    )}
                   </>
                 ) : (
                   <>
@@ -1627,6 +1727,16 @@ export function CronogramaProductoTerminado({
                       <Eye className="w-4 h-4 mr-2" />
                       Ver Registro
                     </Button>
+                    {viewingTask.codigoMuestra && (
+                      <Button
+                        variant="outline"
+                        onClick={() => onViewTask(viewingTask)}
+                        className="flex-1 border-red-200 hover:bg-red-50"
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        Ver 107
+                      </Button>
+                    )}
                   </>
                 )}
               </div>
@@ -1678,6 +1788,34 @@ export function CronogramaProductoTerminado({
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Dialog de Confirmación de Eliminación */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Estás seguro de eliminar esta tarea o labor del cronograma?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. La tarea se eliminará permanentemente del cronograma.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setIsDeleteDialogOpen(false)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteTask} className="bg-red-600 hover:bg-red-700" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  Eliminando...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Eliminar
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

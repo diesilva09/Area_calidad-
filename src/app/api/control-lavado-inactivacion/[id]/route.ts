@@ -27,6 +27,7 @@ export async function GET(
         sustancia_desinfeccion_2_cantidad_sustancia,
         realizado_por,
         observaciones,
+        estado,
         created_at,
         updated_at
       FROM ${getMicroTable('control_lavado_inactivacion')}
@@ -73,7 +74,8 @@ export async function PUT(
       sustancia_desinfeccion_2_cantidad_preparada,
       sustancia_desinfeccion_2_cantidad_sustancia,
       realizado_por,
-      observaciones
+      observaciones,
+      estado
     } = body;
 
     const query = `
@@ -92,25 +94,27 @@ export async function PUT(
         sustancia_desinfeccion_2_cantidad_sustancia = COALESCE($11, sustancia_desinfeccion_2_cantidad_sustancia),
         realizado_por = COALESCE($12, realizado_por),
         observaciones = COALESCE($13, observaciones),
+        estado = COALESCE($14, estado),
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = $14
+      WHERE id = $15
       RETURNING *
     `;
 
     const values = [
-      fecha,
-      actividad_realizada,
-      sustancia_limpieza_nombre,
-      sustancia_limpieza_cantidad_preparada,
-      sustancia_limpieza_cantidad_sustancia,
-      sustancia_desinfeccion_1_nombre,
-      sustancia_desinfeccion_1_cantidad_preparada,
-      sustancia_desinfeccion_1_cantidad_sustancia,
-      sustancia_desinfeccion_2_nombre,
-      sustancia_desinfeccion_2_cantidad_preparada,
-      sustancia_desinfeccion_2_cantidad_sustancia,
-      realizado_por,
-      observaciones,
+      fecha || null,
+      actividad_realizada || null,
+      sustancia_limpieza_nombre || null,
+      sustancia_limpieza_cantidad_preparada || null,
+      sustancia_limpieza_cantidad_sustancia || null,
+      sustancia_desinfeccion_1_nombre || null,
+      sustancia_desinfeccion_1_cantidad_preparada || null,
+      sustancia_desinfeccion_1_cantidad_sustancia || null,
+      sustancia_desinfeccion_2_nombre || null,
+      sustancia_desinfeccion_2_cantidad_preparada || null,
+      sustancia_desinfeccion_2_cantidad_sustancia || null,
+      realizado_por || null,
+      observaciones || null,
+      estado || null,
       id
     ];
 

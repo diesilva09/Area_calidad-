@@ -45,6 +45,8 @@ export async function GET(request: NextRequest) {
         responsable,
         observaciones,
         cronograma_task_id,
+        cronograma_codigo,
+        cronograma_tipo,
         motivo_personalizado,
         estado,
         created_at,
@@ -152,6 +154,7 @@ export async function POST(request: NextRequest) {
       responsable,
       observaciones,
       cronograma_task_id,
+      cronograma_codigo,
       estado
     } = body;
 
@@ -192,9 +195,11 @@ export async function POST(request: NextRequest) {
         responsable,
         observaciones,
         cronograma_task_id,
+        cronograma_codigo,
+        cronograma_tipo,
         motivo_personalizado,
         estado
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
       RETURNING *
     `;
 
@@ -224,6 +229,8 @@ export async function POST(request: NextRequest) {
       responsable,
       observaciones || null,
       cronograma_task_id || null,
+      cronograma_codigo || null,
+      body.cronograma_tipo || null,
       motivo_personalizado || null,
       estado || 'pendiente', // Usar el estado enviado desde el frontend, default 'pendiente'
     ];

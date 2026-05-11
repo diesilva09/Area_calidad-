@@ -3,7 +3,9 @@
 import React, { startTransition, useCallback, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, CheckCircle, AlertTriangle, Eye, Trash2, Pencil, ClipboardList } from 'lucide-react';
+import { Plus, CheckCircle, AlertTriangle, Eye, Trash2, Pencil, ClipboardList, Download, FileSpreadsheet, FileText, FileType2 } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
@@ -72,6 +74,100 @@ export function LimpiezaRegistrosTab({
     | { kind: 'cronograma_task'; taskId: number }
     | { kind: 'limpieza_registro'; registroId: string }
   >(null);
+
+  // ── Exportar liberaciones de un registro ────────────────────
+  const exportarLiberacionesExcel = (registro: LimpiezaRegistroAPI) => {
+    const libs = registro.liberaciones || [];
+    if (libs.length === 0) { alert('Este registro no tiene liberaciones para exportar'); return; }
+    const rows = libs.map((lib, idx) => ({
+      '#': idx + 1,
+      'Fecha': registro.fecha,
+      'Mes Corte': registro.mes_corte || '',
+      'Hora': lib.hora || '',
+      'Tipo Verificación': lib.tipo_verificacion || '',
+      'Línea': lib.linea || '',
+      'Superficie': lib.superficie || '',
+      'Estado Filtro': lib.estado_filtro != null ? lib.estado_filtro : '',
+      'Novedades Filtro': lib.novedades_filtro || '',
+      'Correcciones Filtro': lib.correcciones_filtro || '',
+      'ATP RI': lib.resultados_atp_ri || '',
+      'ATP AC': lib.resultados_atp_ac || '',
+      'ATP RF': lib.resultados_atp_rf || '',
+      'Lote Hisopo ATP': lib.lote_hisopo_atp || '',
+      'Alergenos RI': lib.deteccion_alergenos_ri || '',
+      'Alergenos AC': lib.deteccion_alergenos_ac || '',
+      'Alergenos RF': lib.deteccion_alergenos_rf || '',
+      'Detergente': lib.detergente || '',
+      'Desinfectante': lib.desinfectante || '',
+      'Verificación Visual': lib.verificacion_visual != null ? lib.verificacion_visual : '',
+      'Observación Visual': lib.observacion_visual || '',
+      'Verificado Por': lib.verificado_por || '',
+      'Resp. Producción': lib.responsable_produccion || '',
+      'Resp. Mantenimiento': lib.responsable_mantenimiento || '',
+      'Estado': lib.status === 'completed' ? 'Completado' : 'Pendiente',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Liberaciones');
+    XLSX.writeFile(wb, `Liberaciones_Limpieza_${registro.fecha}_${registro.id.slice(0, 8)}.xlsx`);
+  };
+
+  const exportarLiberacionesPdf = async (registro: LimpiezaRegistroAPI) => {
+    const libs = registro.liberaciones || [];
+    if (libs.length === 0) { alert('Este registro no tiene liberaciones para exportar'); return; }
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ orientation: 'landscape' });
+    doc.setFontSize(14); doc.setTextColor(0, 51, 102);
+    doc.text('Liberaciones de Limpieza', 148, 15, { align: 'center' });
+    doc.setFontSize(9); doc.setTextColor(80, 80, 80);
+    doc.text(`Fecha: ${registro.fecha}  |  Mes Corte: ${registro.mes_corte || '-'}  |  Total: ${libs.length} liberaciones`, 148, 22, { align: 'center' });
+    const cols = ['#', 'Hora', 'Línea', 'Superficie', 'Verificado Por', 'Resp. Producción', 'Resp. Mantenimiento', 'ATP RI', 'ATP AC', 'Alerg. RI', 'Estado'];
+    const colW = [8, 16, 24, 24, 36, 36, 36, 16, 16, 16, 20];
+    let x = 10; let y = 32;
+    doc.setFontSize(8); doc.setTextColor(255, 255, 255);
+    doc.setFillColor(0, 51, 102);
+    cols.forEach((col, i) => { doc.rect(x, y, colW[i], 7, 'F'); doc.text(col, x + 2, y + 5); x += colW[i]; });
+    y += 7;
+    libs.forEach((lib, idx) => {
+      if (y > 185) { doc.addPage(); y = 15; }
+      x = 10;
+      doc.setTextColor(0, 0, 0); doc.setFontSize(7);
+      const fill = idx % 2 === 0 ? [245, 245, 245] : [255, 255, 255];
+      const rowData = [String(idx+1), lib.hora?.slice(0,5)||'-', lib.linea||'-', lib.superficie||'-', lib.verificado_por||'-', lib.responsable_produccion||'-', lib.responsable_mantenimiento||'-', lib.resultados_atp_ri||'-', lib.resultados_atp_ac||'-', lib.deteccion_alergenos_ri||'-', lib.status === 'completed' ? 'Completado' : 'Pendiente'];
+      rowData.forEach((val, i) => { doc.setFillColor(fill[0], fill[1], fill[2]); doc.rect(x, y, colW[i], 6, 'F'); doc.text(String(val).slice(0, Math.floor(colW[i]/2.2)), x+1, y+4); x += colW[i]; });
+      y += 6;
+    });
+    doc.save(`Liberaciones_Limpieza_${registro.fecha}_${registro.id.slice(0, 8)}.pdf`);
+  };
+
+  const exportarLiberacionesWord = async (registro: LimpiezaRegistroAPI) => {
+    const libs = registro.liberaciones || [];
+    if (libs.length === 0) { alert('Este registro no tiene liberaciones para exportar'); return; }
+    const { Document, Paragraph, Table, TableCell, TableRow, Packer, TextRun, WidthType } = await import('docx');
+    const { saveAs } = await import('file-saver');
+    const headers = ['#', 'Hora', 'Línea', 'Superficie', 'Verificado Por', 'Resp. Producción', 'Resp. Mantenimiento', 'ATP RI', 'ATP AC', 'Alerg. RI', 'Estado'];
+    const headerRow = new TableRow({ children: headers.map(h => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: h, bold: true, color: 'FFFFFF' })] })], shading: { fill: '003366' } })) });
+    const dataRows = libs.map((lib, idx) => new TableRow({ children: [
+      new TableCell({ children: [new Paragraph(String(idx+1))] }),
+      new TableCell({ children: [new Paragraph(lib.hora?.slice(0,5)||'-')] }),
+      new TableCell({ children: [new Paragraph(lib.linea||'-')] }),
+      new TableCell({ children: [new Paragraph(lib.superficie||'-')] }),
+      new TableCell({ children: [new Paragraph(lib.verificado_por||'-')] }),
+      new TableCell({ children: [new Paragraph(lib.responsable_produccion||'-')] }),
+      new TableCell({ children: [new Paragraph(lib.responsable_mantenimiento||'-')] }),
+      new TableCell({ children: [new Paragraph(lib.resultados_atp_ri||'-')] }),
+      new TableCell({ children: [new Paragraph(lib.resultados_atp_ac||'-')] }),
+      new TableCell({ children: [new Paragraph(lib.deteccion_alergenos_ri||'-')] }),
+      new TableCell({ children: [new Paragraph(lib.status === 'completed' ? 'Completado' : 'Pendiente')] }),
+    ] }));
+    const doc = new Document({ sections: [{ properties: {}, children: [
+      new Paragraph({ children: [new TextRun({ text: 'Liberaciones de Limpieza', bold: true, size: 28 })], alignment: 'center', spacing: { after: 200 } }),
+      new Paragraph({ children: [new TextRun({ text: `Fecha: ${registro.fecha}  |  Mes Corte: ${registro.mes_corte || '-'}  |  Total: ${libs.length} liberaciones` })], alignment: 'center', spacing: { after: 300 } }),
+      new Table({ rows: [headerRow, ...dataRows], width: { size: 100, type: WidthType.PERCENTAGE } }),
+    ] }] });
+    const blob = await Packer.toBlob(doc);
+    saveAs(blob, `Liberaciones_Limpieza_${registro.fecha}_${registro.id.slice(0, 8)}.docx`);
+  };
 
   const refreshNonBlocking = useCallback(() => {
     startTransition(() => {
@@ -616,10 +712,10 @@ export function LimpiezaRegistrosTab({
                     onClick={() => handleViewRegistro(registro)}
                     variant="outline"
                     size="sm"
-                    className="flex-1 min-w-[72px] h-8 text-xs"
+                    className="h-8 w-8 p-0 shrink-0"
+                    title="Ver"
                   >
-                    <Eye className="h-3 w-3 mr-1.5" />
-                    Ver
+                    <Eye className="h-3.5 w-3.5" />
                   </Button>
 
                   {isPending && (
@@ -638,12 +734,31 @@ export function LimpiezaRegistrosTab({
                       onClick={() => handleEditRegistro(registro)}
                       variant="outline"
                       size="sm"
-                      className="flex-1 min-w-[72px] h-8 text-xs"
+                      className="h-8 w-8 p-0 shrink-0"
+                      title="Editar"
                     >
-                      <Pencil className="h-3 w-3 mr-1.5" />
-                      Editar
+                      <Pencil className="h-3.5 w-3.5" />
                     </Button>
                   )}
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8 w-8 p-0 shrink-0" title="Exportar liberaciones">
+                        <Download className="h-3.5 w-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => exportarLiberacionesExcel(registro)}>
+                        <FileSpreadsheet className="h-4 w-4 mr-2 text-green-600" />Exportar Excel
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => exportarLiberacionesPdf(registro)}>
+                        <FileText className="h-4 w-4 mr-2 text-red-600" />Exportar PDF
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => exportarLiberacionesWord(registro)}>
+                        <FileType2 className="h-4 w-4 mr-2 text-blue-600" />Exportar Word
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
 
                   {canEdit && (
                     <Button

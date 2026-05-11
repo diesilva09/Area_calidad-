@@ -21,6 +21,7 @@ export async function GET(
         hora_salida,
         responsable,
         observaciones,
+        estado,
         created_at,
         updated_at
       FROM ${getMicroTable('incubadora_control')}
@@ -61,7 +62,8 @@ export async function PUT(
       fecha_salida,
       hora_salida,
       responsable,
-      observaciones
+      observaciones,
+      estado
     } = body;
 
     const query = `
@@ -74,19 +76,21 @@ export async function PUT(
         hora_salida = COALESCE($5, hora_salida),
         responsable = COALESCE($6, responsable),
         observaciones = COALESCE($7, observaciones),
+        estado = COALESCE($8, estado),
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = $8
+      WHERE id = $9
       RETURNING *
     `;
 
     const values = [
-      muestra,
-      fecha_ingreso,
-      hora_ingreso,
-      fecha_salida,
-      hora_salida,
-      responsable,
+      muestra || null,
+      fecha_ingreso || null,
+      hora_ingreso || null,
+      fecha_salida || null,
+      hora_salida || null,
+      responsable || null,
       observaciones || null,
+      estado || null,
       id
     ];
 

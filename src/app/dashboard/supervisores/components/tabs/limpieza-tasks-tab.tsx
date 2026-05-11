@@ -369,15 +369,15 @@ export function LimpiezaTasksTab({
                             )}
                           </div>
 
-                          <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                          <div className="flex flex-wrap gap-2 pt-1">
                             <Button
                               onClick={() => handleViewTask(task)}
                               variant="outline"
-                              size="sm"
-                              className="sm:flex-1"
+                              size="icon"
+                              className="h-8 w-8 flex-shrink-0"
+                              title="Ver"
                             >
-                              <Eye className="h-3 w-3 mr-1" />
-                              Ver
+                              <Eye className="h-3.5 w-3.5" />
                             </Button>
 
                             {isJefe && (
@@ -385,11 +385,11 @@ export function LimpiezaTasksTab({
                                 <Button
                                   onClick={() => handleEditTask(task)}
                                   variant="outline"
-                                  size="sm"
-                                  className="sm:flex-1"
+                                  size="icon"
+                                  className="h-8 w-8 flex-shrink-0"
+                                  title="Editar"
                                 >
-                                  <Pencil className="h-3 w-3 mr-1" />
-                                  Editar
+                                  <Pencil className="h-3.5 w-3.5" />
                                 </Button>
                                 <Button
                                   onClick={() => {
@@ -397,22 +397,26 @@ export function LimpiezaTasksTab({
                                     setTaskToDelete(task);
                                   }}
                                   variant="destructive"
-                                  size="sm"
-                                  className="sm:w-auto"
+                                  size="icon"
+                                  className="h-8 w-8 flex-shrink-0"
+                                  title="Eliminar"
                                 >
-                                  <Trash2 className="h-3 w-3" />
+                                  <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
                               </>
                             )}
-                          </div>
 
-                          {task.status === 'pending' && (
-                            <div className="pt-1">
-                              <Button onClick={() => handleCompleteTask(task)} size="sm" className="w-full">
-                                Completar
+                            {task.status === 'pending' && (
+                              <Button 
+                                onClick={() => handleCompleteTask(task)} 
+                                size="icon"
+                                className="h-8 w-8 flex-shrink-0 bg-green-600 hover:bg-green-700"
+                                title="Completar"
+                              >
+                                <CheckCircle className="h-3.5 w-3.5" />
                               </Button>
-                            </div>
-                          )}
+                            )}
+                          </div>
 
                           {task.status === 'completed' && (
                             <div className="pt-1">

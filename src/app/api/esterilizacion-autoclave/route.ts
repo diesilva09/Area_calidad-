@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
         cinta_indicadora,
         realizado_por,
         observaciones,
+        estado,
         created_at,
         updated_at
       FROM ${getMicroTable('esterilizacion_autoclave')}
@@ -80,19 +81,9 @@ export async function POST(request: NextRequest) {
       fin_ciclo_hora,
       cinta_indicadora,
       realizado_por,
-      observaciones
+      observaciones,
+      estado
     } = body;
-
-    // Validación básica
-    if (!fecha || !elementos_medios_cultivo || !inicio_ciclo_hora || !inicio_proceso_hora || 
-        !inicio_proceso_tc || !inicio_proceso_presion || !fin_proceso_hora || 
-        !fin_proceso_tc || !fin_proceso_presion || !fin_ciclo_hora || 
-        !cinta_indicadora || !realizado_por) {
-      return NextResponse.json(
-        { error: 'Faltan campos requeridos' },
-        { status: 400 }
-      );
-    }
 
     const query = `
       INSERT INTO ${getMicroTable('esterilizacion_autoclave')} (
@@ -108,25 +99,27 @@ export async function POST(request: NextRequest) {
         fin_ciclo_hora,
         cinta_indicadora,
         realizado_por,
-        observaciones
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        observaciones,
+        estado
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *
     `;
 
     const values = [
-      fecha,
-      elementos_medios_cultivo,
-      inicio_ciclo_hora,
-      inicio_proceso_hora,
-      inicio_proceso_tc,
-      inicio_proceso_presion,
-      fin_proceso_hora,
-      fin_proceso_tc,
-      fin_proceso_presion,
-      fin_ciclo_hora,
-      cinta_indicadora,
-      realizado_por,
-      observaciones || null
+      fecha || null,
+      elementos_medios_cultivo || null,
+      inicio_ciclo_hora || null,
+      inicio_proceso_hora || null,
+      inicio_proceso_tc || null,
+      inicio_proceso_presion || null,
+      fin_proceso_hora || null,
+      fin_proceso_tc || null,
+      fin_proceso_presion || null,
+      fin_ciclo_hora || null,
+      cinta_indicadora || null,
+      realizado_por || null,
+      observaciones || null,
+      estado || 'completado'
     ];
 
     const result = await pool.query(query, values);

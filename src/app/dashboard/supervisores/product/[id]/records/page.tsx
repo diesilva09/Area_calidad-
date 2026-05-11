@@ -8,7 +8,17 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Plus, Calendar, Package, Search, BarChart3, FileDown, User, Clock } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { ArrowLeft, Plus, Calendar, Package, Search, BarChart3, FileDown, User, Clock, Trash2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
@@ -131,6 +141,8 @@ export default function ProductProductionRecordsPage({ params }: { params: Promi
   const [equiposNombres, setEquiposNombres] = useState<Record<string, string>>({});
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'completed'>('all');
   const autoCompleteOpenedRef = useRef(false);
+  const [recordToDelete, setRecordToDelete] = useState<ProductionRecord | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Resaltar y hacer scroll a un registro cuando se regresa desde Detalles
   useEffect(() => {
@@ -231,6 +243,8 @@ export default function ProductProductionRecordsPage({ params }: { params: Promi
       </div>
     );
   }
+
+  const isJefe = String((user as any)?.role ?? '').toLowerCase() === 'jefe';
 
   useEffect(() => {
     const loadData = async () => {
@@ -345,6 +359,24 @@ export default function ProductProductionRecordsPage({ params }: { params: Promi
     XLSX.writeFile(wb, `RE-CAL-084_lote-`+String(record?.lote ?? 'sin-lote').replace(/[^a-zA-Z0-9_-]/g, '_')+`.xlsx`);
   };
 
+  const exportAllRecords = () => {
+    if (!filteredRecords.length) {
+      toast({ title: 'Sin registros', description: 'No hay registros para exportar.', variant: 'destructive' });
+      return;
+    }
+    const data = filteredRecords.map((record) => {
+      const row: Record<string, any> = {};
+      for (const [key, value] of Object.entries(record)) {
+        row[key] = value;
+      }
+      return row;
+    });
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Registros');
+    XLSX.writeFile(wb, `RE-CAL-084_${product?.name ?? 'todos'}_registros.xlsx`);
+  };
+
   const handleRecordAdded = async (savedRecord: any) => {
     // Si newRecord está vacío, es solo para limpiar el estado
     if (!savedRecord || Object.keys(savedRecord).length === 0) {
@@ -379,7 +411,7 @@ export default function ProductProductionRecordsPage({ params }: { params: Promi
       // Cargar el registro completo desde la base de datos usando el ID
       const { productionRecordsService } = await import('@/lib/supervisores-data');
       const completeRecord = await productionRecordsService.getById(record.id);
-      
+
       if (completeRecord) {
         // Abrir el modal de producción con los datos completos del registro pendiente
         setIsModalOpen(true);
@@ -438,19 +470,45 @@ export default function ProductProductionRecordsPage({ params }: { params: Promi
         }
         toast({
           title: "Error",
-          description: "No se pudo cargar el registro desde la base de datos",
+          description: "No se encontró el registro",
           variant: "destructive",
         });
       }
     } catch (error) {
-      if (isDev) {
-        console.error('❌ Error al cargar registro para editar:', error);
-      }
+      console.error('Error al cargar registro pendiente:', error);
       toast({
         title: "Error",
-        description: "No se pudo cargar el registro para editar. Intente nuevamente.",
+        description: "No se pudo cargar el registro pendiente",
         variant: "destructive",
       });
+    }
+  };
+
+  // Manejar eliminación de registro pendiente (solo jefe)
+  const handleDelete = async () => {
+    if (!recordToDelete) return;
+
+    try {
+      setIsDeleting(true);
+      const { productionRecordsService } = await import('@/lib/supervisores-data');
+      await productionRecordsService.delete(recordToDelete.id);
+
+      toast({
+        title: 'Registro eliminado',
+        description: `El registro de producción lote ${recordToDelete.lote} ha sido eliminado exitosamente.`,
+      });
+
+      setRecords(prev => prev.filter(r => r.id !== recordToDelete.id));
+      setRecordToDelete(null);
+    } catch (error) {
+      console.error('Error al eliminar registro:', error);
+      toast({
+        title: 'Error',
+        description: 'No se pudo eliminar el registro',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -505,10 +563,10 @@ export default function ProductProductionRecordsPage({ params }: { params: Promi
   }
 
   return (
-    <div className="min-h-screen bg-white p-3 sm:p-4 md:p-6 lg:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-white via-white to-white p-3 sm:p-4 md:p-6 lg:p-8">
       <div className="max-w-6xl mx-auto">
         <div className="mb-4 sm:mb-6">
-          <Link 
+          <Link
             href={`/dashboard/supervisores?tab=produccion&highlight=${encodeURIComponent(`${category.id}_${product.id}`)}`}
             onClick={(e) => {
               if (category && product) {
@@ -519,9 +577,9 @@ export default function ProductProductionRecordsPage({ params }: { params: Promi
             }}
             className="inline-block"
           >
-            <Button 
-              variant="ghost" 
-              className="mb-3 sm:mb-4"
+            <Button
+              variant="ghost"
+              className="mb-3 sm:mb-4 hover:bg-white/50 transition-colors"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Volver a Supervisores
@@ -530,37 +588,70 @@ export default function ProductProductionRecordsPage({ params }: { params: Promi
         </div>
 
         <div className="mb-6 sm:mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
-                Registros de Producción
-              </h1>
+       {/* Header Section - Versión Mejorada */}
+<div className="bg-white rounded-2xl border border-gray-100 p-6 sm:p-8 mb-8 shadow-sm hover:shadow-md transition-shadow duration-300">
+  
+  {/* Top Row: Icon + Title */}
+  <div className="flex items-start gap-4">
+    <div className="bg-gradient-to-br from-blue-600 to-indigo-600 p-3.5 rounded-2xl shadow-lg shadow-blue-500/20 shrink-0">
+      <Package className="h-8 w-8 text-white" />
+    </div>
 
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="secondary" className="text-xs sm:text-sm">{product.name}</Badge>
-                  <Badge variant="outline" className="text-xs sm:text-sm">{category.name}</Badge>
-                </div>
-                <div className="flex flex-wrap gap-2 sm:gap-4 text-xs sm:text-sm text-gray-600">
-                  <span>
-                    Total: <span className="font-semibold">{records.length}</span>
-                  </span>
-                  <span className="text-yellow-600">
-                    Pendientes: <span className="font-semibold">
-                      {records.filter(r => r.status === 'pending').length}
-                    </span>
-                  </span>
-                  <span className="text-green-600">
-                    Completados: <span className="font-semibold">
-                      {records.filter(r => r.status === 'completed').length}
-                    </span>
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+    <div className="flex-1 min-w-0 pt-1">
+      <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tighter">
+        RE-CAL-084 CONSOLIDADO VERIFICACIÓN PROCESO DE PRODUCCIÓN
+      </h1>
+      <p className="text-gray-500 mt-1 text-sm sm:text-base">
+        Gestión y seguimiento de la producción
+      </p>
+    </div>
+  </div>
+
+  {/* Product & Category */}
+  <div className="flex flex-wrap items-center gap-2 mt-6">
+    <Badge 
+      variant="secondary" 
+      className="text-sm font-medium bg-blue-50 text-blue-700 border border-blue-100 px-4 py-1.5 rounded-xl"
+    >
+      {product.name}
+    </Badge>
+   
+  </div>
+
+  {/* Stats Cards - Más pequeñas y responsivas */}
+  <div className="grid grid-cols-3 sm:grid-cols-3 gap-3 mt-6">
+    
+    {/* Total */}
+    <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 sm:p-4 text-center transition-all hover:bg-white hover:border-gray-200 hover:shadow-sm">
+      <p className="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-widest">Total</p>
+      <p className="text-2xl sm:text-3xl font-semibold text-gray-900 mt-1 tabular-nums">
+        {records.length}
+      </p>
+    </div>
+
+    {/* Pendientes */}
+    <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-3 sm:p-4 text-center transition-all hover:bg-white hover:border-yellow-200 hover:shadow-sm">
+      <p className="text-[10px] sm:text-xs font-medium text-yellow-600 uppercase tracking-widest">Pendientes</p>
+      <p className="text-2xl sm:text-3xl font-semibold text-yellow-700 mt-1 tabular-nums">
+        {records.filter(r => r.status === 'pending').length}
+      </p>
+    </div>
+
+    {/* Completados */}
+    <div className="bg-green-50 border border-green-100 rounded-xl p-3 sm:p-4 text-center transition-all hover:bg-white hover:border-green-200 hover:shadow-sm">
+      <p className="text-[10px] sm:text-xs font-medium text-green-600 uppercase tracking-widest">Completados</p>
+      <p className="text-2xl sm:text-3xl font-semibold text-green-700 mt-1 tabular-nums">
+        {records.filter(r => r.status === 'completed').length}
+      </p>
+    </div>
+
+  </div>
+</div>
+          {/* Controls Section */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6 shadow-sm">
+            <div className="flex flex-col sm:flex-row gap-3">
               <Select value={statusFilter} onValueChange={(value: 'all' | 'pending' | 'completed') => setStatusFilter(value)}>
-                <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectTrigger className="w-full sm:w-[200px]">
                   <SelectValue placeholder="Filtrar por estado" />
                 </SelectTrigger>
                 <SelectContent>
@@ -569,39 +660,48 @@ export default function ProductProductionRecordsPage({ params }: { params: Promi
                   <SelectItem value="completed">Completados</SelectItem>
                 </SelectContent>
               </Select>
-              <Button 
-                onClick={() => setIsAnalysisOpen(true)}
-                variant="outline"
-                className="border-blue-600 text-blue-600 hover:bg-blue-50 w-full sm:w-auto"
-              >
-                <BarChart3 className="mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">Análisis</span>
-                <span className="sm:hidden">Análisis</span>
-              </Button>
-              <Button 
-                onClick={() => {
-                  setIsModalOpen(true);
-                }}
-                className="bg-green-600 hover:bg-green-700 text-white w-full sm:w-auto"
-                style={{ backgroundColor: '#e25259', color: 'white' }}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">Agregar Registro</span>
-                <span className="sm:hidden">Agregar</span>
-              </Button>
+              <div className="flex-1">
+                <UniversalSearch
+                  data={records}
+                  searchFields={['lote', 'observaciones', 'equipo', 'area', 'tamano_lote', 'liberacion_inicial']}
+                  onRecordSelect={handleRecordSelect}
+                  placeholder="Buscar por lote, equipo, área..."
+                  displayField="lote"
+                  secondaryField="equipo"
+                  className="w-full"
+                />
+              </div>
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 mb-6">
-            <UniversalSearch
-              data={records}
-              searchFields={['lote', 'observaciones', 'equipo', 'area', 'tamano_lote', 'liberacion_inicial']}
-              onRecordSelect={handleRecordSelect}
-              placeholder="Buscar por lote, equipo, área..."
-              displayField="lote"
-              secondaryField="equipo"
-              className="flex-1 w-full"
-            />
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+            <Button
+              onClick={() => setIsAnalysisOpen(true)}
+              variant="outline"
+              className="border-blue-600 text-blue-600 hover:bg-blue-50 w-full sm:w-auto bg-white"
+            >
+              <BarChart3 className="mr-2 h-4 w-4" />
+              Análisis
+            </Button>
+            <Button
+              onClick={exportAllRecords}
+              variant="outline"
+              className="border-green-600 text-green-600 hover:bg-green-50 w-full sm:w-auto bg-white"
+              disabled={filteredRecords.length === 0}
+            >
+              <FileDown className="mr-2 h-4 w-4" />
+              Exportar Todo ({filteredRecords.length})
+            </Button>
+            <Button
+              onClick={() => {
+                setIsModalOpen(true);
+              }}
+              className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white w-full sm:w-auto shadow-md transition-all"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Agregar Registro
+            </Button>
           </div>
         </div>
 
@@ -630,12 +730,6 @@ export default function ProductProductionRecordsPage({ params }: { params: Promi
                         : 'Agrega tu primer registro de producción para este producto'
                   }
                 </p>
-                {!searchTerm && (
-                  <Button onClick={() => setIsModalOpen(true)}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Agregar Primer Registro
-                  </Button>
-                )}
               </CardContent>
             </Card>
           ) : (
@@ -721,14 +815,26 @@ export default function ProductProductionRecordsPage({ params }: { params: Promi
                         <FileDown className="h-3.5 w-3.5 mr-1" />Exportar
                       </Button>
                       {record.status === 'pending' ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => { e.stopPropagation(); handleCompletePendingRecord(record); }}
-                          className="text-blue-600 hover:text-blue-800 hover:bg-blue-50"
-                        >
-                          Completar Registro
-                        </Button>
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => { e.stopPropagation(); handleCompletePendingRecord(record); }}
+                            className="text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                          >
+                            Completar Registro
+                          </Button>
+                          {isJefe && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => { e.stopPropagation(); setRecordToDelete(record); }}
+                              className="text-red-600 hover:text-red-800 hover:bg-red-50"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-1" />Eliminar
+                            </Button>
+                          )}
+                        </>
                       ) : (
                         <>
                           <Button
@@ -791,6 +897,33 @@ export default function ProductProductionRecordsPage({ params }: { params: Promi
             productId={product.id}
           />
         )}
+
+        {/* Dialog de Confirmación de Eliminación */}
+        <AlertDialog open={!!recordToDelete} onOpenChange={(open) => !open && setRecordToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmar eliminación</AlertDialogTitle>
+              <AlertDialogDescription>
+                Vas a eliminar este registro de producción pendiente. Esta acción es permanente y no se puede deshacer.
+                {recordToDelete && (
+                  <span className="block mt-2 text-sm text-gray-600">
+                    Lote: {recordToDelete.lote} · Fecha: {formatDate(recordToDelete.fechaproduccion)}
+                  </span>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {isDeleting ? 'Eliminando...' : 'Eliminar'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );

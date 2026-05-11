@@ -20,6 +20,7 @@ export async function GET(
         humedad_relativa,
         responsable,
         observaciones,
+        estado,
         created_at,
         updated_at
       FROM ${getMicroTable('condiciones_ambientales')}
@@ -58,38 +59,33 @@ export async function PUT(
       temperatura,
       humedad_relativa,
       responsable,
-      observaciones
+      observaciones,
+      estado
     } = body;
-
-    // Validaciones básicas
-    if (!fecha || !hora || !temperatura || !humedad_relativa || !responsable) {
-      return NextResponse.json(
-        { error: 'Faltan campos requeridos' },
-        { status: 400 }
-      );
-    }
 
     const query = `
       UPDATE ${getMicroTable('condiciones_ambientales')}
       SET
-        fecha = $1,
-        hora = $2,
-        temperatura = $3,
-        humedad_relativa = $4,
-        responsable = $5,
-        observaciones = $6,
+        fecha = COALESCE($1, fecha),
+        hora = COALESCE($2, hora),
+        temperatura = COALESCE($3, temperatura),
+        humedad_relativa = COALESCE($4, humedad_relativa),
+        responsable = COALESCE($5, responsable),
+        observaciones = COALESCE($6, observaciones),
+        estado = COALESCE($7, estado),
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = $7
+      WHERE id = $8
       RETURNING *
     `;
 
     const values = [
-      fecha,
-      hora,
-      temperatura,
-      humedad_relativa,
-      responsable,
+      fecha || null,
+      hora || null,
+      temperatura || null,
+      humedad_relativa || null,
+      responsable || null,
       observaciones || null,
+      estado || null,
       id
     ];
 

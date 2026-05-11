@@ -21,6 +21,7 @@ export async function GET(
         nombre_quien_entrega,
         nombre_quien_recibe,
         observaciones,
+        estado,
         created_at,
         updated_at
       FROM ${getMicroTable('registros_recepcion_formatos')}
@@ -61,7 +62,8 @@ export async function PUT(
       numero_folios,
       nombre_quien_entrega,
       nombre_quien_recibe,
-      observaciones
+      observaciones,
+      estado
     } = body;
 
     const query = `
@@ -74,19 +76,21 @@ export async function PUT(
         nombre_quien_entrega = COALESCE($5, nombre_quien_entrega),
         nombre_quien_recibe = COALESCE($6, nombre_quien_recibe),
         observaciones = COALESCE($7, observaciones),
+        estado = COALESCE($8, estado),
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = $8
+      WHERE id = $9
       RETURNING *
     `;
 
     const values = [
-      fecha_entrega,
-      fecha_registros,
-      codigo_version_registros,
-      numero_folios,
-      nombre_quien_entrega,
-      nombre_quien_recibe,
-      observaciones,
+      fecha_entrega || null,
+      fecha_registros || null,
+      codigo_version_registros || null,
+      numero_folios || null,
+      nombre_quien_entrega || null,
+      nombre_quien_recibe || null,
+      observaciones || null,
+      estado || null,
       id
     ];
 

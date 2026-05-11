@@ -76,13 +76,13 @@ export async function GET(request: NextRequest) {
 
     // Obtener todas las tareas con código de muestra
     const result = await pool.query(
-      `SELECT 
+      `SELECT DISTINCT ON (cap.id)
         cap.*,
         cm.codigo as codigo_muestra
       FROM lab_microbiologia.cronograma_agua_potable cap
       LEFT JOIN lab_microbiologia.custodia_muestras cm 
         ON cm.cronograma_task_id = cap.id
-      ORDER BY cap.fecha_programada DESC`
+      ORDER BY cap.id, cap.fecha_programada DESC`
     );
 
     return NextResponse.json(result.rows);
@@ -173,8 +173,8 @@ export async function POST(request: NextRequest) {
           codigo, tipo, muestra_id, area, temperatura, cantidad, motivo,
           toma_muestra_fecha, toma_muestra_hora, recepcion_lab_fecha, recepcion_lab_hora,
           medio_transporte, responsable, observaciones, cronograma_task_id, estado,
-          created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+          cronograma_codigo, cronograma_tipo, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
         [
           codigoMuestra,                           // $1: código M-X
           'Agua Potable',                          // $2: tipo
@@ -189,11 +189,13 @@ export async function POST(request: NextRequest) {
           horaActual,                              // $11: hora recepción lab
           'N/A',                                   // $12: medio transporte
           responsable || 'PENDIENTE',              // $13: responsable
-          'Generado automáticamente desde cronograma PL-CAL-009 Agua Potable', // $14: observaciones
+          '',                                       // $14: observaciones
           nuevaTarea.id,                           // $15: cronograma_task_id
           'pendiente',                             // $16: estado
-          now,                                     // $17: created_at
-          now                                      // $18: updated_at
+          'PL-CAL-009',                            // $17: cronograma_codigo
+          'externo',                               // $18: cronograma_tipo
+          now,                                     // $19: created_at
+          now                                      // $20: updated_at
         ]
       );
 

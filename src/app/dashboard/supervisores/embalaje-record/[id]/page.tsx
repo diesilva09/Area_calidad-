@@ -290,104 +290,110 @@ export default function EmbalajeRecordDetailPage({ params }: { params: Promise<{
   };
 
   return (
-    <div className="min-h-screen bg-white text-zinc-900">
+    <div className="min-h-screen bg-gradient-to-br from-white via-white to-white text-zinc-900 p-2 sm:p-4 md:p-8">
 
-      {/* ── Top nav ── */}
-      <div className="bg-white border-b border-zinc-100">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-2 min-h-14 flex items-center justify-between gap-4 flex-wrap">
-          <Button
-            variant="ghost"
-            asChild
-            onClick={() => saveScrollPosition(record?.id)}
-            className="text-zinc-500 hover:text-zinc-900 hover:bg-slate-100 rounded-lg h-8 px-3 text-sm gap-1.5"
-          >
+      <div className="max-w-5xl mx-auto">
+        <div className="mb-6">
+          <Button variant="ghost" asChild className="mb-4 hover:bg-gray-100 transition-colors">
             <Link href={returnTo}>
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Volver
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Volver a Registros
             </Link>
           </Button>
 
-          <div className="flex items-center justify-end gap-2 flex-wrap">
-            <Button onClick={() => setIsHistoryPanelOpen(true)} variant="outline" size="sm" className="text-xs rounded-xl h-8 px-4 gap-1.5 border-gray-300">
-              <History className="h-3.5 w-3.5" />
-              Historial
-            </Button>
-            {canEditCompleted && (
-              <Button
-                onClick={() => setIsEditModalOpen(true)}
-                variant="outline"
-                size="sm"
-                className="text-xs rounded-xl h-8 px-4 gap-1.5 border-gray-300"
-              >
-                <Edit className="h-3.5 w-3.5" />
-                Editar
-              </Button>
-            )}
-            {canDelete && (
-              <Button
-                onClick={() => setConfirmDeleteOpen(true)}
-                variant="outline"
-                size="sm"
-                className="text-xs rounded-xl h-8 px-4 gap-1.5 border-red-200 text-red-700 hover:bg-red-50"
-                disabled={isDeleting}
-              >
-                <FileText className="h-3.5 w-3.5" />
-                Eliminar
-              </Button>
-            )}
-            <Button onClick={exportToExcel} variant="outline" size="sm" className="text-xs rounded-xl h-8 px-4 gap-1.5 border-gray-300">
-              <FileDown className="h-3.5 w-3.5" />
-              Exportar Excel
-            </Button>
-            {isRecordPending(record) && (
-              <Badge className="bg-amber-400/10 text-amber-400 border border-amber-400/20 text-[10px] tracking-widest uppercase px-3 py-1 rounded-full hidden sm:flex">
-                Pendiente
+          {/* Header Section */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 mb-4 shadow-sm">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="bg-gradient-to-br from-green-500 to-green-600 p-2.5 sm:p-3 rounded-xl shadow-lg shrink-0">
+                <Package className="h-6 w-6 sm:h-7 sm:w-7 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-green-600 tracking-tight">
+                  Detalle de Registro de Embalaje
+                </h1>
+              </div>
+            </div>
+
+            {/* Product Info */}
+            <div className="ml-10 sm:ml-14 mb-4">
+              <span className="text-sm text-gray-600">
+                Producto: <span className="font-semibold text-gray-800">{productMeta?.productName || String(record.producto)}</span>
+              </span>
+            </div>
+
+            {/* Badges */}
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 ml-10 sm:ml-14">
+              <Badge variant="outline" className="bg-white px-3 py-1.5 text-xs sm:text-sm border-gray-200 shadow-sm">
+                <Calendar className="mr-1.5 h-3 w-3" />
+                {formatFechaSinDesfase(record.fecha)}
               </Badge>
-            )}
-            {isRecordPending(record) && (
-              <Button
-                onClick={() => setIsEditModalOpen(true)}
-                size="sm"
-                className="bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-semibold text-xs rounded-xl h-8 px-4 gap-1.5"
-              >
-                <Edit className="h-3.5 w-3.5" />
-                Completar
+              <Badge variant="outline" className="bg-white px-3 py-1.5 text-xs sm:text-sm border-gray-200 shadow-sm">
+                Lote: {record.lote}
+              </Badge>
+            </div>
+          </div>
+
+          {/* Action Buttons Section */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+            <div className="flex flex-wrap gap-2 sm:gap-3">
+              <Button onClick={() => setIsHistoryPanelOpen(true)} variant="outline" className="text-xs sm:text-sm px-2 sm:px-3 h-8 sm:h-9 border-gray-300">
+                <History className="mr-1.5 h-3 w-3 sm:h-4 sm:w-4" />
+                Historial
               </Button>
-            )}
+              {canEditCompleted && (
+                <Button
+                  onClick={() => setIsEditModalOpen(true)}
+                  variant="outline"
+                  className="text-xs sm:text-sm px-2 sm:px-3 h-8 sm:h-9 border-gray-300"
+                >
+                  <Edit className="mr-1.5 h-3 w-3 sm:h-4 sm:w-4" />
+                  Editar
+                </Button>
+              )}
+              {canDelete && (
+                <Button
+                  onClick={() => setConfirmDeleteOpen(true)}
+                  variant="outline"
+                  className="text-xs sm:text-sm px-2 sm:px-3 h-8 sm:h-9 border-red-200 text-red-700 hover:bg-red-50"
+                  disabled={isDeleting}
+                >
+                  <FileText className="mr-1.5 h-3 w-3 sm:h-4 sm:w-4" />
+                  Eliminar
+                </Button>
+              )}
+              <Button onClick={exportToExcel} variant="outline" className="text-xs sm:text-sm px-2 sm:px-3 h-8 sm:h-9 border-gray-300">
+                <FileDown className="mr-1.5 h-3 w-3 sm:h-4 sm:w-4" />
+                Exportar Excel
+              </Button>
+              {isRecordPending(record) && (
+                <Button
+                  onClick={() => setIsEditModalOpen(true)}
+                  className="bg-orange-600 hover:bg-orange-700 text-white text-xs sm:text-sm px-2 sm:px-3 h-8 sm:h-9"
+                >
+                  <Edit className="mr-1.5 h-3 w-3 sm:h-4 sm:w-4" />
+                  Completar
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Stats Section */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 mb-6 shadow-sm">
+          <div className="flex gap-6 sm:gap-8">
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-gray-500 mb-1">% Faltantes</p>
+              <p className="text-2xl sm:text-3xl font-black tabular-nums text-gray-900">{record.porcentaje_faltantes}<span className="text-base text-gray-500">%</span></p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-gray-500 mb-1">% Incumplimiento</p>
+              <p className="text-2xl sm:text-3xl font-black tabular-nums text-gray-900">{record.porcentaje_incumplimiento}<span className="text-base text-gray-500">%</span></p>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10 space-y-6">
-
-        {/* ── Hero ── */}
-        <div className="rounded-2xl bg-white border border-zinc-200 p-6 sm:p-8">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-semibold mb-2 flex items-center gap-1.5">
-                <Package className="h-3 w-3" /> Registro de Embalaje
-              </p>
-              <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-zinc-900">
-                {productMeta?.productName || String(record.producto)}
-              </h1>
-              <p className="mt-1 text-sm text-zinc-500">
-                Lote <span className="text-zinc-400 font-mono">{record.lote}</span>
-                &nbsp;·&nbsp;
-                <span className="text-zinc-400">{formatFechaSinDesfase(record.fecha)}</span>
-              </p>
-            </div>
-            <div className="flex gap-6 text-right">
-              <div>
-                <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">% Faltantes</p>
-                <p className="text-3xl font-black tabular-nums text-zinc-900">{record.porcentaje_faltantes}<span className="text-base text-zinc-500">%</span></p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">% Incumplimiento</p>
-                <p className="text-3xl font-black tabular-nums text-zinc-900">{record.porcentaje_incumplimiento}<span className="text-base text-zinc-500">%</span></p>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
 
         {/* ── Información General ── */}
         <section>

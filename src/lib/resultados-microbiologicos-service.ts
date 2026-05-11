@@ -37,6 +37,7 @@ export interface ResultadosMicrobiologicos {
   factor_dilucion?: string;
   responsable: string;
   cronograma_task_id?: number | null;
+  cronograma_codigo?: string;
   created_at?: string;
   updated_at?: string;
 }

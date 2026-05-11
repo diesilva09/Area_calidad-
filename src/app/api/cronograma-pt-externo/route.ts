@@ -50,8 +50,10 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate');
     const productoId = searchParams.get('productoId');
 
+    // Usar DISTINCT ON para evitar duplicación cuando hay múltiples registros en custodia_muestras
     let query = `
-      SELECT cpte.*, cm.codigo as codigo_muestra
+      SELECT DISTINCT ON (cpte.id)
+        cpte.*, cm.codigo as codigo_muestra
       FROM lab_microbiologia.cronograma_pt_externo cpte
       LEFT JOIN lab_microbiologia.custodia_muestras cm ON cm.cronograma_task_id = cpte.id
     `;
@@ -72,7 +74,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
-    query += ' ORDER BY cpte.fecha_programada DESC, cpte.created_at DESC';
+    query += ' ORDER BY cpte.id, cpte.fecha_programada DESC, cpte.created_at DESC';
 
     const result = await pool.query(query, params);
     return NextResponse.json(result.rows);
@@ -114,11 +116,11 @@ export async function POST(request: NextRequest) {
       await client.query(
         `INSERT INTO lab_microbiologia.custodia_muestras 
          (codigo, tipo, muestra_id, area, temperatura, cantidad, motivo, toma_muestra_fecha, toma_muestra_hora, 
-          recepcion_lab_fecha, recepcion_lab_hora, medio_transporte, responsable, observaciones, cronograma_task_id, estado, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+          recepcion_lab_fecha, recepcion_lab_hora, medio_transporte, responsable, observaciones, cronograma_task_id, estado, cronograma_codigo, cronograma_tipo, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
         [codigoMuestra, 'Producto Terminado Externo', producto_nombre || producto_id, area || 'BD PT', 'N/A', '1', 'control_rutinario',
          fecha_programada, horaActual, fechaActual, horaActual, 'N/A', responsable || 'PENDIENTE',
-         'Generado desde PL-CAL-009 PT Externo v4', nuevaTarea.id, 'pendiente', now, now]
+         '', nuevaTarea.id, 'pendiente', 'PL-CAL-009', 'externo', now, now]
       );
 
       await client.query('COMMIT');

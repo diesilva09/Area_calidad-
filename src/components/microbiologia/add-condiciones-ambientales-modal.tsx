@@ -5,7 +5,6 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import {
   Dialog,
   DialogContent,
@@ -25,10 +24,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Thermometer } from 'lucide-react';
 import { condicionesAmbientalesService } from '@/lib/condiciones-ambientales-service';
 
 // Esquema de validación para el formulario
@@ -209,21 +205,25 @@ export function AddCondicionesAmbientalesModal({
       }}
     >
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-blue-900">
-            RE-CAL-021 REGISTRO CONDICIONES AMBIENTALES
-          </DialogTitle>
-          <DialogDescription asChild className="text-gray-600">
-            <div className="mt-2 space-y-1">
-              <p><strong>Código:</strong> RE-CAL-021</p>
-              <p><strong>Versión:</strong> 2</p>
-              <p><strong>Fecha de Aprobación:</strong> 03 de mayo de 2021</p>
+        <DialogHeader className="pb-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex-shrink-0">
+              <Thermometer className="w-5 h-5 text-blue-600" />
             </div>
-          </DialogDescription>
+            <div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">RE-CAL-021</span>
+                <span className="text-[10px] text-gray-400">v.2 · 03/05/2021</span>
+              </div>
+              <DialogTitle className="text-base font-semibold text-gray-900 leading-snug">
+                Condiciones Ambientales
+              </DialogTitle>
+            </div>
+          </div>
         </DialogHeader>
 
         <Form {...form}>
-          <form className="space-y-6">
+          <form className="space-y-5 mt-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* FECHA */}
               <FormField
@@ -232,41 +232,14 @@ export function AddCondicionesAmbientalesModal({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>FECHA</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={"outline"}
-                            className={cn(
-                              "w-full pl-3 text-left font-normal",
-                              !field.value && "text-muted-foreground"
-                            )}
-                          >
-                            {field.value ? (
-                              format(new Date(field.value), "PPP", { locale: es })
-                            ) : (
-                              <span>Seleccionar fecha</span>
-                            )}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value ? new Date(field.value) : undefined}
-                          onSelect={(date) => {
-                            if (date) {
-                              field.onChange(format(date, 'yyyy-MM-dd'));
-                            }
-                          }}
-                          disabled={(date) =>
-                            date > new Date() || date < new Date("1900-01-01")
-                          }
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    <FormControl>
+                      <Input
+                        type="date"
+                        {...field}
+                        value={field.value || ''}
+                        onChange={(e) => field.onChange(e.target.value)}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -317,7 +290,7 @@ export function AddCondicionesAmbientalesModal({
                     <FormLabel>TEMPERATURA °C</FormLabel>
                     <FormControl>
                       <Input 
-                        placeholder="Ej: 21" 
+                        placeholder="" 
                         type="number"
                         step="0.1"
                         {...field} 
@@ -337,7 +310,7 @@ export function AddCondicionesAmbientalesModal({
                     <FormLabel>% HUMEDAD RELATIVA</FormLabel>
                     <FormControl>
                       <Input 
-                        placeholder="Ej: 81" 
+                        placeholder="" 
                         type="number"
                         min="0"
                         max="100"
@@ -358,7 +331,7 @@ export function AddCondicionesAmbientalesModal({
                     <FormLabel>RESPONSABLE</FormLabel>
                     <FormControl>
                       <Input 
-                        placeholder="Ej: Juan David Castañeda Ortiz" 
+                        placeholder="" 
                         {...field} 
                       />
                     </FormControl>
@@ -377,7 +350,7 @@ export function AddCondicionesAmbientalesModal({
                     <FormControl>
                       <textarea
                         className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        placeholder="Notas adicionales..."
+                        placeholder=""
                         {...field}
                       />
                     </FormControl>

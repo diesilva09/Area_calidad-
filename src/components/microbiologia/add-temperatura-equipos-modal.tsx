@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
-import { useForm } from 'react-hook-form';
+import React from "react";
+import { format } from "date-fns";
+import { CalendarIcon, Thermometer } from "lucide-react";
+import { useForm } from "react-hook-form";
 import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
+import * as z from "zod";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +13,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from "@/components/ui/dialog";
 import {
   Form,
   FormControl,
@@ -22,15 +22,11 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { temperaturaEquiposService } from '@/lib/temperatura-equipos-service';
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { temperaturaEquiposService } from "@/lib/temperatura-equipos-service";
 
 // Esquema de validación para el formulario
 const temperaturaEquiposSchema = z.object({
@@ -246,17 +242,21 @@ export function AddTemperaturaEquiposModal({
       }}
     >
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-blue-900">
-            RE-CAL-016 REGISTRO DE TEMPERATURA EQUIPOS DE MICROBIOLOGÍA
-          </DialogTitle>
-          <DialogDescription asChild className="text-gray-600">
-            <div className="mt-2 space-y-1">
-              <p><strong>Código:</strong> RE-CAL-016</p>
-              <p><strong>Versión:</strong> 2</p>
-              <p><strong>Fecha de Aprobación:</strong> 03 de mayo de 2021</p>
+        <DialogHeader className="pb-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex-shrink-0">
+              <Thermometer className="w-5 h-5 text-blue-600" />
             </div>
-          </DialogDescription>
+            <div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">RE-CAL-016</span>
+                <span className="text-[10px] text-gray-400">v.2 · 03/05/2021</span>
+              </div>
+              <DialogTitle className="text-base font-semibold text-gray-900 leading-snug">
+                Temperatura de Equipos
+              </DialogTitle>
+            </div>
+          </div>
         </DialogHeader>
 
         <Form {...form}>
@@ -272,44 +272,22 @@ export function AddTemperaturaEquiposModal({
                     <FormLabel>FECHA</FormLabel>
                     <FormControl>
                       <div className="space-y-2">
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                'w-full justify-start text-left font-normal',
-                                !field.value && 'text-muted-foreground'
-                              )}
-                            >
-                              {field.value ? (
-                                (() => {
-                                  const serial = Number(field.value);
-                                  if (!Number.isFinite(serial)) return field.value;
-                                  return format(excelSerialToDate(serial), 'PPP', { locale: es });
-                                })()
-                              ) : (
-                                <span>Seleccionar fecha</span>
-                              )}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={(() => {
-                                const serial = Number(field.value);
-                                if (!Number.isFinite(serial)) return undefined;
-                                return excelSerialToDate(serial);
-                              })()}
-                              onSelect={(date) => {
-                                if (date) {
-                                  field.onChange(getExcelSerialDate(date).toString());
-                                }
-                              }}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
+                        <Input
+                          type="date"
+                          value={(() => {
+                            const serial = Number(field.value);
+                            if (!Number.isFinite(serial)) return '';
+                            return format(excelSerialToDate(serial), 'yyyy-MM-dd');
+                          })()}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              const date = new Date(e.target.value);
+                              field.onChange(getExcelSerialDate(date).toString());
+                            } else {
+                              field.onChange('');
+                            }
+                          }}
+                        />
                         <div className="text-xs text-gray-500">
                           Serial (Excel): <span className="font-mono">{field.value || '-'}</span>
                         </div>
@@ -365,7 +343,7 @@ export function AddTemperaturaEquiposModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Ej: 31"
+                        placeholder=""
                         type="number"
                         step="0.1"
                       />
@@ -385,7 +363,7 @@ export function AddTemperaturaEquiposModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Ej: 24"
+                        placeholder=""
                         type="number"
                         step="0.1"
                       />
@@ -405,7 +383,7 @@ export function AddTemperaturaEquiposModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Ej: 3"
+                        placeholder=""
                         type="number"
                         step="0.1"
                       />
@@ -425,7 +403,7 @@ export function AddTemperaturaEquiposModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Ej: Juan David Castañeda Ortiz"
+                        placeholder=""
                       />
                     </FormControl>
                     <FormMessage />

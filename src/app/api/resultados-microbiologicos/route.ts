@@ -54,6 +54,8 @@ export async function GET(request: NextRequest) {
         factor_dilucion,
         responsable,
         cronograma_task_id,
+        cronograma_codigo,
+        estado,
         created_at,
         updated_at
       FROM ${getMicroTable('resultados_microbiologicos')}
@@ -159,7 +161,8 @@ export async function POST(request: NextRequest) {
       medio_diluyente,
       factor_dilucion,
       responsable,
-      cronograma_task_id
+      cronograma_task_id,
+      cronograma_codigo
     } = body;
 
     console.log(' API POST: Creando registro con cronograma_task_id:', cronograma_task_id);
@@ -210,8 +213,9 @@ export async function POST(request: NextRequest) {
         medio_diluyente,
         factor_dilucion,
         responsable,
-        cronograma_task_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
+        cronograma_task_id,
+        cronograma_codigo
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
       RETURNING *
     `;
 
@@ -250,7 +254,8 @@ export async function POST(request: NextRequest) {
       medio_diluyente || null,
       factor_dilucion || null,
       responsable,
-      cronograma_task_id || null
+      cronograma_task_id || null,
+      cronograma_codigo || null
     ];
 
     const result = await pool.query(query, values);

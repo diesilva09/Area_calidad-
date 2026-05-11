@@ -113,7 +113,9 @@ class MediosCultivoService {
       });
 
       if (!response.ok) {
-        throw new Error('Error al eliminar el registro de medios de cultivo');
+        const errorText = await response.text();
+        console.error('Error response from DELETE API:', errorText);
+        throw new Error(`Error al eliminar el registro de medios de cultivo: ${response.status} ${errorText}`);
       }
     } catch (error) {
       console.error(`Error en MediosCultivoService.delete(${id}):`, error);

@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
         humedad_relativa,
         responsable,
         observaciones,
+        estado,
         created_at,
         updated_at
       FROM ${SCHEMA}.condiciones_ambientales
@@ -83,16 +84,9 @@ export async function POST(request: NextRequest) {
       temperatura,
       humedad_relativa,
       responsable,
-      observaciones
+      observaciones,
+      estado
     } = body;
-
-    // Validaciones básicas
-    if (!fecha || !hora || !temperatura || !humedad_relativa || !responsable) {
-      return NextResponse.json(
-        { error: 'Faltan campos requeridos' },
-        { status: 400 }
-      );
-    }
 
     const query = `
       INSERT INTO ${SCHEMA}.condiciones_ambientales (
@@ -101,18 +95,20 @@ export async function POST(request: NextRequest) {
         temperatura,
         humedad_relativa,
         responsable,
-        observaciones
-      ) VALUES ($1, $2, $3, $4, $5, $6)
+        observaciones,
+        estado
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
     `;
 
     const values = [
-      fecha,
-      hora,
-      temperatura,
-      humedad_relativa,
-      responsable,
-      observaciones || null
+      fecha || null,
+      hora || null,
+      temperatura || null,
+      humedad_relativa || null,
+      responsable || null,
+      observaciones || null,
+      estado || 'completado'
     ];
 
     const result = await pool.query(query, values);

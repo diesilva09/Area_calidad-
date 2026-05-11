@@ -27,6 +27,8 @@ export interface CustodiaMuestras {
   responsable: string;
   observaciones?: string;
   cronograma_task_id?: number;
+  cronograma_codigo?: string;
+  cronograma_tipo?: string;
   estado?: 'pendiente' | 'completado';
   created_at?: string;
   updated_at?: string;

@@ -364,6 +364,7 @@ export function AddProductionRecordModal({
   const [areasDisponibles, setAreasDisponibles] = React.useState<any[]>([]);
   const [equiposDisponibles, setEquiposDisponibles] = React.useState<any[]>([]);
   const [isLoadingEquipos, setIsLoadingEquipos] = React.useState(false);
+  const [tipoInspeccion, setTipoInspeccion] = React.useState<'maquina' | 'manual' | ''>('');
   const [pruebasVacioValues, setPruebasVacioValues] = React.useState(['', '', '', '', '']);
   const [pruebasVacioErrors, setPruebasVacioErrors] = React.useState<string[]>(['', '', '', '', '']);
   const [pesosDrenadosValues, setPesosDrenadosValues] = React.useState<string[]>([]);
@@ -1009,7 +1010,7 @@ export function AddProductionRecordModal({
     }
     if (values?.inspeccionMicropesajeMezcla === 'No conforme') {
       rows.push({
-        label: 'Inspección Micropesaje No. Mezcla',
+        label: 'Inspección Micropesaje Número de mezcla',
         obs: String(values?.inspeccionMicropesajeMezclaObs || ''),
         corr: String(values?.inspeccionMicropesajeMezclaCorreccion || ''),
       });
@@ -1606,9 +1607,8 @@ export function AddProductionRecordModal({
           handleEnvaseChange(envaseIdEncontrado);
         } else {
         }
-      } else {
       }
-      
+
       // Asegurar que el área se cargue correctamente
       if (areaValue) {
         form.setValue('area', areaValue);
@@ -1845,6 +1845,7 @@ export function AddProductionRecordModal({
       toastTimeouts.forEach(timeout => clearTimeout(timeout));
       setToastTimeouts([]);
       setIsProcessingEnvase(false);
+      setTipoInspeccion('');
       
       // Limpiar el registro en edición cuando el modal se cierra
       if (editingRecord) {
@@ -2188,8 +2189,6 @@ export function AddProductionRecordModal({
         if (isEmptyOrNA(form.getValues('pesoDrenadoDeclarado'))) form.setValue('pesoDrenadoDeclarado', 'N/A');
         if (isEmptyOrNA(form.getValues('rangoPesoDrenadoMin'))) form.setValue('rangoPesoDrenadoMin', 'N/A');
         if (isEmptyOrNA(form.getValues('rangoPesoDrenadoMax'))) form.setValue('rangoPesoDrenadoMax', 'N/A');
-        if (isEmptyOrNA(form.getValues('pesoNetoDeclarado'))) form.setValue('pesoNetoDeclarado', 'N/A');
-
         if (isEmptyOrNA(form.getValues('pesosDrenados'))) form.setValue('pesosDrenados', 'N/A');
         if (isEmptyOrNA(form.getValues('promedioPesoDrenado'))) form.setValue('promedioPesoDrenado', 'N/A');
         if (isEmptyOrNA(form.getValues('encimaPesoDrenado'))) form.setValue('encimaPesoDrenado', '0');
@@ -2845,7 +2844,7 @@ const createAutomaticLimpiezaRecord = async (
         analisisSensorial:
           updatedMainFormValues.analisisSensorial === 'No conforme'
             ? buildNoCumplePayload(
-                'Análisis Sensorial (1) C - (0) NC',
+                'Análisis Sensorial',
                 updatedMainFormValues.analisisSensorialObs,
                 updatedMainFormValues.analisisSensorialCorreccion
               )
@@ -2853,7 +2852,7 @@ const createAutomaticLimpiezaRecord = async (
         pruebaHermeticidad:
           updatedMainFormValues.pruebaHermeticidad === 'No conforme'
             ? buildNoCumplePayload(
-                'Prueba de Hermeticidad (1) C - (0) NC',
+                'Prueba de Hermeticidad',
                 updatedMainFormValues.pruebaHermeticidadObs,
                 updatedMainFormValues.pruebaHermeticidadCorreccion
               )
@@ -2861,7 +2860,7 @@ const createAutomaticLimpiezaRecord = async (
         inspeccionMicropesajeMezcla:
           updatedMainFormValues.inspeccionMicropesajeMezcla === 'No conforme'
             ? buildNoCumplePayload(
-                'Inspección Micropesaje No. Mezcla',
+                'Inspección Micropesaje Número de mezcla',
                 updatedMainFormValues.inspeccionMicropesajeMezclaObs,
                 updatedMainFormValues.inspeccionMicropesajeMezclaCorreccion
               )
@@ -2905,7 +2904,7 @@ const createAutomaticLimpiezaRecord = async (
         extraPtAnalyses
       );
 
-      // Persistir auxiliares (aunque no existan en DB) para que el frontend pueda rehidratar
+      // Persistir auxiliares (aunque no existan en BD) para que el frontend pueda rehidratar
       // en caso de usar un backend alterno o cache intermedio.
       // (El backend actual ignora estos campos en PUT, pero se mantienen en el payload en memoria.)
       (completeValues as any).liberacionInicialObs = updatedMainFormValues.liberacionInicialObs;
@@ -3051,7 +3050,7 @@ const createAutomaticLimpiezaRecord = async (
         analisisSensorial:
           values.analisisSensorial === 'No conforme'
             ? buildNoCumplePayload(
-                'Análisis Sensorial (1) C - (0) NC',
+                'Análisis Sensorial',
                 values.analisisSensorialObs,
                 values.analisisSensorialCorreccion
               )
@@ -3059,7 +3058,7 @@ const createAutomaticLimpiezaRecord = async (
         pruebaHermeticidad:
           values.pruebaHermeticidad === 'No conforme'
             ? buildNoCumplePayload(
-                'Prueba de Hermeticidad (1) C - (0) NC',
+                'Prueba de Hermeticidad',
                 values.pruebaHermeticidadObs,
                 values.pruebaHermeticidadCorreccion
               )
@@ -3067,7 +3066,7 @@ const createAutomaticLimpiezaRecord = async (
         inspeccionMicropesajeMezcla:
           values.inspeccionMicropesajeMezcla === 'No conforme'
             ? buildNoCumplePayload(
-                'Inspección Micropesaje No. Mezcla',
+                'Inspección Micropesaje Número de mezcla',
                 values.inspeccionMicropesajeMezclaObs,
                 values.inspeccionMicropesajeMezclaCorreccion
               )
@@ -3542,6 +3541,35 @@ const createAutomaticLimpiezaRecord = async (
                           </FormItem>
                         )}
                       />
+                      <FormItem>
+                        <FormLabel>Método de Inspección</FormLabel>
+                        <Select
+                          value={tipoInspeccion}
+                          onValueChange={(value: 'maquina' | 'manual') => {
+                            setTipoInspeccion(value);
+                            if (value === 'manual') {
+                              form.setValue('letraTamanoMuestra', '', { shouldDirty: true });
+                              form.setValue('totalUnidadesRevisarDrenado', '', { shouldDirty: true });
+                              form.setValue('totalUnidadesRevisarNeto', '', { shouldDirty: true });
+                              setSamplingRuleValidation({ isValid: true, message: '', isChecking: false });
+                            } else if (value === 'maquina') {
+                              const equipo = form.getValues('equipo');
+                              const tamano = form.getValues('tamanoLote');
+                              if (equipo && tamano) {
+                                validarYAutocompletarSamplingRule(equipo, tamano);
+                              }
+                            }
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccione método..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="maquina">Máquina (automático)</SelectItem>
+                            <SelectItem value="manual">Manual</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormItem>
                       <FormField
                         control={form.control}
                         name="equipo"
@@ -3553,7 +3581,9 @@ const createAutomaticLimpiezaRecord = async (
                                 value={field.value}
                                 onValueChange={(value) => {
                                   field.onChange(value);
-                                  validarYAutocompletarSamplingRule(value, form.getValues('tamanoLote'));
+                                  if (tipoInspeccion === 'maquina' || tipoInspeccion === '') {
+                                    validarYAutocompletarSamplingRule(value, form.getValues('tamanoLote'));
+                                  }
                                 }}
                                 disabled={isLoadingEquipos || equiposDisponibles.length === 0}
                               >
@@ -3587,7 +3617,9 @@ const createAutomaticLimpiezaRecord = async (
                                 inputMode="numeric"
                                 onChange={(e) => {
                                   field.onChange(e);
-                                  validarYAutocompletarSamplingRule(form.getValues('equipo'), e.target.value);
+                                  if (tipoInspeccion === 'maquina' || tipoInspeccion === '') {
+                                    validarYAutocompletarSamplingRule(form.getValues('equipo'), e.target.value);
+                                  }
                                 }}
                               />
                             </FormControl>
@@ -3609,10 +3641,17 @@ const createAutomaticLimpiezaRecord = async (
                             <FormControl>
                               <Input 
                                 {...field} 
-                                maxLength={1}  // Solo permitir una letra
-                                disabled
-                                placeholder=""
+                                maxLength={1}
+                                disabled={tipoInspeccion !== 'manual'}
+                                placeholder={tipoInspeccion === 'manual' ? 'Ingrese letra (A-L)' : ''}
                                 className="uppercase"
+                                onChange={(e) => {
+                                  const val = e.target.value.toUpperCase();
+                                  field.onChange(val);
+                                  if (tipoInspeccion === 'manual' && val) {
+                                    handleLetraTamanoMuestraChange(val);
+                                  }
+                                }}
                               />
                             </FormControl>
                             <FormMessage />
@@ -4021,7 +4060,7 @@ const createAutomaticLimpiezaRecord = async (
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>
-                            Análisis Sensorial (1) C - (0) NC
+                            Análisis Sensorial
                           </FormLabel>
                           <FormControl>
                             <Select value={field.value || undefined} onValueChange={field.onChange}>
@@ -4082,7 +4121,7 @@ const createAutomaticLimpiezaRecord = async (
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>
-                            Prueba de Hermeticidad (1) C - (0) NC
+                            Prueba de Hermeticidad
                           </FormLabel>
                           <FormControl>
                             <Select value={field.value || undefined} onValueChange={field.onChange}>
@@ -4143,7 +4182,7 @@ const createAutomaticLimpiezaRecord = async (
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>
-                            Inspección Micropesaje No. Mezcla
+                            Inspección Micropesaje Número de mezcla
                           </FormLabel>
                           <FormControl>
                             <Select value={field.value || undefined} onValueChange={field.onChange}>
@@ -4204,7 +4243,7 @@ const createAutomaticLimpiezaRecord = async (
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>
-                            Inspección Micropesaje (1) C - (0) NC
+                            Inspección Micropesaje
                           </FormLabel>
                           <FormControl>
                             <Select value={field.value || undefined} onValueChange={field.onChange}>
@@ -4759,6 +4798,11 @@ const createAutomaticLimpiezaRecord = async (
                           <FormLabel>
                             Pruebas de Vacío en proceso
                           </FormLabel>
+                          {maxPruebaVacioConfig !== null && maxPruebaVacioConfig > 0 && (
+                            <div className="text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-1 mb-2">
+                              Rango configurado: {maxPruebaVacioConfig} PSI (máximo permitido)
+                            </div>
+                          )}
                           <FormControl>
                             <div className="grid grid-cols-5 gap-2">
                               {[0, 1, 2, 3, 4].map((index) => (
@@ -5220,7 +5264,7 @@ const createAutomaticLimpiezaRecord = async (
                                   <FormControl>
                                     <div className="space-y-2">
                                       <Select
-                                        value={sensorialPTModo}
+                                        value={sensorialPTModo || undefined}
                                         onValueChange={(v) => {
                                           const modo = (v as any) as 'cumple' | 'no_cumple' | '';
                                           setSensorialPTModo(modo);
@@ -5283,7 +5327,7 @@ const createAutomaticLimpiezaRecord = async (
                                   <FormControl>
                                     <div className="space-y-2">
                                       <Select
-                                        value={presentacionFinalPTModo}
+                                        value={presentacionFinalPTModo || undefined}
                                         onValueChange={(v) => {
                                           const modo = (v as any) as 'cumple' | 'no_cumple' | '';
                                           setPresentacionFinalPTModo(modo);

@@ -26,7 +26,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { incubadoraControlService } from '@/lib/incubadora-control-service';
+import { Thermometer } from 'lucide-react';
+import { incubadoraControlService, type IncubadoraControl } from '@/lib/incubadora-control-service';
 
 // Esquema de validación para el formulario
 // Todos los campos son opcionales para permitir guardar como pendiente
@@ -103,13 +104,13 @@ export function AddIncubadoraControlModal({
       console.log('🔍 DEBUG: Valores del formulario:', values, 'Estado:', estado);
       
       // Transformar los datos para la API
-      const transformedValues = {
-        muestra: values.muestra,
-        fecha_ingreso: values.fechaIngreso,
-        hora_ingreso: values.horaIngreso,
-        fecha_salida: values.fechaSalida,
-        hora_salida: values.horaSalida,
-        responsable: values.responsable,
+      const transformedValues: Omit<IncubadoraControl, 'id' | 'created_at' | 'updated_at'> = {
+        muestra: values.muestra || '',
+        fecha_ingreso: values.fechaIngreso || '',
+        hora_ingreso: values.horaIngreso || '',
+        fecha_salida: values.fechaSalida || '',
+        hora_salida: values.horaSalida || '',
+        responsable: values.responsable || '',
         observaciones: values.observaciones || undefined,
         estado: estado,
       };
@@ -159,17 +160,21 @@ export function AddIncubadoraControlModal({
       }}
     >
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-green-900">
-            RE-CAL-089 - REGISTRO DE OPERACIÓN Y CONTROL DE INCUBADORA
-          </DialogTitle>
-          <DialogDescription asChild className="text-gray-600">
-            <div className="mt-2 space-y-1">
-              <p><strong>Código:</strong> RE-CAL-089</p>
-              <p><strong>Versión:</strong> 1</p>
-              <p><strong>Fecha de Aprobación:</strong> 07 de noviembre de 2025</p>
+        <DialogHeader className="pb-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-green-50 border border-green-100 flex-shrink-0">
+              <Thermometer className="w-5 h-5 text-green-600" />
             </div>
-          </DialogDescription>
+            <div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full border border-green-100">RE-CAL-089</span>
+                <span className="text-[10px] text-gray-400">v.1 · 07/11/2025</span>
+              </div>
+              <DialogTitle className="text-base font-semibold text-gray-900 leading-snug">
+                Control de Incubadora
+              </DialogTitle>
+            </div>
+          </div>
         </DialogHeader>
 
         <Form {...form}>
@@ -190,7 +195,7 @@ export function AddIncubadoraControlModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Ej: M-001, AGUA-001, ALIMENTO-001"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />
@@ -208,7 +213,7 @@ export function AddIncubadoraControlModal({
                       <FormControl>
                         <Input 
                           {...field} 
-                          placeholder="Nombre completo del responsable"
+                          placeholder=""
                         />
                       </FormControl>
                       <FormMessage />

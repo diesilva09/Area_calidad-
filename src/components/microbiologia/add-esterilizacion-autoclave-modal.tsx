@@ -28,7 +28,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon } from 'lucide-react';
+import { CalendarIcon, Beaker } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { esterilizacionAutoclaveService } from '@/lib/esterilizacion-autoclave-service';
 
@@ -161,18 +161,18 @@ export function AddEsterilizacionAutoclaveModal({
       
       // Transformar los datos para la API
       const transformedValues = {
-        fecha: values.fecha,
-        elementos_medios_cultivo: values.elementosMediosCultivo,
-        inicio_ciclo_hora: values.inicioCicloHora,
-        inicio_proceso_hora: values.inicioProcesoHora,
-        inicio_proceso_tc: values.inicioProcesoTC,
-        inicio_proceso_presion: values.inicioProcesoPresion,
-        fin_proceso_hora: values.finProcesoHora,
-        fin_proceso_tc: values.finProcesoTC,
-        fin_proceso_presion: values.finProcesoPresion,
-        fin_ciclo_hora: values.finCicloHora,
-        cinta_indicadora: values.cintaIndicadora,
-        realizado_por: values.realizadoPor,
+        fecha: values.fecha || '',
+        elementos_medios_cultivo: values.elementosMediosCultivo || '',
+        inicio_ciclo_hora: values.inicioCicloHora || '',
+        inicio_proceso_hora: values.inicioProcesoHora || '',
+        inicio_proceso_tc: values.inicioProcesoTC || '',
+        inicio_proceso_presion: values.inicioProcesoPresion || '',
+        fin_proceso_hora: values.finProcesoHora || '',
+        fin_proceso_tc: values.finProcesoTC || '',
+        fin_proceso_presion: values.finProcesoPresion || '',
+        fin_ciclo_hora: values.finCicloHora || '',
+        cinta_indicadora: values.cintaIndicadora || '',
+        realizado_por: values.realizadoPor || '',
         observaciones: values.observaciones || undefined,
         estado: estado,
       };
@@ -224,21 +224,25 @@ export function AddEsterilizacionAutoclaveModal({
       }}
     >
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-blue-900">
-            RE-CAL-017 REGISTRO DE PROCESO DE ESTERILIZACIÓN EN AUTOCLAVE MICROBIOLOGÍA
-          </DialogTitle>
-          <DialogDescription asChild className="text-gray-600">
-            <div className="mt-2 space-y-1">
-              <p><strong>Código:</strong> RE-CAL-017</p>
-              <p><strong>Versión:</strong> 2</p>
-              <p><strong>Fecha de Aprobación:</strong> 03 de mayo de 2021</p>
+        <DialogHeader className="pb-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex-shrink-0">
+              <Beaker className="w-5 h-5 text-blue-600" />
             </div>
-          </DialogDescription>
+            <div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">RE-CAL-017</span>
+                <span className="text-[10px] text-gray-400">v.2 · 03/05/2021</span>
+              </div>
+              <DialogTitle className="text-base font-semibold text-gray-900 leading-snug">
+                Esterilización en Autoclave
+              </DialogTitle>
+            </div>
+          </div>
         </DialogHeader>
 
         <Form {...form}>
-          <form className="space-y-6">
+          <form className="space-y-5 mt-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               
               {/* FECHA */}
@@ -270,7 +274,7 @@ export function AddEsterilizacionAutoclaveModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Ej: Medios TSA, Material de laboratorio"
+                        placeholder=""
                       />
                     </FormControl>
                     <FormMessage />
@@ -330,7 +334,7 @@ export function AddEsterilizacionAutoclaveModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Ej: 121"
+                        placeholder=""
                         type="number"
                         step="0.1"
                       />
@@ -350,7 +354,7 @@ export function AddEsterilizacionAutoclaveModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Ej: 15"
+                        placeholder=""
                         type="number"
                         step="0.1"
                       />
@@ -389,7 +393,7 @@ export function AddEsterilizacionAutoclaveModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Ej: 121"
+                        placeholder=""
                         type="number"
                         step="0.1"
                       />
@@ -409,7 +413,7 @@ export function AddEsterilizacionAutoclaveModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Ej: 15"
+                        placeholder=""
                         type="number"
                         step="0.1"
                       />
@@ -448,7 +452,7 @@ export function AddEsterilizacionAutoclaveModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Ej: 3M Comply, Sterigage"
+                        placeholder=""
                       />
                     </FormControl>
                     <FormMessage />
@@ -466,7 +470,7 @@ export function AddEsterilizacionAutoclaveModal({
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="Nombre completo del responsable"
+                        placeholder=""
                       />
                     </FormControl>
                     <FormMessage />

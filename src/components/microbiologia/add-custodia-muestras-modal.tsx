@@ -35,7 +35,7 @@ import {
 } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon } from 'lucide-react';
+import { CalendarIcon, Package } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { custodiaMuestrasService } from '@/lib/custodia-muestras-service';
 import { resultadosMicrobiologicosService } from '@/lib/resultados-microbiologicos-service';
@@ -121,6 +121,8 @@ const custodiaMuestrasSchema = z.object({
   medioTransporte: z.string().optional(),
   responsable: z.string().optional(),
   observaciones: z.string().optional(),
+  cronogramaCodigo: z.string().optional(),
+  cronogramaTipo: z.string().optional(),
 });
 
 type CustodiaMuestrasFormValues = z.infer<typeof custodiaMuestrasSchema>;
@@ -511,6 +513,8 @@ export function AddCustodiaMuestrasModal({
         medio_transporte: values.medioTransporte || '',
         responsable: values.responsable || '',
         observaciones: values.observaciones || '',
+        cronograma_codigo: values.cronogramaCodigo === 'none' ? null : values.cronogramaCodigo || null,
+        cronograma_tipo: values.cronogramaTipo === 'none' ? null : values.cronogramaTipo || null,
         estado: estado,
       };
       
@@ -591,17 +595,21 @@ export function AddCustodiaMuestrasModal({
       }}
     >
       <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-purple-900">
-            RE-CAL-047 - CUSTODIA DE MUESTRAS LABORATORIO MICROBIOLOGÍA
-          </DialogTitle>
-          <DialogDescription asChild className="text-gray-600">
-            <div className="mt-2 space-y-1">
-              <p><strong>Código:</strong> RE-CAL-107</p>
-              <p><strong>Versión:</strong> 2</p>
-              <p><strong>Fecha de Aprobación:</strong> Marzo 10 de 2022</p>
+        <DialogHeader className="pb-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-purple-50 border border-purple-100 flex-shrink-0">
+              <Package className="w-5 h-5 text-purple-600" />
             </div>
-          </DialogDescription>
+            <div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-100">RE-CAL-107</span>
+                <span className="text-[10px] text-gray-400">v.2 · 10/03/2022</span>
+              </div>
+              <DialogTitle className="text-base font-semibold text-gray-900 leading-snug">
+                Custodia de Muestras
+              </DialogTitle>
+            </div>
+          </div>
         </DialogHeader>
 
         <Form {...form}>
@@ -960,6 +968,56 @@ export function AddCustodiaMuestrasModal({
                     )}
                   />
                 )}
+
+                {/* CRONOGRAMA CÓDIGO */}
+                <FormField
+                  control={form.control}
+                  name="cronogramaCodigo"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Cronograma (Opcional)</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || 'none'}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccione el cronograma" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">Ninguno</SelectItem>
+                          <SelectItem value="PL-CAL-008">PL-CAL-008 (Cronograma Muestreo Microbiológico)</SelectItem>
+                          <SelectItem value="PL-CAL-009">PL-CAL-009 (Cronograma Externo)</SelectItem>
+                          <SelectItem value="PL-CAL-010">PL-CAL-010 (Materia Prima)</SelectItem>
+                          <SelectItem value="PL-CAL-013">PL-CAL-013 (Cronograma ATP)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* CRONOGRAMA TIPO */}
+                <FormField
+                  control={form.control}
+                  name="cronogramaTipo"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tipo Cronograma (Opcional)</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || 'none'}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccione el tipo" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">Ninguno</SelectItem>
+                          <SelectItem value="interno">Interno</SelectItem>
+                          <SelectItem value="externo">Externo</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 {/* TIPO DE ANÁLISIS - CHECKBOXES */}
                 <div className="md:col-span-2 lg:col-span-3">

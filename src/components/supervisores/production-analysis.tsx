@@ -730,7 +730,7 @@ export function ProductionAnalysis({ isOpen, onOpenChange, productId }: Producti
               <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
                 <div className="w-full sm:flex-1 sm:max-w-xs">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    📅 Mes
+                     Mes
                   </label>
                   <Select value={selectedMonth} onValueChange={setSelectedMonth}>
                     <SelectTrigger>
@@ -768,7 +768,7 @@ export function ProductionAnalysis({ isOpen, onOpenChange, productId }: Producti
                   <div className="flex-1">
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                       <div className="text-sm font-medium text-blue-900">
-                        🌡️ Rango de Temperatura
+                         Rango de Temperatura
                       </div>
                       <div className="text-lg font-bold text-blue-600">
                         {temperaturaRango.min}°C - {temperaturaRango.max}°C
@@ -791,17 +791,17 @@ export function ProductionAnalysis({ isOpen, onOpenChange, productId }: Producti
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="neto" className="w-full">
-                <TabsList>
-                  <TabsTrigger value="neto">Peso neto</TabsTrigger>
-                  <TabsTrigger value="drenado">Peso drenado</TabsTrigger>
+                <TabsList className="w-full sm:w-auto">
+                  <TabsTrigger value="neto" className="flex-1 sm:flex-none">Peso neto</TabsTrigger>
+                  <TabsTrigger value="drenado" className="flex-1 sm:flex-none">Peso drenado</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="neto" className="pt-4">
                   <div className="h-64 sm:h-80">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={netoSeries} margin={{ top: 10, right: 20, left: 0, bottom: 60 }}>
+                      <LineChart data={netoSeries} margin={{ top: 10, right: 20, left: 0, bottom: 80 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                        <XAxis dataKey="x" angle={-35} textAnchor="end" height={70} interval={0} tick={{ fontSize: 11 }} />
+                        <XAxis dataKey="x" textAnchor="end" height={75} interval={0} tick={{ fontSize: 10, angle: 0 }} />
                         <YAxis tick={{ fontSize: 12 }} label={{ value: 'g', angle: -90, position: 'insideLeft' }} />
                         <Tooltip />
                         <Line
@@ -848,9 +848,9 @@ export function ProductionAnalysis({ isOpen, onOpenChange, productId }: Producti
                   ) : (
                     <div className="h-64 sm:h-80">
                       <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={drenadoSeries} margin={{ top: 10, right: 20, left: 0, bottom: 60 }}>
+                        <LineChart data={drenadoSeries} margin={{ top: 10, right: 20, left: 0, bottom: 80 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                          <XAxis dataKey="x" angle={-35} textAnchor="end" height={70} interval={0} tick={{ fontSize: 11 }} />
+                          <XAxis dataKey="x" textAnchor="end" height={75} interval={0} tick={{ fontSize: 10, angle: 0 }} />
                           <YAxis tick={{ fontSize: 12 }} label={{ value: 'g', angle: -90, position: 'insideLeft' }} />
                           <Tooltip />
                           <Line
@@ -865,6 +865,7 @@ export function ProductionAnalysis({ isOpen, onOpenChange, productId }: Producti
                                 (payload?.y < drenadoMinMax.min || payload?.y > drenadoMinMax.max);
                               return (
                                 <circle
+                                  key={`dot-${props.index}`}
                                   cx={cx}
                                   cy={cy}
                                   r={4}
@@ -926,9 +927,9 @@ export function ProductionAnalysis({ isOpen, onOpenChange, productId }: Producti
               ) : (
                 <div className="h-72 sm:h-96">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={temperaturasSeries} margin={{ top: 10, right: 20, left: 0, bottom: 60 }}>
+                    <LineChart data={temperaturasSeries} margin={{ top: 10, right: 20, left: 0, bottom: 80 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis dataKey="x" angle={-35} textAnchor="end" height={70} interval={0} tick={{ fontSize: 11 }} />
+                      <XAxis dataKey="x" textAnchor="end" height={75} interval={0} tick={{ fontSize: 10, angle: 0 }} />
                       <YAxis tick={{ fontSize: 12 }} label={{ value: '°C', angle: -90, position: 'insideLeft' }} />
                       <Tooltip />
                       <Legend />
@@ -971,9 +972,9 @@ export function ProductionAnalysis({ isOpen, onOpenChange, productId }: Producti
               ) : (
                 <div className="h-64 sm:h-80">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={vacioSeries} margin={{ top: 10, right: 20, left: 0, bottom: 60 }}>
+                    <LineChart data={vacioSeries} margin={{ top: 10, right: 20, left: 0, bottom: 80 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis dataKey="x" angle={-35} textAnchor="end" height={70} interval={0} tick={{ fontSize: 11 }} />
+                      <XAxis dataKey="x" textAnchor="end" height={75} interval={0} tick={{ fontSize: 10, angle: 0 }} />
                       <YAxis tick={{ fontSize: 12 }} />
                       <Tooltip />
                       <Legend />

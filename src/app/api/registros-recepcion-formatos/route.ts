@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
         nombre_quien_entrega,
         nombre_quien_recibe,
         observaciones,
+        estado,
         created_at,
         updated_at
       FROM ${getMicroTable('registros_recepcion_formatos')}
@@ -92,17 +93,9 @@ export async function POST(request: NextRequest) {
       numero_folios,
       nombre_quien_entrega,
       nombre_quien_recibe,
-      observaciones
+      observaciones,
+      estado
     } = body;
-
-    // Validación básica
-    if (!fecha_entrega || !fecha_registros || !codigo_version_registros || 
-        !numero_folios || !nombre_quien_entrega || !nombre_quien_recibe) {
-      return NextResponse.json(
-        { error: 'Faltan campos requeridos' },
-        { status: 400 }
-      );
-    }
 
     const query = `
       INSERT INTO ${getMicroTable('registros_recepcion_formatos')} (
@@ -112,19 +105,21 @@ export async function POST(request: NextRequest) {
         numero_folios,
         nombre_quien_entrega,
         nombre_quien_recibe,
-        observaciones
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        observaciones,
+        estado
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *
     `;
 
     const values = [
-      fecha_entrega,
-      fecha_registros,
-      codigo_version_registros,
-      numero_folios,
-      nombre_quien_entrega,
-      nombre_quien_recibe,
-      observaciones || null
+      fecha_entrega || null,
+      fecha_registros || null,
+      codigo_version_registros || null,
+      numero_folios || null,
+      nombre_quien_entrega || null,
+      nombre_quien_recibe || null,
+      observaciones || null,
+      estado || 'completado'
     ];
 
     const result = await pool.query(query, values);

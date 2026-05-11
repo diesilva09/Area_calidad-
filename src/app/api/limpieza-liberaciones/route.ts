@@ -9,20 +9,38 @@ type LimpiezaLiberacionRow = {
   status: LimpiezaStatus;
 };
 
-async function recalcRegistroStatus(client: any, registroId: string): Promise<LimpiezaStatus> {
+async function recalcRegistroStatus(client: any, registroId: string, forceStatus?: LimpiezaStatus): Promise<LimpiezaStatus> {
+  // Si se fuerza un estado específico, usarlo directamente
+  if (forceStatus) {
+    const result = await client.query(
+      `
+        UPDATE limpieza_registros r
+        SET status = $2,
+        updated_at = CURRENT_TIMESTAMP
+        WHERE r.id = $1
+        RETURNING r.status;
+      `,
+      [registroId, forceStatus]
+    );
+    return (result.rows?.[0]?.status ?? 'pending') as LimpiezaStatus;
+  }
+
+  // De lo contrario, recalcular basándose en las liberaciones
   const result = await client.query(
     `
       WITH stats AS (
         SELECT
           COUNT(*)::int AS total,
-          COUNT(*) FILTER (WHERE status = 'completed')::int AS completed
+          COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
+          COUNT(*) FILTER (WHERE status = 'pending')::int AS pending
         FROM limpieza_liberaciones
         WHERE registro_id = $1
       )
       UPDATE limpieza_registros r
       SET status = CASE
         WHEN (SELECT total FROM stats) > 0 AND (SELECT completed FROM stats) = (SELECT total FROM stats) THEN 'completed'
-        ELSE 'pending'
+        WHEN (SELECT pending FROM stats) > 0 THEN 'pending'
+        ELSE status
       END,
       updated_at = CURRENT_TIMESTAMP
       WHERE r.id = $1
@@ -267,7 +285,13 @@ export async function POST(request: NextRequest) {
       liberacion = insertRes.rows[0];
     }
 
-    const parentStatus = await recalcRegistroStatus(client, parentId);
+    // Determinar el estado forzado basándose en el status de la liberación actual
+    // Si la liberación se guarda como 'pending', forzar el registro padre a 'pending'
+    // para evitar que se marque automáticamente como completado
+    const forceParentStatus: LimpiezaStatus | undefined =
+      (status ?? 'pending') === 'pending' ? 'pending' : undefined;
+
+    const parentStatus = await recalcRegistroStatus(client, parentId, forceParentStatus);
 
     await client.query('COMMIT');
 
@@ -328,7 +352,8 @@ export async function DELETE(request: NextRequest) {
     }
 
     const registroId = res.rows[0].registro_id;
-    const parentStatus = await recalcRegistroStatus(client, registroId);
+    // No forzar estado al eliminar, dejar que el recálculo determine el estado correcto
+    const parentStatus = await recalcRegistroStatus(client, registroId, undefined);
 
     await client.query('COMMIT');
 

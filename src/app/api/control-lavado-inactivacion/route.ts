@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
         sustancia_desinfeccion_2_cantidad_sustancia,
         realizado_por,
         observaciones,
+        estado,
         created_at,
         updated_at
       FROM ${getMicroTable('control_lavado_inactivacion')}
@@ -104,21 +105,9 @@ export async function POST(request: NextRequest) {
       sustancia_desinfeccion_2_cantidad_preparada,
       sustancia_desinfeccion_2_cantidad_sustancia,
       realizado_por,
-      observaciones
+      observaciones,
+      estado
     } = body;
-
-    // Validación básica
-    if (!fecha || !actividad_realizada || !sustancia_limpieza_nombre || 
-        !sustancia_limpieza_cantidad_preparada || !sustancia_limpieza_cantidad_sustancia ||
-        !sustancia_desinfeccion_1_nombre || !sustancia_desinfeccion_1_cantidad_preparada || 
-        !sustancia_desinfeccion_1_cantidad_sustancia || !sustancia_desinfeccion_2_nombre ||
-        !sustancia_desinfeccion_2_cantidad_preparada || !sustancia_desinfeccion_2_cantidad_sustancia ||
-        !realizado_por) {
-      return NextResponse.json(
-        { error: 'Faltan campos requeridos' },
-        { status: 400 }
-      );
-    }
 
     const query = `
       INSERT INTO ${getMicroTable('control_lavado_inactivacion')} (
@@ -134,25 +123,27 @@ export async function POST(request: NextRequest) {
         sustancia_desinfeccion_2_cantidad_preparada,
         sustancia_desinfeccion_2_cantidad_sustancia,
         realizado_por,
-        observaciones
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        observaciones,
+        estado
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *
     `;
 
     const values = [
-      fecha,
-      actividad_realizada,
-      sustancia_limpieza_nombre,
-      sustancia_limpieza_cantidad_preparada,
-      sustancia_limpieza_cantidad_sustancia,
-      sustancia_desinfeccion_1_nombre,
-      sustancia_desinfeccion_1_cantidad_preparada,
-      sustancia_desinfeccion_1_cantidad_sustancia,
-      sustancia_desinfeccion_2_nombre,
-      sustancia_desinfeccion_2_cantidad_preparada,
-      sustancia_desinfeccion_2_cantidad_sustancia,
-      realizado_por,
-      observaciones || null
+      fecha || null,
+      actividad_realizada || null,
+      sustancia_limpieza_nombre || null,
+      sustancia_limpieza_cantidad_preparada || null,
+      sustancia_limpieza_cantidad_sustancia || null,
+      sustancia_desinfeccion_1_nombre || null,
+      sustancia_desinfeccion_1_cantidad_preparada || null,
+      sustancia_desinfeccion_1_cantidad_sustancia || null,
+      sustancia_desinfeccion_2_nombre || null,
+      sustancia_desinfeccion_2_cantidad_preparada || null,
+      sustancia_desinfeccion_2_cantidad_sustancia || null,
+      realizado_por || null,
+      observaciones || null,
+      estado || 'completado'
     ];
 
     const result = await pool.query(query, values);

@@ -74,20 +74,42 @@ type LimpiezaLiberacionRow = {
   updated_by: string | null;
 };
 
-async function recalcRegistroStatus(client: any, registroId: string): Promise<LimpiezaRegistroStatus> {
+async function recalcRegistroStatus(
+  client: any,
+  registroId: string,
+  forceStatus?: LimpiezaRegistroStatus
+): Promise<LimpiezaRegistroStatus> {
+  // Si se fuerza un estado específico, usarlo directamente
+  if (forceStatus) {
+    const result = await client.query(
+      `
+        UPDATE limpieza_registros r
+        SET status = $2,
+        updated_at = CURRENT_TIMESTAMP
+        WHERE r.id = $1
+        RETURNING r.status;
+      `,
+      [registroId, forceStatus]
+    );
+    return (result.rows?.[0]?.status ?? 'pending') as LimpiezaRegistroStatus;
+  }
+
+  // De lo contrario, recalcular basándose en las liberaciones
   const result = await client.query(
     `
       WITH stats AS (
         SELECT
           COUNT(*)::int AS total,
-          COUNT(*) FILTER (WHERE status = 'completed')::int AS completed
+          COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
+          COUNT(*) FILTER (WHERE status = 'pending')::int AS pending
         FROM limpieza_liberaciones
         WHERE registro_id = $1
       )
       UPDATE limpieza_registros r
       SET status = CASE
         WHEN (SELECT total FROM stats) > 0 AND (SELECT completed FROM stats) = (SELECT total FROM stats) THEN 'completed'
-        ELSE 'pending'
+        WHEN (SELECT pending FROM stats) > 0 THEN 'pending'
+        ELSE status
       END,
       updated_at = CURRENT_TIMESTAMP
       WHERE r.id = $1
@@ -468,7 +490,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const parentStatus = await recalcRegistroStatus(client, registro.id);
+    // Determinar si se debe forzar el estado 'pending' basándose en las liberaciones insertadas
+    // Si alguna liberación tiene status 'pending', forzar el registro a 'pending'
+    const hasPendingLiberacion = insertedLiberaciones.some(
+      (lib) => lib.status === 'pending'
+    );
+    const forceParentStatus: LimpiezaRegistroStatus | undefined = hasPendingLiberacion
+      ? 'pending'
+      : undefined;
+
+    const parentStatus = await recalcRegistroStatus(client, registro.id, forceParentStatus);
 
     await client.query('COMMIT');
 

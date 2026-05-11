@@ -75,6 +75,7 @@ const tomaLimpiezaSchema = z.object({
   loteHisopoAtp: z.string().optional(),
   observacionAtp: z.string().optional(),
   equipoAtp: z.string().optional(),
+  equipoAtpOtro: z.string().optional(),
   parteAtp: z.string().optional(),
   parteAtpOtro: z.string().optional(),
   deteccionAlergenosRi: z.string().optional(),
@@ -83,6 +84,7 @@ const tomaLimpiezaSchema = z.object({
   loteHisopoAlergenos: z.string().optional(),
   observacionAlergenos: z.string().optional(),
   equipoAlergenos: z.string().optional(),
+  equipoAlergenosOtro: z.string().optional(),
   parteAlergenos: z.string().optional(),
   parteAlergenosOtro: z.string().optional(),
   detergente: z.string().min(1, 'Campo requerido'),
@@ -695,6 +697,7 @@ export function AddLimpiezaRecordModal({
           loteHisopoAtp: '',
           observacionAtp: '',
           equipoAtp: '',
+          equipoAtpOtro: '',
           parteAtp: '',
           parteAtpOtro: '',
           deteccionAlergenosRi: '',
@@ -703,6 +706,7 @@ export function AddLimpiezaRecordModal({
           loteHisopoAlergenos: '',
           observacionAlergenos: '',
           equipoAlergenos: '',
+          equipoAlergenosOtro: '',
           parteAlergenos: '',
           parteAlergenosOtro: '',
           detergente: '',
@@ -757,6 +761,7 @@ export function AddLimpiezaRecordModal({
             loteHisopoAtp: '',
             observacionAtp: '',
             equipoAtp: '',
+            equipoAtpOtro: '',
             parteAtp: '',
             parteAtpOtro: '',
             deteccionAlergenosRi: '',
@@ -765,6 +770,7 @@ export function AddLimpiezaRecordModal({
             loteHisopoAlergenos: '',
             observacionAlergenos: '',
             equipoAlergenos: '',
+            equipoAlergenosOtro: '',
             parteAlergenos: '',
             parteAlergenosOtro: '',
             detergente: '',
@@ -1008,6 +1014,7 @@ export function AddLimpiezaRecordModal({
         loteHisopoAtp: lib?.lote_hisopo_atp || '',
         observacionAtp: lib?.observacion_atp || '',
         equipoAtp: (lib as any)?.equipo_atp || '',
+        equipoAtpOtro: '',
         parteAtp: (lib as any)?.parte_atp || '',
         parteAtpOtro: '',
         deteccionAlergenosRi: lib?.deteccion_alergenos_ri || '',
@@ -1016,6 +1023,7 @@ export function AddLimpiezaRecordModal({
         loteHisopoAlergenos: lib?.lote_hisopo_alergenos || '',
         observacionAlergenos: lib?.observacion_alergenos || '',
         equipoAlergenos: (lib as any)?.equipo_alergenos || '',
+        equipoAlergenosOtro: '',
         parteAlergenos: (lib as any)?.parte_alergenos || '',
         parteAlergenosOtro: '',
         detergente: lib?.detergente || '',
@@ -1103,6 +1111,7 @@ export function AddLimpiezaRecordModal({
           loteHisopoAtp: '',
           observacionAtp: '',
           equipoAtp: '',
+          equipoAtpOtro: '',
           parteAtp: '',
           parteAtpOtro: '',
           deteccionAlergenosRi: '',
@@ -1111,6 +1120,7 @@ export function AddLimpiezaRecordModal({
           loteHisopoAlergenos: '',
           observacionAlergenos: '',
           equipoAlergenos: '',
+          equipoAlergenosOtro: '',
           parteAlergenos: '',
           parteAlergenosOtro: '',
           detergente: '',
@@ -1156,6 +1166,7 @@ export function AddLimpiezaRecordModal({
           loteHisopoAtp: '',
           observacionAtp: '',
           equipoAtp: '',
+          equipoAtpOtro: '',
           parteAtp: '',
           parteAtpOtro: '',
           deteccionAlergenosRi: '',
@@ -1164,6 +1175,7 @@ export function AddLimpiezaRecordModal({
           loteHisopoAlergenos: '',
           observacionAlergenos: '',
           equipoAlergenos: '',
+          equipoAlergenosOtro: '',
           parteAlergenos: '',
           parteAlergenosOtro: '',
           detergente: '',
@@ -1373,6 +1385,7 @@ export function AddLimpiezaRecordModal({
         'loteHisopoAtp',
         'observacionAtp',
         'equipoAtp',
+        'equipoAtpOtro',
         'parteAtp',
         'parteAtpOtro',
         'deteccionAlergenosRi',
@@ -1381,6 +1394,7 @@ export function AddLimpiezaRecordModal({
         'loteHisopoAlergenos',
         'observacionAlergenos',
         'equipoAlergenos',
+        'equipoAlergenosOtro',
         'parteAlergenos',
         'parteAlergenosOtro',
         'detergente',
@@ -1474,9 +1488,9 @@ export function AddLimpiezaRecordModal({
         const rawLineaFromDb = String((toma as any)?.lineaOtro ?? (toma as any)?.linea ?? '').trim();
         const rawSuperficieFromDb = String((toma as any)?.superficieOtro ?? (toma as any)?.superficie ?? '').trim();
 
-        const rawEquipoAtpFromDb = String((toma as any)?.equipoAtp ?? '').trim();
+        const rawEquipoAtpFromDb = String((toma as any)?.equipoAtpOtro ?? (toma as any)?.equipoAtp ?? '').trim();
         const rawParteAtpFromDb = String((toma as any)?.parteAtpOtro ?? (toma as any)?.parteAtp ?? '').trim();
-        const rawEquipoAlergFromDb = String((toma as any)?.equipoAlergenos ?? '').trim();
+        const rawEquipoAlergFromDb = String((toma as any)?.equipoAlergenosOtro ?? (toma as any)?.equipoAlergenos ?? '').trim();
         const rawParteAlergFromDb = String((toma as any)?.parteAlergenosOtro ?? (toma as any)?.parteAlergenos ?? '').trim();
 
         const equipoExiste = rawLineaFromDb
@@ -1532,6 +1546,28 @@ export function AddLimpiezaRecordModal({
                 setMostrarCampoOtroSuperficiePorToma((prev) => ({ ...prev, [idx]: true }));
               }
             }
+          }
+        }
+
+        if (rawEquipoAtpFromDb) {
+          const equipoAtpExiste = equipos.some((e) => String(e.nombre).trim() === rawEquipoAtpFromDb);
+          if (equipoAtpExiste) {
+            form.setValue(`tomas.${idx}.equipoAtp`, rawEquipoAtpFromDb);
+            form.setValue(`tomas.${idx}.equipoAtpOtro`, '');
+          } else {
+            form.setValue(`tomas.${idx}.equipoAtp`, 'OTRO');
+            form.setValue(`tomas.${idx}.equipoAtpOtro`, rawEquipoAtpFromDb);
+          }
+        }
+
+        if (rawEquipoAlergFromDb) {
+          const equipoAlergExiste = equipos.some((e) => String(e.nombre).trim() === rawEquipoAlergFromDb);
+          if (equipoAlergExiste) {
+            form.setValue(`tomas.${idx}.equipoAlergenos`, rawEquipoAlergFromDb);
+            form.setValue(`tomas.${idx}.equipoAlergenosOtro`, '');
+          } else {
+            form.setValue(`tomas.${idx}.equipoAlergenos`, 'OTRO');
+            form.setValue(`tomas.${idx}.equipoAlergenosOtro`, rawEquipoAlergFromDb);
           }
         }
 
@@ -1607,6 +1643,7 @@ export function AddLimpiezaRecordModal({
             loteHisopoAtp: '',
             observacionAtp: '',
             equipoAtp: '',
+            equipoAtpOtro: '',
             parteAtp: '',
             parteAtpOtro: '',
             deteccionAlergenosRi: '',
@@ -1615,6 +1652,7 @@ export function AddLimpiezaRecordModal({
             loteHisopoAlergenos: '',
             observacionAlergenos: '',
             equipoAlergenos: '',
+            equipoAlergenosOtro: '',
             parteAlergenos: '',
             parteAlergenosOtro: '',
             detergente: '',
@@ -1766,7 +1804,10 @@ export function AddLimpiezaRecordModal({
             resultadosAtpRf: toma?.resultadosAtpRf || null,
             loteHisopoAtp: toma?.loteHisopoAtp || null,
             observacionAtp: toma?.observacionAtp || null,
-            equipoAtp: toma?.equipoAtp || null,
+            equipoAtp:
+              String(toma?.equipoAtp || '').trim() === 'OTRO'
+                ? String(toma?.equipoAtpOtro || '').trim() || null
+                : (toma?.equipoAtp || null),
             parteAtp:
               String(toma?.parteAtp || '').trim() === 'OTRO'
                 ? String(toma?.parteAtpOtro || '').trim() || null
@@ -1776,7 +1817,10 @@ export function AddLimpiezaRecordModal({
             deteccionAlergenosRf: toma?.deteccionAlergenosRf || null,
             loteHisopoAlergenos: toma?.loteHisopoAlergenos || null,
             observacionAlergenos: toma?.observacionAlergenos || null,
-            equipoAlergenos: toma?.equipoAlergenos || null,
+            equipoAlergenos:
+              String(toma?.equipoAlergenos || '').trim() === 'OTRO'
+                ? String(toma?.equipoAlergenosOtro || '').trim() || null
+                : (toma?.equipoAlergenos || null),
             parteAlergenos:
               String(toma?.parteAlergenos || '').trim() === 'OTRO'
                 ? String(toma?.parteAlergenosOtro || '').trim() || null
@@ -1900,6 +1944,7 @@ export function AddLimpiezaRecordModal({
             loteHisopoAtp: lib.lote_hisopo_atp ?? '',
             observacionAtp: lib.observacion_atp ?? '',
             equipoAtp: (lib as any).equipo_atp ?? '',
+            equipoAtpOtro: '',
             parteAtp: (lib as any).parte_atp ?? '',
             parteAtpOtro: '',
             deteccionAlergenosRi: lib.deteccion_alergenos_ri ?? '',
@@ -1908,6 +1953,7 @@ export function AddLimpiezaRecordModal({
             loteHisopoAlergenos: lib.lote_hisopo_alergenos ?? '',
             observacionAlergenos: lib.observacion_alergenos ?? '',
             equipoAlergenos: (lib as any).equipo_alergenos ?? '',
+            equipoAlergenosOtro: '',
             parteAlergenos: (lib as any).parte_alergenos ?? '',
             parteAlergenosOtro: '',
             detergente: lib.detergente ?? '',
@@ -2094,6 +2140,7 @@ export function AddLimpiezaRecordModal({
           loteHisopoAtp: form.getValues(`tomas.${index}.loteHisopoAtp` as const) as any,
           observacionAtp: form.getValues(`tomas.${index}.observacionAtp` as const) as any,
           equipoAtp: form.getValues(`tomas.${index}.equipoAtp` as const) as any,
+          equipoAtpOtro: form.getValues(`tomas.${index}.equipoAtpOtro` as const) as any,
           parteAtp: form.getValues(`tomas.${index}.parteAtp` as const) as any,
           parteAtpOtro: form.getValues(`tomas.${index}.parteAtpOtro` as const) as any,
           deteccionAlergenosRi: form.getValues(`tomas.${index}.deteccionAlergenosRi` as const) as any,
@@ -2102,6 +2149,7 @@ export function AddLimpiezaRecordModal({
           loteHisopoAlergenos: form.getValues(`tomas.${index}.loteHisopoAlergenos` as const) as any,
           observacionAlergenos: form.getValues(`tomas.${index}.observacionAlergenos` as const) as any,
           equipoAlergenos: form.getValues(`tomas.${index}.equipoAlergenos` as const) as any,
+          equipoAlergenosOtro: form.getValues(`tomas.${index}.equipoAlergenosOtro` as const) as any,
           parteAlergenos: form.getValues(`tomas.${index}.parteAlergenos` as const) as any,
           parteAlergenosOtro: form.getValues(`tomas.${index}.parteAlergenosOtro` as const) as any,
           detergente: form.getValues(`tomas.${index}.detergente` as const) as any,
@@ -2149,6 +2197,7 @@ export function AddLimpiezaRecordModal({
         loteHisopoAtp: preferNonEmpty(tomaFromForm.loteHisopoAtp, tomaFromValues.loteHisopoAtp),
         observacionAtp: preferNonEmpty(tomaFromForm.observacionAtp, tomaFromValues.observacionAtp),
         equipoAtp: preferNonEmpty(tomaFromForm.equipoAtp, tomaFromValues.equipoAtp),
+        equipoAtpOtro: preferNonEmpty((tomaFromForm as any).equipoAtpOtro, (tomaFromValues as any).equipoAtpOtro),
         parteAtp: preferNonEmpty(tomaFromForm.parteAtp, tomaFromValues.parteAtp),
         parteAtpOtro: preferNonEmpty((tomaFromForm as any).parteAtpOtro, (tomaFromValues as any).parteAtpOtro),
         deteccionAlergenosRi: preferNonEmpty(tomaFromForm.deteccionAlergenosRi, tomaFromValues.deteccionAlergenosRi),
@@ -2157,6 +2206,7 @@ export function AddLimpiezaRecordModal({
         loteHisopoAlergenos: preferNonEmpty(tomaFromForm.loteHisopoAlergenos, tomaFromValues.loteHisopoAlergenos),
         observacionAlergenos: preferNonEmpty(tomaFromForm.observacionAlergenos, tomaFromValues.observacionAlergenos),
         equipoAlergenos: preferNonEmpty(tomaFromForm.equipoAlergenos, tomaFromValues.equipoAlergenos),
+        equipoAlergenosOtro: preferNonEmpty((tomaFromForm as any).equipoAlergenosOtro, (tomaFromValues as any).equipoAlergenosOtro),
         parteAlergenos: preferNonEmpty(tomaFromForm.parteAlergenos, tomaFromValues.parteAlergenos),
         parteAlergenosOtro: preferNonEmpty((tomaFromForm as any).parteAlergenosOtro, (tomaFromValues as any).parteAlergenosOtro),
         detergente: preferNonEmpty(tomaFromForm.detergente, tomaFromValues.detergente),
@@ -2203,6 +2253,7 @@ export function AddLimpiezaRecordModal({
           loteHisopoAtp: preferNonEmpty(tomaFromFormIdx.loteHisopoAtp, tomaFromValuesIdx.loteHisopoAtp),
           observacionAtp: preferNonEmpty(tomaFromFormIdx.observacionAtp, tomaFromValuesIdx.observacionAtp),
           equipoAtp: preferNonEmpty(tomaFromFormIdx.equipoAtp, tomaFromValuesIdx.equipoAtp),
+          equipoAtpOtro: preferNonEmpty(tomaFromFormIdx.equipoAtpOtro, tomaFromValuesIdx.equipoAtpOtro),
           parteAtp: preferNonEmpty(tomaFromFormIdx.parteAtp, tomaFromValuesIdx.parteAtp),
           parteAtpOtro: preferNonEmpty(tomaFromFormIdx.parteAtpOtro, tomaFromValuesIdx.parteAtpOtro),
           deteccionAlergenosRi: preferNonEmpty(tomaFromFormIdx.deteccionAlergenosRi, tomaFromValuesIdx.deteccionAlergenosRi),
@@ -2211,6 +2262,7 @@ export function AddLimpiezaRecordModal({
           loteHisopoAlergenos: preferNonEmpty(tomaFromFormIdx.loteHisopoAlergenos, tomaFromValuesIdx.loteHisopoAlergenos),
           observacionAlergenos: preferNonEmpty(tomaFromFormIdx.observacionAlergenos, tomaFromValuesIdx.observacionAlergenos),
           equipoAlergenos: preferNonEmpty(tomaFromFormIdx.equipoAlergenos, tomaFromValuesIdx.equipoAlergenos),
+          equipoAlergenosOtro: preferNonEmpty(tomaFromFormIdx.equipoAlergenosOtro, tomaFromValuesIdx.equipoAlergenosOtro),
           parteAlergenos: preferNonEmpty(tomaFromFormIdx.parteAlergenos, tomaFromValuesIdx.parteAlergenos),
           parteAlergenosOtro: preferNonEmpty(tomaFromFormIdx.parteAlergenosOtro, tomaFromValuesIdx.parteAlergenosOtro),
           detergente: preferNonEmpty(tomaFromFormIdx.detergente, tomaFromValuesIdx.detergente),
@@ -2257,7 +2309,10 @@ export function AddLimpiezaRecordModal({
           resultados_atp_rf: tomaMerged?.resultadosAtpRf || null,
           lote_hisopo_atp: tomaMerged?.loteHisopoAtp || null,
           observacion_atp: tomaMerged?.observacionAtp || null,
-          equipo_atp: tomaMerged?.equipoAtp || null,
+          equipo_atp:
+            String(tomaMerged?.equipoAtp || '').trim() === 'OTRO'
+              ? String(tomaMerged?.equipoAtpOtro || '').trim() || null
+              : (tomaMerged?.equipoAtp || null),
           parte_atp:
             String(tomaMerged?.parteAtp || '').trim() === 'OTRO'
               ? String(tomaMerged?.parteAtpOtro || '').trim() || null
@@ -2267,7 +2322,10 @@ export function AddLimpiezaRecordModal({
           deteccion_alergenos_rf: tomaMerged?.deteccionAlergenosRf || null,
           lote_hisopo_alergenos: tomaMerged?.loteHisopoAlergenos || null,
           observacion_alergenos: tomaMerged?.observacionAlergenos || null,
-          equipo_alergenos: tomaMerged?.equipoAlergenos || null,
+          equipo_alergenos:
+            String(tomaMerged?.equipoAlergenos || '').trim() === 'OTRO'
+              ? String(tomaMerged?.equipoAlergenosOtro || '').trim() || null
+              : (tomaMerged?.equipoAlergenos || null),
           parte_alergenos:
             String(tomaMerged?.parteAlergenos || '').trim() === 'OTRO'
               ? String(tomaMerged?.parteAlergenosOtro || '').trim() || null
@@ -2398,6 +2456,7 @@ export function AddLimpiezaRecordModal({
             loteHisopoAtp: lib.lote_hisopo_atp ?? '',
             observacionAtp: lib.observacion_atp ?? '',
             equipoAtp: (lib as any).equipo_atp ?? '',
+            equipoAtpOtro: '',
             parteAtp: (lib as any).parte_atp ?? '',
             parteAtpOtro: '',
             deteccionAlergenosRi: lib.deteccion_alergenos_ri ?? '',
@@ -2406,6 +2465,7 @@ export function AddLimpiezaRecordModal({
             loteHisopoAlergenos: lib.lote_hisopo_alergenos ?? '',
             observacionAlergenos: lib.observacion_alergenos ?? '',
             equipoAlergenos: (lib as any).equipo_alergenos ?? '',
+            equipoAlergenosOtro: '',
             parteAlergenos: (lib as any).parte_alergenos ?? '',
             parteAlergenosOtro: '',
             detergente: lib.detergente ?? '',
@@ -2693,6 +2753,7 @@ export function AddLimpiezaRecordModal({
                               loteHisopoAtp: '',
                               observacionAtp: '',
                               equipoAtp: '',
+                              equipoAtpOtro: '',
                               parteAtp: '',
                               parteAtpOtro: '',
                               deteccionAlergenosRi: '',
@@ -2701,6 +2762,7 @@ export function AddLimpiezaRecordModal({
                               loteHisopoAlergenos: '',
                               observacionAlergenos: '',
                               equipoAlergenos: '',
+                              equipoAlergenosOtro: '',
                               parteAlergenos: '',
                               parteAlergenosOtro: '',
                               detergente: '',
@@ -2929,7 +2991,9 @@ export function AddLimpiezaRecordModal({
                                 >
                                   <FormControl>
                                     <SelectTrigger>
-                                      <SelectValue placeholder={isLoadingEquipos ? 'Cargando equipos...' : 'Seleccione un equipo'} />
+                                      <SelectValue placeholder={isLoadingEquipos ? 'Cargando equipos...' : 'Seleccione un equipo'}>
+                                        {field.value ? field.value : null}
+                                      </SelectValue>
                                     </SelectTrigger>
                                   </FormControl>
                                   <SelectContent>
@@ -2975,7 +3039,9 @@ export function AddLimpiezaRecordModal({
                                 >
                                   <FormControl>
                                     <SelectTrigger>
-                                      <SelectValue placeholder={isLoadingPartesPorToma[tomaActivaIndex] ? 'Cargando superficies...' : 'Seleccione una superficie'} />
+                                      <SelectValue placeholder={isLoadingPartesPorToma[tomaActivaIndex] ? 'Cargando superficies...' : 'Seleccione una superficie'}>
+                                        {field.value ? field.value : null}
+                                      </SelectValue>
                                     </SelectTrigger>
                                   </FormControl>
                                   <SelectContent>
@@ -3101,11 +3167,6 @@ export function AddLimpiezaRecordModal({
 
                         <div className="rounded-md border p-4 space-y-4">
                           <div className="font-semibold">ATP</div>
-                          <datalist id="equipos-catalog">
-                            {equipos.map((eq) => (
-                              <option key={eq.id} value={eq.nombre} />
-                            ))}
-                          </datalist>
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             <FormField
                               control={form.control}
@@ -3113,27 +3174,53 @@ export function AddLimpiezaRecordModal({
                               render={({ field }) => (
                                 <FormItem>
                                   <FormLabel>Equipo (ATP)</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      disabled={effectiveViewOnlyMode || isLoadingEquipos}
-                                      list="equipos-catalog"
-                                      placeholder={isLoadingEquipos ? 'Cargando equipos...' : ''}
-                                      name={field.name}
-                                      value={field.value || ''}
-                                      onBlur={field.onBlur}
-                                      ref={field.ref}
-                                      onChange={(e) => {
-                                        const value = e.target.value;
-                                        field.onChange(value);
-                                        form.setValue(`tomas.${tomaActivaIndex}.parteAtp`, '');
-                                        form.setValue(`tomas.${tomaActivaIndex}.parteAtpOtro`, '');
-                                      }}
-                                    />
-                                  </FormControl>
+                                  <Select
+                                    disabled={effectiveViewOnlyMode || isLoadingEquipos}
+                                    onValueChange={(value) => {
+                                      field.onChange(value);
+                                      if (value !== 'OTRO') {
+                                        form.setValue(`tomas.${tomaActivaIndex}.equipoAtpOtro`, '');
+                                      }
+                                      form.setValue(`tomas.${tomaActivaIndex}.parteAtp`, '');
+                                      form.setValue(`tomas.${tomaActivaIndex}.parteAtpOtro`, '');
+                                    }}
+                                    value={field.value}
+                                  >
+                                    <FormControl>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder={isLoadingEquipos ? 'Cargando equipos...' : 'Seleccione un equipo'}>
+                                          {field.value ? field.value : null}
+                                        </SelectValue>
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      {equipos.map((equipo) => (
+                                        <SelectItem key={`equipo-atp-${equipo.id}-${equipo.nombre}`} value={equipo.nombre}>
+                                          {equipo.nombre}
+                                        </SelectItem>
+                                      ))}
+                                      <SelectItem value="OTRO">OTRO</SelectItem>
+                                    </SelectContent>
+                                  </Select>
                                   <FormMessage />
                                 </FormItem>
                               )}
                             />
+                            {String(form.watch(`tomas.${tomaActivaIndex}.equipoAtp`) || '').trim() === 'OTRO' && (
+                              <FormField
+                                control={form.control}
+                                name={`tomas.${tomaActivaIndex}.equipoAtpOtro`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Especificar Equipo (ATP)</FormLabel>
+                                    <FormControl>
+                                      <Input disabled={effectiveViewOnlyMode} placeholder="Escriba el equipo..." {...field} value={field.value || ''} />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            )}
                             <FormField
                               control={form.control}
                               name={`tomas.${tomaActivaIndex}.parteAtp`}
@@ -3156,7 +3243,9 @@ export function AddLimpiezaRecordModal({
                                     >
                                       <FormControl>
                                         <SelectTrigger>
-                                          <SelectValue placeholder="Seleccione una parte" />
+                                          <SelectValue placeholder="Seleccione una parte">
+                                            {field.value ? field.value : null}
+                                          </SelectValue>
                                         </SelectTrigger>
                                       </FormControl>
                                       <SelectContent>
@@ -3216,27 +3305,53 @@ export function AddLimpiezaRecordModal({
                               render={({ field }) => (
                                 <FormItem>
                                   <FormLabel>Equipo (Alérgenos)</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      disabled={effectiveViewOnlyMode || isLoadingEquipos}
-                                      list="equipos-catalog"
-                                      placeholder={isLoadingEquipos ? 'Cargando equipos...' : ''}
-                                      name={field.name}
-                                      value={field.value || ''}
-                                      onBlur={field.onBlur}
-                                      ref={field.ref}
-                                      onChange={(e) => {
-                                        const value = e.target.value;
-                                        field.onChange(value);
-                                        form.setValue(`tomas.${tomaActivaIndex}.parteAlergenos`, '');
-                                        form.setValue(`tomas.${tomaActivaIndex}.parteAlergenosOtro`, '');
-                                      }}
-                                    />
-                                  </FormControl>
+                                  <Select
+                                    disabled={effectiveViewOnlyMode || isLoadingEquipos}
+                                    onValueChange={(value) => {
+                                      field.onChange(value);
+                                      if (value !== 'OTRO') {
+                                        form.setValue(`tomas.${tomaActivaIndex}.equipoAlergenosOtro`, '');
+                                      }
+                                      form.setValue(`tomas.${tomaActivaIndex}.parteAlergenos`, '');
+                                      form.setValue(`tomas.${tomaActivaIndex}.parteAlergenosOtro`, '');
+                                    }}
+                                    value={field.value}
+                                  >
+                                    <FormControl>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder={isLoadingEquipos ? 'Cargando equipos...' : 'Seleccione un equipo'}>
+                                          {field.value ? field.value : null}
+                                        </SelectValue>
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      {equipos.map((equipo) => (
+                                        <SelectItem key={`equipo-alerg-${equipo.id}-${equipo.nombre}`} value={equipo.nombre}>
+                                          {equipo.nombre}
+                                        </SelectItem>
+                                      ))}
+                                      <SelectItem value="OTRO">OTRO</SelectItem>
+                                    </SelectContent>
+                                  </Select>
                                   <FormMessage />
                                 </FormItem>
                               )}
                             />
+                            {String(form.watch(`tomas.${tomaActivaIndex}.equipoAlergenos`) || '').trim() === 'OTRO' && (
+                              <FormField
+                                control={form.control}
+                                name={`tomas.${tomaActivaIndex}.equipoAlergenosOtro`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Especificar Equipo (Alérgenos)</FormLabel>
+                                    <FormControl>
+                                      <Input disabled={effectiveViewOnlyMode} placeholder="Escriba el equipo..." {...field} value={field.value || ''} />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            )}
                             <FormField
                               control={form.control}
                               name={`tomas.${tomaActivaIndex}.parteAlergenos`}
@@ -3259,7 +3374,9 @@ export function AddLimpiezaRecordModal({
                                     >
                                       <FormControl>
                                         <SelectTrigger>
-                                          <SelectValue placeholder="Seleccione una parte" />
+                                          <SelectValue placeholder="Seleccione una parte">
+                                            {field.value ? field.value : null}
+                                          </SelectValue>
                                         </SelectTrigger>
                                       </FormControl>
                                       <SelectContent>
@@ -3352,7 +3469,7 @@ export function AddLimpiezaRecordModal({
                           )}
 
                           <FormField control={form.control} name={`tomas.${tomaActivaIndex}.loteHisopoAlergenos`} render={({ field }) => (
-                            <FormItem><FormLabel>Lote del hisopo (Alérgenos)</FormLabel><FormControl><Input disabled={effectiveViewOnlyMode} {...field} /></FormControl><FormMessage /></FormItem>
+                            <FormItem><FormLabel>Lote del hisopo (Alérgenos)</FormLabel><FormControl><Input disabled={effectiveViewOnlyMode} {...field} value={field.value || ''} /></FormControl><FormMessage /></FormItem>
                           )} />
                         </div>
 
